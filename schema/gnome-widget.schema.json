@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "id", "name", "version", "shell_versions", "entrypoint"],
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$"},
+    "name": {"type": "string"},
+    "version": {"type": "string"},
+    "shell_versions": {"type": "array", "items": {"type": "string"}},
+    "entrypoint": {"type": "string"},
+    "permissions": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}
