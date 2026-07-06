@@ -9,7 +9,8 @@
     "version": {"type": "string"},
     "shell_versions": {"type": "array", "items": {"type": "string"}},
     "entrypoint": {"type": "string"},
-    "permissions": {"type": "array", "items": {"type": "string"}}
+    "permissions": {"type": "array", "items": {"type": "string"}},
+    "options": {"type": "object"}
   },
   "additionalProperties": false
 }

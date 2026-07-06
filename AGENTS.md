@@ -1,9 +1,12 @@
 # AGENTS.md
 
 Reusable GNOME Shell floating panel and widget host. Read `README.md` and
-`docs/*.md`. Provider collection stays outside Shell. Never execute unreviewed
-generated code. Target Shell 50; avoid blocking I/O and release every timer and
-signal in `destroy()`.
+`docs/*.md`. Provider collection that can block stays outside Shell. The
+`ai-agent-usage` plugin is GJS-only: Claude statusLine posts to a localhost HTTP
+server owned by the widget and Codex JSONL parsing runs in a managed GJS child
+process. Never execute unreviewed generated code. Target Shell 50; avoid
+blocking I/O and release every timer, signal, server and child process in
+`destroy()`.
 
 Current built-ins are registered in `extension/pluginManager.js` and ordered by
 `extension/config/widgets.json`. Keep the user config file as the source of

@@ -4,6 +4,7 @@
     {"id": "keyboard-layout", "enabled": true},
     {"id": "app-notifications", "enabled": true},
     {"id": "cpu-load-monitor", "enabled": true},
+    {"id": "ai-agent-usage", "enabled": true},
     {"id": "clock", "enabled": true},
     {"id": "ubuntu-system-status", "enabled": true}
   ]

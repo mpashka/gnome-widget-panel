@@ -85,6 +85,7 @@ const FloatingMiniPanel = GObject.registerClass(
             this._enaUnredirectFunc = null;
 
             this._sets = sets;
+            this._extensionPath = extensionPath;
             this._state = this._sets.get_int('state');
 
             this.set_position(
