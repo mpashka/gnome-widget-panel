@@ -13,3 +13,11 @@ Current built-ins are registered in `extension/pluginManager.js`, ordered by
 `extension/plugins/<plugin-id>/index.js` plus widget-local helper files. Keep the
 user config file as the source of truth; future preferences UI must edit the
 same schema rather than create a second settings model.
+
+For `ai-agent-usage`, keep in-memory history separately per provider
+(`codex`, `claude`, future providers) rather than storing only the merged graph.
+Rendering may merge provider histories into one visible graph, but each rendered
+segment must retain the provider identity that won that sample. Provider colors
+must be configurable: if Codex has the highest token consumption for a sample,
+draw that graph segment with the Codex color; if Claude wins, draw it with the
+Claude color.
