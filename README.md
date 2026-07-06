@@ -40,9 +40,10 @@ tested without overwriting the previously installed Floating Mini Panel.
   endpoint and writes `~/.claude/gnome-widget-panel-claude-hook.js`; Claude
   `statusLine` is updated to call this hook. The hook only forwards stdin to the
   widget and prints the returned status line. No cache file is used.
-- Codex: the widget starts `extension/helpers/codex-usage-helper.js` as a
-  separate `gjs` child process. The helper parses `~/.codex/sessions/**/*.jsonl`
-  and streams normalized JSON Lines over stdout.
+- Codex: the widget starts
+  `extension/plugins/ai-agent-usage/helpers/codex-usage-helper.js` as a separate
+  `gjs` child process. The helper parses `~/.codex/sessions/**/*.jsonl` and
+  streams normalized JSON Lines over stdout.
 - UI: one graph receives all provider updates, selects the fresh provider with
   the largest token consumption, and samples its token count, context usage and
   provider limit usage into the compact panel graph.

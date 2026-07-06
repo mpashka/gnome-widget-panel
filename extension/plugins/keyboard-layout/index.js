@@ -1,4 +1,4 @@
-import * as IndicatorsDrawer from '../indicatorsDrawer.js';
+import * as IndicatorsDrawer from '../../indicatorsDrawer.js';
 
 export function create(parent) {
     return new IndicatorsDrawer.IndicatorsDrawer(

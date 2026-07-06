@@ -261,6 +261,8 @@ else
         _startCodexHelper() {
             const helperPath = GLib.build_filenamev([
                 this._extensionPath,
+                'plugins',
+                'ai-agent-usage',
                 'helpers',
                 'codex-usage-helper.js',
             ]);

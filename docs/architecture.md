@@ -25,11 +25,13 @@ The configuration is an ordered list. `enabled: false` disables a plugin; array
 order defines panel order. Unknown enabled plugin IDs fail explicitly instead of
 silently loading unexpected code.
 
-Built-in plugin modules live in `extension/plugins/`. `pluginManager.js` is the
-registry and lifecycle entry point. Application notifications and keyboard
-layout use role-filtered clones of GNOME panel indicators. The keyboard plugin
-forces its role into the always-visible area. Clock and Ubuntu system status
-wrap the existing DateMenu and QuickSettings integration.
+Built-in plugins live in separate directories below `extension/plugins/`; each
+directory has an `index.js` entrypoint and keeps widget-specific helpers next to
+it. `pluginManager.js` is the registry and lifecycle entry point. Application
+notifications and keyboard layout use role-filtered clones of GNOME panel
+indicators. The keyboard plugin forces its role into the always-visible area.
+Clock and Ubuntu system status wrap the existing DateMenu and QuickSettings
+integration.
 
 ## AI agent usage widget
 
@@ -46,10 +48,11 @@ to stdout for Claude's status line. The widget stores Claude token data only in
 memory.
 
 Codex log parsing is isolated from GNOME Shell. The widget starts
-`extension/helpers/codex-usage-helper.js` as a `gjs -m` child process through
-`Gio.Subprocess`; the helper recursively scans `~/.codex/sessions/**/*.jsonl`,
-extracts the newest `token_count` event, and streams normalized JSON Lines to
-stdout. The Shell process only reads small stdout lines asynchronously.
+`extension/plugins/ai-agent-usage/helpers/codex-usage-helper.js` as a `gjs -m`
+child process through `Gio.Subprocess`; the helper recursively scans
+`~/.codex/sessions/**/*.jsonl`, extracts the newest `token_count` event, and
+streams normalized JSON Lines to stdout. The Shell process only reads small
+stdout lines asynchronously.
 
 Communication options considered for the Codex child process:
 

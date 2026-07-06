@@ -1,11 +1,11 @@
 import GLib from 'gi://GLib';
 
-import * as AiAgentUsage from './plugins/ai-agent-usage.js';
-import * as AppNotifications from './plugins/app-notifications.js';
-import * as Clock from './plugins/clock.js';
-import * as CpuLoadMonitor from './plugins/cpu-load-monitor.js';
-import * as KeyboardLayout from './plugins/keyboard-layout.js';
-import * as UbuntuSystemStatus from './plugins/ubuntu-system-status.js';
+import * as AiAgentUsage from './plugins/ai-agent-usage/index.js';
+import * as AppNotifications from './plugins/app-notifications/index.js';
+import * as Clock from './plugins/clock/index.js';
+import * as CpuLoadMonitor from './plugins/cpu-load-monitor/index.js';
+import * as KeyboardLayout from './plugins/keyboard-layout/index.js';
+import * as UbuntuSystemStatus from './plugins/ubuntu-system-status/index.js';
 
 const REGISTRY = new Map([
     ['keyboard-layout', KeyboardLayout],
