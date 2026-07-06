@@ -1,12 +1,11 @@
+// @ts-nocheck
 import GLib from 'gi://GLib';
-
 import * as AiAgentUsage from './plugins/ai-agent-usage/index.js';
 import * as AppNotifications from './plugins/app-notifications/index.js';
 import * as Clock from './plugins/clock/index.js';
 import * as CpuLoadMonitor from './plugins/cpu-load-monitor/index.js';
 import * as KeyboardLayout from './plugins/keyboard-layout/index.js';
 import * as UbuntuSystemStatus from './plugins/ubuntu-system-status/index.js';
-
 const REGISTRY = new Map([
     ['keyboard-layout', KeyboardLayout],
     ['app-notifications', AppNotifications],
@@ -15,7 +14,6 @@ const REGISTRY = new Map([
     ['clock', Clock],
     ['ubuntu-system-status', UbuntuSystemStatus],
 ]);
-
 function readConfig(extensionPath) {
     const userPath = GLib.build_filenamev([
         GLib.get_user_config_dir(),
@@ -35,12 +33,10 @@ function readConfig(extensionPath) {
         throw new Error(`Cannot read widget configuration: ${path}`);
     return JSON.parse(new TextDecoder().decode(contents));
 }
-
 export function createConfiguredPlugins(parent, extensionPath) {
     const config = readConfig(extensionPath);
     if (config.schema !== 1 || !Array.isArray(config.plugins))
         throw new Error('Unsupported widget configuration schema');
-
     const instances = new Map();
     for (const item of config.plugins) {
         if (!item.enabled)

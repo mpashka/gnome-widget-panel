@@ -16,22 +16,24 @@ Installed widgets live below
 
 ## Current implementation
 
-`extension/` is based on Floating Mini Panel v8, already patched for GNOME Shell
-50, compact 20 px layout, free positioning, normal-weight labels and the local
-CPU monitor. The host reads `~/.config/gnome-widget-panel/widgets.json`, falling
-back to `extension/config/widgets.json`.
+`extension-src/` is based on Floating Mini Panel v8, already patched for GNOME
+Shell 50, compact 20 px layout, free positioning, normal-weight labels and the
+local CPU monitor. `npm run build` generates installable GJS modules under
+`extension/`. The host reads `~/.config/gnome-widget-panel/widgets.json`,
+falling back to `extension/config/widgets.json`.
 
 The configuration is an ordered list. `enabled: false` disables a plugin; array
 order defines panel order. Unknown enabled plugin IDs fail explicitly instead of
 silently loading unexpected code.
 
-Built-in plugins live in separate directories below `extension/plugins/`; each
-directory has an `index.js` entrypoint and keeps widget-specific helpers next to
-it. `pluginManager.js` is the registry and lifecycle entry point. Application
-notifications and keyboard layout use role-filtered clones of GNOME panel
-indicators. The keyboard plugin forces its role into the always-visible area.
-Clock and Ubuntu system status wrap the existing DateMenu and QuickSettings
-integration.
+Built-in plugins live in separate directories below `extension-src/plugins/`;
+each directory has an `index.ts` entrypoint and keeps widget-specific helpers
+next to it. Generated files appear in matching `extension/plugins/`
+directories. `pluginManager.ts` is the registry and lifecycle entry point.
+Application notifications and keyboard layout use role-filtered clones of GNOME
+panel indicators. The keyboard plugin forces its role into the always-visible
+area. Clock and Ubuntu system status wrap the existing DateMenu and
+QuickSettings integration.
 
 ## AI agent usage widget
 

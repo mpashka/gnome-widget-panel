@@ -1,0 +1,98 @@
+
+#FloatingMiniPanel:horizontal {
+/*  height: 32px; */
+  height: 20px;
+  padding: 0px 0px;
+}
+
+#FloatingMiniPanel:vertical {
+  width: 48px;
+  padding: 0px 0px;
+}
+
+#FloatingMiniPanel:horizontal .system-status-icon {
+  width: 24px;
+/*  padding: 8px 0px; */
+  padding: 2px 0px;
+  -st-icon-style: symbolic !important;
+}
+
+#FloatingMiniPanel:vertical .system-status-icon {
+  height: 24px;
+  padding: 0px 16px;
+  -st-icon-style: symbolic !important;
+}
+
+#FloatingMiniPanel:horizontal .system-status-icon-2 {
+  width: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-left: 8px;
+  -st-icon-style: symbolic !important;
+}
+
+#FloatingMiniPanel:vertical .system-status-icon-2 {
+  height: 24px;
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 8px;
+  -st-icon-style: symbolic !important;
+}
+
+#FloatingMiniPanel .clone {
+  padding: 2px 8px;
+}
+
+#FloatingMiniPanel:horizontal .divider {
+  margin: 2px 0px;
+  padding: 0px 0px;
+  border: 1px solid grey;
+}
+
+#FloatingMiniPanel:vertical .divider {
+  margin: 0px 6px;
+  padding: 0px 0px;
+  border: 1px solid grey;
+}
+
+#FloatingMiniPanel:horizontal .ctlBtn {
+  padding: 0px 2px;
+}
+
+#FloatingMiniPanel:vertical .ctlBtn {
+  padding: 2px 0px;
+}
+
+#FloatingMiniPanel:horizontal .btn {
+  padding: 0px 8px;
+}
+
+#FloatingMiniPanel:vertical .btn {
+  padding: 8px 0px;
+}
+
+#FloatingMiniPanel:horizontal .messages-indicator {
+  width: 16px;
+  padding: 2px 0px;
+}
+
+#FloatingMiniPanel:vertical .messages-indicator {
+  height: 16px;
+  padding: 0px 7px;
+}
+
+#FloatingMiniPanel StLabel {
+  font-weight: normal;
+  text-align: center;
+}
+
+.popup-menu.panel-menu {
+  margin-bottom: 0;
+}
+
+
+#FloatingMiniPanel .cpu-graph {
+  width: 32px;
+  height: 16px;
+  margin: 2px 4px;
+}

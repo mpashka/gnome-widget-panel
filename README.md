@@ -4,8 +4,10 @@ Compact floating panel for Ubuntu/GNOME, inspired by XFCE panel widgets.
 Independent widget repositories provide a manifest and GJS renderer. The first
 integration target is `ai-agent-usage-widget`.
 
-The repository now contains the working Floating Mini Panel based implementation
-under `extension/`, split into configured built-in plugins.
+The repository contains the working Floating Mini Panel based implementation as
+TypeScript source under `extension-src/`, split into configured built-in
+plugins. `npm run build` generates the installable GJS extension under
+`extension/`.
 
 ## Current plugins
 
@@ -29,8 +31,25 @@ Plugin order and enabled state are configured in
 ./install.sh
 ```
 
+`install.sh` installs npm dependencies if needed, runs `npm run build`, compiles
+schemas and copies the generated `extension/` tree to the user GNOME Shell
+extensions directory.
+
 The new extension uses UUID `gnome-widget-panel@mpashka.github.com`; it can be
 tested without overwriting the previously installed Floating Mini Panel.
+
+## Development build
+
+```bash
+npm install
+npm run build
+npm run typecheck
+```
+
+Edit `extension-src/**/*.ts`; do not edit generated `extension/**/*.js`
+directly. The current first TypeScript migration keeps runtime files under
+`// @ts-nocheck` because this extension depends heavily on dynamic GObject and
+private GNOME Shell APIs. Stable contracts should be typed incrementally.
 
 ## AI agent usage widget
 

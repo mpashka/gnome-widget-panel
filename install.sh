@@ -4,6 +4,12 @@ root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 uuid="gnome-widget-panel@mpashka.github.com"
 target="$HOME/.local/share/gnome-shell/extensions/$uuid"
 config_dir="$HOME/.config/gnome-widget-panel"
+
+if [[ ! -x "$root/node_modules/.bin/tsc" ]]; then
+  (cd "$root" && npm install)
+fi
+"$root/build.sh"
+
 rm -rf "$target"
 mkdir -p "$target"
 cp -a "$root/extension/." "$target/"

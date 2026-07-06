@@ -1,0 +1,16 @@
+{
+  "name": "gnome-widget-panel",
+  "version": "0.1.0",
+  "description": "Configurable GNOME Shell floating panel with TypeScript-built GJS widgets",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "./build.sh",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@girs/gjs": "^4.0.0",
+    "@girs/gnome-shell": "^48.0.0",
+    "typescript": "^5.9.0"
+  }
+}

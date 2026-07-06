@@ -1,3 +1,4 @@
+// @ts-nocheck
 /*
  * Floating-Mini-Panel for GNOME Shell 46+
  *
@@ -16,26 +17,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 'use strict';
-
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-
 const PANELBOX = Main.layoutManager.panelBox;
 const DISPLAY = global.display;
-
 // Helper function for PanelBox Visibility
 export function panelBoxHidden() {
     let priMonGeo = priMonitorGeometry();
-    if (
-        PANELBOX.y < priMonGeo.y ||
+    if (PANELBOX.y < priMonGeo.y ||
         Math.abs(PANELBOX.translation_y) === PANELBOX.height ||
-        Math.abs(PANELBOX.translation_x) === PANELBOX.width
-    )
+        Math.abs(PANELBOX.translation_x) === PANELBOX.width)
         return true;
     return false;
 }
-
 // Helper function for Primary Monitor Geometry
 export function priMonitorGeometry() {
     let priMon = DISPLAY.get_primary_monitor();
