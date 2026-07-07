@@ -51,6 +51,24 @@ extensions directory.
 The new extension uses UUID `gnome-widget-panel@mpashka.github.com`; it can be
 tested without overwriting the previously installed Floating Mini Panel.
 
+## Reload without logout (developer install)
+
+`install.sh` needs a logout/login on Wayland to take effect. For fast iteration
+use the developer workflow instead:
+
+```bash
+sudo apt install mutter-dev-bin   # one-time: provides gnome-shell --devkit
+./dev-install.sh                  # one-time: symlink the build tree into the extensions dir
+./dev-run.sh                      # rebuild and run a nested GNOME Shell window
+```
+
+Edit sources, close the nested window (or press `Ctrl+C`), and rerun
+`./dev-run.sh` to reload — no logout of your real session. `dev-run.sh` disables
+the extension in your main session, then runs an interactive nested GNOME Shell
+in a window (`gnome-shell --devkit`) with the extension enabled in an isolated
+dconf profile, and tails the log. See
+[`docs/development.md`](docs/development.md) for details and alternatives.
+
 ## Development build
 
 ```bash

@@ -62,7 +62,7 @@ const Alignment = {
     CENTER: 16,
 };
 const FloatingMiniPanel = GObject.registerClass(class FloatingMiniPanel extends St.BoxLayout {
-    constructor(sets, extensionPath) {
+    constructor(sets, extensionPath, extension) {
         super({
             name: 'FloatingMiniPanel',
             style_class: 'button',
@@ -74,6 +74,7 @@ const FloatingMiniPanel = GObject.registerClass(class FloatingMiniPanel extends 
         this._enaUnredirectFunc = null;
         this._sets = sets;
         this._extensionPath = extensionPath;
+        this._extension = extension;
         this._state = this._sets.get_int('state');
         this.set_position(this._sets.get_int('pos-x'), this._sets.get_int('pos-y'));
         // START CODE VERTICAL
@@ -437,6 +438,9 @@ const FloatingMiniPanel = GObject.registerClass(class FloatingMiniPanel extends 
             }
         }
     }
+    openPreferences() {
+        this._extension.openPreferences();
+    }
     _tmpHide() {
         // Hide this for 5 sec.
         this.hide();
@@ -632,7 +636,7 @@ export default class FloatingMiniPanelExtension extends Extension {
         startupComplete = false;
     }
     enable() {
-        this._floatingMiniPanel = new FloatingMiniPanel(this.getSettings(), this.path);
+        this._floatingMiniPanel = new FloatingMiniPanel(this.getSettings(), this.path, this);
     }
     disable() {
         this._floatingMiniPanel.destroy();

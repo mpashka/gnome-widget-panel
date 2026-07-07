@@ -26,13 +26,21 @@ Never execute unreviewed generated code.
 ## Commands
 
 ```bash
-npm run build      # build.sh: copy assets + tsc extension-src -> extension
-npm run typecheck  # tsc --noEmit
-./install.sh       # npm install (if needed) + build + compile schemas + copy to extensions dir
+npm run build       # build.sh: copy assets + tsc extension-src -> extension
+npm run typecheck   # tsc --noEmit
+./install.sh        # build + compile schemas + copy to extensions dir (needs logout to apply)
+./dev-install.sh    # one-time: symlink the build tree into the extensions dir
+./dev-run.sh        # rebuild + run a restartable nested GNOME Shell window (no logout)
 ```
 
-There is no test suite. Verification is a real GNOME Shell reload: `./install.sh`,
-then log out and back in (Wayland cannot hot-reload the panel). UUID is
+There is no test suite. A plain `./install.sh` needs a logout/login on Wayland to
+apply, because GNOME Shell caches an extension's ES module for the life of the
+`gnome-shell` process. For fast iteration use the developer workflow: install
+`mutter-dev-bin` and run `./dev-install.sh` once, then `./dev-run.sh`, which
+disables the extension in the main session and runs an interactive nested shell
+window (`gnome-shell --devkit`) with the extension enabled in an isolated dconf
+profile, tailing the log (mutter 50 dropped the `--nested` flag; `GWP_HEADLESS=1`
+gives a log-only fallback). See [`docs/development.md`](docs/development.md). UUID is
 `gnome-widget-panel@mpashka.github.com`; it installs alongside the original
 Floating Mini Panel.
 

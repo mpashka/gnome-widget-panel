@@ -158,7 +158,7 @@ const CtlActions = GObject.registerClass(
 
         // Right longpress action
         _rightBtnLongPress() {
-            this._actor.menu.toggle();
+            this._parent._tmpHide();
         }
 
         // Left click
@@ -215,7 +215,7 @@ const CtlActions = GObject.registerClass(
         _rightBtnClick(state) {
             switch (state) {
                 case 0:
-                    this._parent._tmpHide();
+                    this._actor.menu.toggle();
                     break;
                 case Clutter.ModifierType.SHIFT_MASK:
                     if (this._actor[this._actor.orientStr]) {
@@ -371,7 +371,7 @@ export const ControlButton = GObject.registerClass(
                 })
             );
             this.menu.addMenuItem(
-                new MenuItem('Hide For 5 Seconds', 'Right Click', () => {
+                new MenuItem('Hide For 5 Seconds', 'Right LongPress', () => {
                     this._parent._tmpHide();
                 })
             );
@@ -386,7 +386,16 @@ export const ControlButton = GObject.registerClass(
                 })
             );
             this.menu.addMenuItem(
-                new MenuItem('Toggle Menu', 'Right LongPress', () => {})
+                new MenuItem('Toggle Menu', 'Right Click', () => {})
+            );
+
+            this.menu.addMenuItem(
+                new PopupMenu.PopupSeparatorMenuItem('Widgets')
+            );
+            this.menu.addMenuItem(
+                new MenuItem('Settings…', '', () => {
+                    this._parent.openPreferences();
+                })
             );
 
             this.menu.connect('open-state-changed', () => {

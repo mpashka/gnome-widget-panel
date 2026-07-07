@@ -5,10 +5,13 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import * as ClaudeHook from './claudeHook.js';
 
 const WIDTH = 54;
 const HEIGHT = 16;
@@ -19,13 +22,35 @@ const SAMPLE_INTERVAL_SECONDS = 5;
 const TOKEN_EVENT_ACTIVE_SECONDS = SAMPLE_INTERVAL_SECONDS * 3;
 const STALE_AFTER_SECONDS = 120;
 const DEFAULT_CLAUDE_PORT = 17861;
-const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 const TOOLTIP_OFFSET = 6;
 const TOOLTIP_ANIMATION_TIME = 150;
 // Seconds of history visible in the graph body (one column per sample).
 const REQUEST_WINDOW_SECONDS = HISTORY_WIDTH * SAMPLE_INTERVAL_SECONDS;
 const REQUEST_TEXT_PREVIEW = 30;
 const REQUEST_COLOR = [0.90, 0.15, 0.15, 0.9];
+// Indicator colours, shared by the vertical bars and the matching tooltip
+// icons: usage = rate-limit bar + usage cup; window = context bar + reset icon.
+const DEFAULT_USAGE_COLOR = '#ffb82e';
+const DEFAULT_WINDOW_COLOR = '#4ca6ff';
+// Per-provider graph colours (brand palette): OpenAI/Codex teal, Anthropic/Claude clay.
+const DEFAULT_CODEX_COLOR = '#10a37f';
+const DEFAULT_CLAUDE_COLOR = '#d97757';
+// Fill-level "cup" glyphs (empty → full): ○ ◔ ◑ ◕ ●
+const CUP_LEVELS = ['○', '◔', '◑', '◕', '●'];
+// Hourglass, for the limit-window reset time.
+const WINDOW_GLYPH = '⧗';
+
+function hexToRgb(hex) {
+    const raw = String(hex).replace('#', '');
+    const full = raw.length === 3
+        ? raw.split('').map(c => c + c).join('')
+        : raw;
+    const channel = start => {
+        const value = parseInt(full.slice(start, start + 2), 16) / 255;
+        return Number.isFinite(value) ? value : 0;
+    };
+    return [channel(0), channel(2), channel(4)];
+}
 
 function nowSeconds() {
     return Math.floor(Date.now() / 1000);
@@ -41,22 +66,6 @@ function formatClock(tsSeconds) {
 
 function decodeBytes(bytes) {
     return new TextDecoder().decode(bytes);
-}
-
-function atomicWrite(path, contents, mode = 0o600) {
-    const file = Gio.File.new_for_path(path);
-    file.replace_contents(
-        new TextEncoder().encode(contents),
-        null,
-        false,
-        Gio.FileCreateFlags.REPLACE_DESTINATION,
-        null
-    );
-    try {
-        GLib.chmod(path, mode);
-    } catch (error) {
-        console.error(`GNOME Widget Panel AI usage chmod failed: ${error}`);
-    }
 }
 
 function parseTokens(value) {
@@ -151,6 +160,56 @@ function formatStatusLine(value) {
     return `Claude ${tokens} tok ctx:${context}%`;
 }
 
+function escapeMarkup(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function providerLabel(name) {
+    if (!name)
+        return 'none';
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function usageCup(percent) {
+    const index = percent < 10 ? 0
+        : percent < 35 ? 1
+        : percent < 60 ? 2
+        : percent < 85 ? 3
+        : 4;
+    return CUP_LEVELS[index];
+}
+
+// The rate-limit window with the highest usage, plus when it resets.
+function bestLimit(value) {
+    const limits = value?.limits ?? {};
+    let best = null;
+    for (const name of ['primary', 'secondary']) {
+        const limit = limits[name];
+        if (limit && Number.isFinite(Number(limit.used_percent))) {
+            const percent = Number(limit.used_percent);
+            if (!best || percent > best.percent)
+                best = {percent, resetsAt: Number(limit.resets_at)};
+        }
+    }
+    return best;
+}
+
+function formatResetTime(epochSeconds) {
+    if (!Number.isFinite(epochSeconds) || epochSeconds <= 0)
+        return '?';
+    const delta = epochSeconds - Date.now() / 1000;
+    if (delta <= 0)
+        return 'now';
+    if (delta < 86400) {
+        const date = new Date(epochSeconds * 1000);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+    return `${Math.round(delta / 86400)}d`;
+}
+
 export const AiAgentUsageGraph = GObject.registerClass(
     class AiAgentUsageGraph extends St.DrawingArea {
         constructor(extensionPath, options = {}) {
@@ -169,6 +228,15 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._minActiveTokens = Number(options.minActiveTokens);
             if (!Number.isFinite(this._minActiveTokens) || this._minActiveTokens < 0)
                 this._minActiveTokens = DEFAULT_MIN_ACTIVE_TOKENS;
+            // Colours: indicator bars/icons and per-provider graph colours.
+            this._usageColor = options.usageColor || DEFAULT_USAGE_COLOR;
+            this._windowColor = options.windowColor || DEFAULT_WINDOW_COLOR;
+            this._codexColor = options.codexColor || DEFAULT_CODEX_COLOR;
+            this._claudeColor = options.claudeColor || DEFAULT_CLAUDE_COLOR;
+            this._requestPreview = Number(options.requestPreview) > 0
+                ? Number(options.requestPreview)
+                : REQUEST_TEXT_PREVIEW;
+            this._showRequests = options.showRequests !== false;
             this._providers = new Map();
             this._sampledEventIds = new Set();
             this._requests = [];
@@ -177,9 +245,12 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 tokens: 0,
                 context: 0,
                 limit: 0,
+                provider: null,
             });
             this._maxTokens = 1;
-            this._claudeSecret = GLib.uuid_string_random();
+            // Prefer a persisted secret (written by the Configure button in
+            // preferences) so the hook and this server agree after a reload.
+            this._claudeSecret = options.claudeSecret || GLib.uuid_string_random();
             this._server = null;
             this._codexProcess = null;
             this._codexStdout = null;
@@ -189,9 +260,10 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 style_class: 'dash-label',
                 visible: false,
             });
+            this._tooltip.clutter_text.line_alignment = Pango.Alignment.LEFT;
             Main.uiGroup.add_child(this._tooltip);
             this._repaintId = this.connect('repaint', () => this._draw());
-            this._hoverId = this.connect('notify::hover', () => this._syncTooltip());
+            this._hoverId = this.connect('notify::hover', () => this._onHoverChanged());
 
             if (this._enableClaude)
                 this._startClaudeHttpHook();
@@ -208,15 +280,8 @@ export const AiAgentUsageGraph = GObject.registerClass(
             );
         }
 
-        _isClaudeAvailable() {
-            return GLib.file_test(
-                GLib.build_filenamev([GLib.get_home_dir(), '.claude']),
-                GLib.FileTest.IS_DIR
-            );
-        }
-
         _startClaudeHttpHook() {
-            if (!this._isClaudeAvailable())
+            if (!ClaudeHook.isClaudeInstalled())
                 return;
 
             try {
@@ -228,7 +293,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     this._claudePort,
                     Soup.ServerListenOptions.IPV4_ONLY
                 );
-                this._installClaudeHook();
+                ClaudeHook.installHook(this._claudePort, this._claudeSecret);
             } catch (error) {
                 console.error(`GNOME Widget Panel Claude hook failed: ${error}`);
                 this._stopClaudeHttpHook();
@@ -266,56 +331,6 @@ export const AiAgentUsageGraph = GObject.registerClass(
             }
         }
 
-        _installClaudeHook() {
-            const configDir = GLib.build_filenamev([GLib.get_home_dir(), '.claude']);
-            GLib.mkdir_with_parents(configDir, 0o700);
-            const hookPath = GLib.build_filenamev([configDir, HOOK_NAME]);
-            const settingsPath = GLib.build_filenamev([configDir, 'settings.json']);
-    const hook = `#!/usr/bin/env gjs
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import Soup from 'gi://Soup?version=3.0';
-
-const PORT = ${JSON.stringify(this._claudePort)};
-const SECRET = ${JSON.stringify(this._claudeSecret)};
-
-function readStdin() {
-    const [ok, contents] = GLib.file_get_contents('/dev/stdin');
-    return ok ? contents : new Uint8Array();
-}
-
-const session = new Soup.Session();
-const message = Soup.Message.new('POST', \`http://127.0.0.1:\${PORT}/claude-statusline\`);
-message.request_headers.append('X-Gnome-Widget-Panel-Token', SECRET);
-message.set_request_body_from_bytes(
-    'application/json',
-    GLib.Bytes.new(readStdin())
-);
-const bytes = session.send_and_read(message, null);
-if (message.get_status() !== Soup.Status.OK)
-    printerr(\`gnome-widget-panel Claude hook HTTP \${message.get_status()}\\n\`);
-else
-    print(new TextDecoder().decode(bytes.get_data()));
-`;
-            atomicWrite(hookPath, hook, 0o700);
-
-            let settings = {};
-            if (GLib.file_test(settingsPath, GLib.FileTest.EXISTS)) {
-                try {
-                    const [ok, contents] = GLib.file_get_contents(settingsPath);
-                    if (ok)
-                        settings = JSON.parse(decodeBytes(contents));
-                } catch (error) {
-                    console.error(`GNOME Widget Panel cannot parse Claude settings: ${error}`);
-                    return;
-                }
-            }
-            settings.statusLine = {
-                type: 'command',
-                command: hookPath,
-            };
-            atomicWrite(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
-        }
 
         _stopClaudeHttpHook() {
             if (this._server) {
@@ -470,6 +485,14 @@ else
             return best;
         }
 
+        _providerHex(name) {
+            if (name === 'codex')
+                return this._codexColor;
+            if (name === 'claude')
+                return this._claudeColor;
+            return null;
+        }
+
         _sample() {
             const tokenValue = this._currentTokenProvider();
             const statusValue = tokenValue ?? this._currentProvider();
@@ -478,8 +501,9 @@ else
                     tokens: tokenValue ? parseTokens(tokenValue) : 0,
                     context: parseContext(statusValue),
                     limit: parseLimit(statusValue),
+                    provider: tokenValue?.provider ?? statusValue?.provider ?? null,
                 }
-                : {tokens: 0, context: 0, limit: 0};
+                : {tokens: 0, context: 0, limit: 0, provider: null};
             if (tokenValue?.event_id)
                 this._sampledEventIds.add(tokenValue.event_id);
             this._samples.push(sample);
@@ -491,73 +515,100 @@ else
                 )
             );
             if (this.hover)
-                this._syncTooltip();
+                this._updateTooltip();
             this.queue_repaint();
         }
 
-        _tooltipText() {
+        _tooltipMarkup() {
             const provider = this._currentProvider();
-            const current = this._samples[this._samples.length - 1];
-            const providerName = provider?.provider ?? 'none';
-            const tokens = provider ? parseTokens(provider) : current.tokens;
-            const sessionTotal = provider?.tokens?.session_total;
-
-            const lines = [
-                `AI tokens: ${providerName}`,
-                `Graph: active token load history; < ${formatTokenCount(this._minActiveTokens)} tokens = 0`,
-                `Graph scale: max ${formatTokenCount(this._maxTokens)} tokens in last ${SCALE_HISTORY_WIDTH} samples`,
-                `Blue bar: context window used (${formatPercent(current.context)})`,
-                `Yellow bar: server/rate limit used (${formatPercent(current.limit)})`,
-                `Current request tokens: ${formatTokenCount(tokens)}`,
-            ];
-
-            if (sessionTotal !== undefined)
-                lines.push(`Codex session total: ${formatTokenCount(sessionTotal)}`);
             if (!provider)
-                lines.push('No fresh provider data; samples reset to 0 after 120s.');
+                return 'AI tokens: none';
 
-            const requests = this._visibleRequests();
-            lines.push(`Red bars: requests in view (${requests.length})`);
-            for (const request of requests) {
-                const preview = request.text.slice(0, REQUEST_TEXT_PREVIEW);
-                lines.push(`  ${formatClock(request.ts)}  ${preview}`);
+            const providerHex = this._providerHex(provider.provider);
+            const label = escapeMarkup(providerLabel(provider.provider));
+            const name = providerHex
+                ? `<span foreground="${providerHex}">${label}</span>`
+                : label;
+
+            // Usage cup (usage-bar colour): prefer the rate limit; fall back to
+            // context-window use. Reset icon uses the window-bar colour.
+            const limit = bestLimit(provider);
+            let percent;
+            let resetPart = '';
+            if (limit) {
+                percent = Math.round(limit.percent);
+                if (Number.isFinite(limit.resetsAt) && limit.resetsAt > 0)
+                    resetPart = ` <span foreground="${this._windowColor}">${WINDOW_GLYPH}</span> ${formatResetTime(limit.resetsAt)}`;
+            } else {
+                percent = Math.round(parseContext(provider) * 100);
+            }
+            const cup = `<span foreground="${this._usageColor}">${usageCup(percent)}</span>`;
+
+            const lines = [`${name}: ${cup} ${percent}%${resetPart}`];
+
+            // Visible requests as a left-aligned, monospace table:
+            // agent | time | first characters of the prompt.
+            const requests = this._showRequests ? this._visibleRequests() : [];
+            if (requests.length) {
+                const agentWidth = Math.max(
+                    ...requests.map(request => providerLabel(request.provider).length)
+                );
+                const rows = requests.map(request => {
+                    const agent = providerLabel(request.provider).padEnd(agentWidth);
+                    const time = formatClock(request.ts);
+                    const text = request.text.slice(0, this._requestPreview);
+                    return escapeMarkup(`${agent}  ${time}  ${text}`);
+                });
+                lines.push(`<tt>${rows.join('\n')}</tt>`);
             }
 
             return lines.join('\n');
         }
 
-        _syncTooltip() {
+        _onHoverChanged() {
             if (this.hover) {
-                this._tooltip.set({
-                    text: this._tooltipText(),
-                    visible: true,
-                    opacity: 0,
+                this._updateTooltip();
+                this._tooltip.opacity = 0;
+                this._tooltip.visible = true;
+                this._tooltip.ease({
+                    opacity: 255,
+                    duration: TOOLTIP_ANIMATION_TIME,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 });
-
-                const [stageX, stageY] = this.get_transformed_position();
-                const [actorWidth, actorHeight] = this.allocation.get_size();
-                const [tipWidth, tipHeight] = this._tooltip.get_size();
-                const monitor = Main.layoutManager.findMonitorForActor(this);
-                const x = Math.clamp(
-                    stageX + Math.floor((actorWidth - tipWidth) / 2),
-                    monitor.x,
-                    monitor.x + monitor.width - tipWidth
-                );
-                const y = stageY - monitor.y > actorHeight + TOOLTIP_OFFSET
-                    ? stageY - tipHeight - TOOLTIP_OFFSET
-                    : stageY + actorHeight + TOOLTIP_OFFSET;
-                this._tooltip.set_position(x, y);
+            } else {
+                this._tooltip.ease({
+                    opacity: 0,
+                    duration: TOOLTIP_ANIMATION_TIME,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                    onComplete: () => {
+                        if (this._tooltip)
+                            this._tooltip.visible = false;
+                    },
+                });
             }
+        }
 
-            this._tooltip.ease({
-                opacity: this.hover ? 255 : 0,
-                duration: TOOLTIP_ANIMATION_TIME,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => {
-                    if (this._tooltip)
-                        this._tooltip.visible = this.hover;
-                },
-            });
+        // Refresh text/position in place without touching opacity, so periodic
+        // updates while hovering do not make the tooltip blink.
+        _updateTooltip() {
+            this._tooltip.clutter_text.set_markup(this._tooltipMarkup());
+            this._positionTooltip();
+        }
+
+        _positionTooltip() {
+            const [stageX, stageY] = this.get_transformed_position();
+            const [actorWidth, actorHeight] = this.allocation.get_size();
+            const [tipWidth, tipHeight] = this._tooltip.get_size();
+            const monitor = Main.layoutManager.findMonitorForActor(this);
+            const x = Math.clamp(
+                stageX + Math.floor((actorWidth - tipWidth) / 2),
+                monitor.x,
+                monitor.x + monitor.width - tipWidth
+            );
+            const y = stageY - monitor.y > actorHeight + TOOLTIP_OFFSET
+                ? stageY - tipHeight - TOOLTIP_OFFSET
+                : stageY + actorHeight + TOOLTIP_OFFSET;
+            this._tooltip.set_position(x, y);
         }
 
         _draw() {
@@ -567,13 +618,9 @@ else
             const color = themeNode.get_foreground_color();
 
             context.setLineWidth(1);
-            context.setSourceRGBA(
-                color.red / 255,
-                color.green / 255,
-                color.blue / 255,
-                0.9
-            );
-            context.moveTo(0, height);
+            const foreground = [color.red / 255, color.green / 255, color.blue / 255];
+            // Token graph: one column per sample, coloured by the provider that
+            // won that sample (falls back to the theme foreground).
             for (let x = 0; x < HISTORY_WIDTH; x++) {
                 const sample = this._samples[this._samples.length - HISTORY_WIDTH + x];
                 const value = Math.clamp(
@@ -581,11 +628,15 @@ else
                     0,
                     1
                 );
-                context.lineTo(x, height - value * (height - 1));
+                if (value <= 0)
+                    continue;
+                const hex = this._providerHex(sample.provider);
+                const [r, g, b] = hex ? hexToRgb(hex) : foreground;
+                context.setSourceRGBA(r, g, b, 0.9);
+                const barHeight = value * (height - 1);
+                context.rectangle(x, height - barHeight, 1, barHeight);
+                context.fill();
             }
-            context.lineTo(HISTORY_WIDTH, height);
-            context.closePath();
-            context.fill();
 
             // Vertical red markers: one per request in the visible window.
             const now = nowSeconds();
@@ -601,8 +652,8 @@ else
 
             const current = this._samples[this._samples.length - 1];
             const bars = [
-                {value: current.context, color: [0.30, 0.65, 1.0, 0.95]},
-                {value: current.limit, color: [1.0, 0.72, 0.18, 0.95]},
+                {value: current.context, color: [...hexToRgb(this._windowColor), 0.95]},
+                {value: current.limit, color: [...hexToRgb(this._usageColor), 0.95]},
             ];
             let x = Math.max(HISTORY_WIDTH + 4, width - 10);
             for (const bar of bars) {

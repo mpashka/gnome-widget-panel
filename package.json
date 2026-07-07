@@ -6,7 +6,10 @@
   "private": true,
   "scripts": {
     "build": "./build.sh",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "watch": "tsc --watch -p tsconfig.json",
+    "dev:install": "./dev-install.sh",
+    "dev": "./dev-run.sh"
   },
   "devDependencies": {
     "@girs/gjs": "^4.0.0",

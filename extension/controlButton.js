@@ -143,7 +143,7 @@ const CtlActions = GObject.registerClass(class CtlActions extends Clutter.Action
     }
     // Right longpress action
     _rightBtnLongPress() {
-        this._actor.menu.toggle();
+        this._parent._tmpHide();
     }
     // Left click
     _leftBtnClick(state) {
@@ -196,7 +196,7 @@ const CtlActions = GObject.registerClass(class CtlActions extends Clutter.Action
     _rightBtnClick(state) {
         switch (state) {
             case 0:
-                this._parent._tmpHide();
+                this._actor.menu.toggle();
                 break;
             case Clutter.ModifierType.SHIFT_MASK:
                 if (this._actor[this._actor.orientStr]) {
@@ -317,7 +317,7 @@ export const ControlButton = GObject.registerClass(class ControlButton extends S
         this.menu.addMenuItem(new MenuItem('Toggle Drawer', 'Middle Click', () => {
             this._parent._indsDrawer.toggle();
         }));
-        this.menu.addMenuItem(new MenuItem('Hide For 5 Seconds', 'Right Click', () => {
+        this.menu.addMenuItem(new MenuItem('Hide For 5 Seconds', 'Right LongPress', () => {
             this._parent._tmpHide();
         }));
         this.menu.addMenuItem(new MenuItem('Move', 'Left LongPress', () => { }, {
@@ -326,7 +326,11 @@ export const ControlButton = GObject.registerClass(class ControlButton extends S
         this.menu.addMenuItem(new MenuItem('Toggle Orientation', 'Middle LongPress', () => {
             this._changeOrientation();
         }));
-        this.menu.addMenuItem(new MenuItem('Toggle Menu', 'Right LongPress', () => { }));
+        this.menu.addMenuItem(new MenuItem('Toggle Menu', 'Right Click', () => { }));
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Widgets'));
+        this.menu.addMenuItem(new MenuItem('Settings…', '', () => {
+            this._parent.openPreferences();
+        }));
         this.menu.connect('open-state-changed', () => {
             if (this.has_style_pseudo_class('active')) {
                 this.remove_style_pseudo_class('active');

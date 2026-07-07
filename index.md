@@ -24,11 +24,17 @@ generated GJS runtime code.
 - [`build.sh`](build.sh) — regenerates `extension/` from `extension-src/`.
 - [`install.sh`](install.sh) — builds and installs the extension into the user
   GNOME Shell extension directory.
+- [`dev-install.sh`](dev-install.sh) — symlink developer install for reload
+  without logout.
+- [`dev-run.sh`](dev-run.sh) — rebuild and run a restartable nested GNOME Shell
+  window (`gnome-shell --devkit`), tailing the extension log.
 - [`docs/object-model.md`](docs/object-model.md) — runtime object map.
 - [`docs/architecture.md`](docs/architecture.md) — architecture and roadmap.
+- [`docs/development.md`](docs/development.md) — reload-without-logout workflow.
 
 ## Development path
 
 Edit TypeScript in `extension-src/`, run `npm run build`, then run
-`./install.sh`. GNOME Shell JavaScript changes usually require logout/login on
-Wayland.
+`./install.sh` (needs logout/login on Wayland). For fast iteration without
+logout, use `./dev-install.sh` once and `./dev-run.sh` to reload in a nested
+GNOME Shell; see [`docs/development.md`](docs/development.md).
