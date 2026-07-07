@@ -10,6 +10,8 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
 - `registry.ts` — process-independent metadata (label, description,
   `hasPreferences`, lazy preferences loader) used by the preferences UI; see
   [`../../docs/preferences.md`](../../docs/preferences.md).
+- `panelButtonContent.ts` — shared helper that builds the icon/label child for
+  the clickable panel-button widgets (`gnome-menu`, `activities`, `favorites`).
 
 ## Widgets
 
@@ -25,6 +27,15 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   panel.
 - [`ubuntu-system-status`](ubuntu-system-status/index.md) — Ubuntu quick
   settings indicators for Wi-Fi, sound, battery and related system state.
+- [`gnome-menu`](gnome-menu/index.md) — button that opens the GNOME application
+  grid.
+- [`activities`](activities/index.md) — button that toggles the GNOME Activities
+  overview.
+- [`favorites`](favorites/index.md) — button with a Places menu (Home, XDG user
+  directories and GTK bookmarks).
+
+Further per-widget settings work is tracked in
+[`../../TODO.md`](../../TODO.md).
 
 Back to [`extension-src`](../index.md) and
 [`object model`](../../docs/object-model.md).

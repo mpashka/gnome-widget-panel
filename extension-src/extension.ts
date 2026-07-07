@@ -98,23 +98,23 @@ const FloatingMiniPanel = GObject.registerClass(
 
             // START CODE VERTICAL
             this.orientStr = (shellVersion > 47) ? 'orientation' : 'vertical';
-
-            if (this._sets.get_boolean('vertical')) {
-                if (shellVersion > 47) {
-                    this.orientation = Clutter.Orientation.VERTICAL;
-                } else {
-                    this.vertical = true;
-                }
-                this.add_style_pseudo_class('vertical');
-            } else {
-                if (shellVersion > 47) {
-                    this.orientation = Clutter.Orientation.HORIZONTAL;
-                } else {
-                    this.vertical = false;
-                }
-                this.add_style_pseudo_class('horizontal');
-            }
+            this._setOrientation(this._sets.get_boolean('vertical'));
             // END CODE VERTICAL
+
+            // Live-apply panel-level preferences (see the "Panel" page in
+            // prefs.ts). The settings window writes these keys; react without a
+            // full Shell reload. Handlers are disconnected in destroy().
+            this._alignedChangedId = this._sets.connect(
+                'changed::aligned',
+                () => this._relocate(false)
+            );
+            this._verticalChangedId = this._sets.connect(
+                'changed::vertical',
+                () => {
+                    this._setOrientation(this._sets.get_boolean('vertical'));
+                    this._relocate(false);
+                }
+            );
 
             this._panelHidingExts = [];
 
@@ -531,6 +531,31 @@ const FloatingMiniPanel = GObject.registerClass(
             this._extension.openPreferences();
         }
 
+        // START CODE VERTICAL
+        // Apply the panel orientation (horizontal/vertical) to the layout and
+        // style pseudo-classes. Used at startup and when the `vertical` setting
+        // changes live. Does not touch positioning; callers relocate as needed.
+        _setOrientation(vertical) {
+            if (vertical) {
+                if (shellVersion > 47) {
+                    this.orientation = Clutter.Orientation.VERTICAL;
+                } else {
+                    this.vertical = true;
+                }
+                this.remove_style_pseudo_class('horizontal');
+                this.add_style_pseudo_class('vertical');
+            } else {
+                if (shellVersion > 47) {
+                    this.orientation = Clutter.Orientation.HORIZONTAL;
+                } else {
+                    this.vertical = false;
+                }
+                this.remove_style_pseudo_class('vertical');
+                this.add_style_pseudo_class('horizontal');
+            }
+        }
+        // END CODE VERTICAL
+
         _tmpHide() {
             // Hide this for 5 sec.
             this.hide();
@@ -700,6 +725,15 @@ const FloatingMiniPanel = GObject.registerClass(
             if (this._timeoutId2) {
                 GLib.Source.remove(this._timeoutId2);
                 this._timeoutId2 = null;
+            }
+
+            if (this._alignedChangedId) {
+                this._sets.disconnect(this._alignedChangedId);
+                this._alignedChangedId = null;
+            }
+            if (this._verticalChangedId) {
+                this._sets.disconnect(this._verticalChangedId);
+                this._verticalChangedId = null;
             }
 
             PANELBOX.disconnect(this._pvConId);

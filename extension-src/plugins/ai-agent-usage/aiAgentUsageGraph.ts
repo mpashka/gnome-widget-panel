@@ -12,20 +12,19 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import * as ClaudeHook from './claudeHook.js';
+import {renderTemplate} from '../../tooltipTemplate.js';
 
 const WIDTH = 54;
+const MIN_WIDTH = 24;
 const HEIGHT = 16;
 const HISTORY_WIDTH = 36;
 const SCALE_HISTORY_WIDTH = HISTORY_WIDTH * 2;
 const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
 const SAMPLE_INTERVAL_SECONDS = 5;
-const TOKEN_EVENT_ACTIVE_SECONDS = SAMPLE_INTERVAL_SECONDS * 3;
 const STALE_AFTER_SECONDS = 120;
 const DEFAULT_CLAUDE_PORT = 17861;
 const TOOLTIP_OFFSET = 6;
 const TOOLTIP_ANIMATION_TIME = 150;
-// Seconds of history visible in the graph body (one column per sample).
-const REQUEST_WINDOW_SECONDS = HISTORY_WIDTH * SAMPLE_INTERVAL_SECONDS;
 const REQUEST_TEXT_PREVIEW = 30;
 const REQUEST_COLOR = [0.90, 0.15, 0.15, 0.9];
 // Indicator colours, shared by the vertical bars and the matching tooltip
@@ -39,6 +38,12 @@ const DEFAULT_CLAUDE_COLOR = '#d97757';
 const CUP_LEVELS = ['○', '◔', '◑', '◕', '●'];
 // Hourglass, for the limit-window reset time.
 const WINDOW_GLYPH = '⧗';
+// Default hover-tooltip template. Tokens: {agent} (provider-coloured name),
+// {usage} (coloured cup + ` NN%`, empty when the usage bar is hidden), {reset}
+// (` ⧗ <time>` incl. leading space, empty when hidden/unavailable) and
+// {requests} (the monospace request table, empty when none/disabled). Literal
+// text is Pango-escaped; `\n` is a line break. See ../../tooltipTemplate.ts.
+const DEFAULT_TOOLTIP_TEMPLATE = '{agent}: {usage}{reset}\n{requests}';
 
 function hexToRgb(hex) {
     const raw = String(hex).replace('#', '');
@@ -213,13 +218,30 @@ function formatResetTime(epochSeconds) {
 export const AiAgentUsageGraph = GObject.registerClass(
     class AiAgentUsageGraph extends St.DrawingArea {
         constructor(extensionPath, options = {}) {
+            let width = Number(options.width);
+            if (!Number.isFinite(width) || width < MIN_WIDTH)
+                width = Number.isFinite(width) ? MIN_WIDTH : WIDTH;
+            width = Math.max(MIN_WIDTH, width);
             super({
                 style_class: 'ai-agent-usage-graph',
-                width: Number(options.width ?? WIDTH),
+                width,
                 height: Number(options.height ?? HEIGHT),
                 reactive: true,
                 track_hover: true,
             });
+
+            // Sampling period (seconds) drives both the sampling timer and the
+            // visible time-window math (request window, token-event freshness and
+            // red request-marker x positioning), so they stay consistent.
+            let sampleInterval = Number(options.updateInterval);
+            if (!Number.isFinite(sampleInterval) || sampleInterval < 1)
+                sampleInterval = SAMPLE_INTERVAL_SECONDS;
+            this._sampleInterval = Math.max(1, Math.floor(sampleInterval));
+            // Seconds of history visible in the graph body (one column per sample).
+            this._requestWindowSeconds = HISTORY_WIDTH * this._sampleInterval;
+            this._tokenEventActiveSeconds = this._sampleInterval * 3;
+            this._showUsageBar = options.showUsageBar !== false;
+            this._showWindowBar = options.showWindowBar !== false;
 
             this._extensionPath = extensionPath;
             this._claudePort = Number(options.claudePort ?? DEFAULT_CLAUDE_PORT);
@@ -237,6 +259,9 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 ? Number(options.requestPreview)
                 : REQUEST_TEXT_PREVIEW;
             this._showRequests = options.showRequests !== false;
+            this._template = typeof options.template === 'string'
+                ? options.template
+                : DEFAULT_TOOLTIP_TEMPLATE;
             this._providers = new Map();
             this._sampledEventIds = new Set();
             this._requests = [];
@@ -272,7 +297,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
 
             this._sampleTimeoutId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
-                SAMPLE_INTERVAL_SECONDS,
+                this._sampleInterval,
                 () => {
                     this._sample();
                     return GLib.SOURCE_CONTINUE;
@@ -426,7 +451,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
         }
 
         _pruneRequests() {
-            const oldest = nowSeconds() - REQUEST_WINDOW_SECONDS * 2;
+            const oldest = nowSeconds() - this._requestWindowSeconds * 2;
             this._requests = this._requests.filter(item => item.ts >= oldest);
             this._requestKeys = new Set(
                 this._requests.map(
@@ -437,7 +462,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
 
         _visibleRequests() {
             const now = nowSeconds();
-            const oldest = now - REQUEST_WINDOW_SECONDS;
+            const oldest = now - this._requestWindowSeconds;
             return this._requests
                 .filter(item => item.ts >= oldest && item.ts <= now)
                 .sort((a, b) => a.ts - b.ts);
@@ -462,7 +487,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             if (value.event_id) {
                 if (this._sampledEventIds.has(value.event_id))
                     return 0;
-                if (eventAgeSeconds(value) > TOKEN_EVENT_ACTIVE_SECONDS)
+                if (eventAgeSeconds(value) > this._tokenEventActiveSeconds)
                     return 0;
             }
 
@@ -519,11 +544,12 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this.queue_repaint();
         }
 
-        _tooltipMarkup() {
-            const provider = this._currentProvider();
-            if (!provider)
-                return 'AI tokens: none';
-
+        // Build the coloured Pango-markup fragments for the tooltip tokens from
+        // live provider data. These are the same pieces the old fixed tooltip
+        // produced; `renderTemplate` splices them into the (configurable)
+        // template. `usage`, `reset` and `requests` are empty strings when their
+        // feature is hidden/unavailable so the template collapses cleanly.
+        _tooltipFragments(provider) {
             const providerHex = this._providerHex(provider.provider);
             const label = escapeMarkup(providerLabel(provider.provider));
             const name = providerHex
@@ -531,24 +557,28 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 : label;
 
             // Usage cup (usage-bar colour): prefer the rate limit; fall back to
-            // context-window use. Reset icon uses the window-bar colour.
+            // context-window use. Reset icon uses the window-bar colour. Each part
+            // follows its indicator bar's show/hide toggle.
             const limit = bestLimit(provider);
             let percent;
-            let resetPart = '';
+            let reset = '';
             if (limit) {
                 percent = Math.round(limit.percent);
-                if (Number.isFinite(limit.resetsAt) && limit.resetsAt > 0)
-                    resetPart = ` <span foreground="${this._windowColor}">${WINDOW_GLYPH}</span> ${formatResetTime(limit.resetsAt)}`;
+                if (this._showWindowBar && Number.isFinite(limit.resetsAt) && limit.resetsAt > 0)
+                    reset = ` <span foreground="${this._windowColor}">${WINDOW_GLYPH}</span> ${formatResetTime(limit.resetsAt)}`;
             } else {
                 percent = Math.round(parseContext(provider) * 100);
             }
-            const cup = `<span foreground="${this._usageColor}">${usageCup(percent)}</span>`;
-
-            const lines = [`${name}: ${cup} ${percent}%${resetPart}`];
+            let usage = '';
+            if (this._showUsageBar) {
+                const cup = `<span foreground="${this._usageColor}">${usageCup(percent)}</span>`;
+                usage = `${cup} ${percent}%`;
+            }
 
             // Visible requests as a left-aligned, monospace table:
             // agent | time | first characters of the prompt.
             const requests = this._showRequests ? this._visibleRequests() : [];
+            let requestsFragment = '';
             if (requests.length) {
                 const agentWidth = Math.max(
                     ...requests.map(request => providerLabel(request.provider).length)
@@ -559,10 +589,21 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     const text = request.text.slice(0, this._requestPreview);
                     return escapeMarkup(`${agent}  ${time}  ${text}`);
                 });
-                lines.push(`<tt>${rows.join('\n')}</tt>`);
+                requestsFragment = `<tt>${rows.join('\n')}</tt>`;
             }
 
-            return lines.join('\n');
+            return {agent: name, usage, reset, requests: requestsFragment};
+        }
+
+        _tooltipMarkup() {
+            const provider = this._currentProvider();
+            if (!provider)
+                return 'AI tokens: none';
+
+            // Trim a trailing newline so an empty {requests} token (default
+            // template ends with `\n{requests}`) does not leave a blank line.
+            return renderTemplate(this._template, this._tooltipFragments(provider))
+                .replace(/\n+$/, '');
         }
 
         _onHoverChanged() {
@@ -642,7 +683,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             const now = nowSeconds();
             for (const request of this._visibleRequests()) {
                 const age = now - request.ts;
-                const markerX = (HISTORY_WIDTH - 1) - age / SAMPLE_INTERVAL_SECONDS;
+                const markerX = (HISTORY_WIDTH - 1) - age / this._sampleInterval;
                 if (markerX < 0 || markerX > HISTORY_WIDTH)
                     continue;
                 context.setSourceRGBA(...REQUEST_COLOR);
@@ -651,10 +692,13 @@ export const AiAgentUsageGraph = GObject.registerClass(
             }
 
             const current = this._samples[this._samples.length - 1];
-            const bars = [
-                {value: current.context, color: [...hexToRgb(this._windowColor), 0.95]},
-                {value: current.limit, color: [...hexToRgb(this._usageColor), 0.95]},
-            ];
+            const bars = [];
+            // Window/context bar (window colour) and usage/rate-limit bar (usage
+            // colour), each drawn only when its indicator toggle is enabled.
+            if (this._showWindowBar)
+                bars.push({value: current.context, color: [...hexToRgb(this._windowColor), 0.95]});
+            if (this._showUsageBar)
+                bars.push({value: current.limit, color: [...hexToRgb(this._usageColor), 0.95]});
             let x = Math.max(HISTORY_WIDTH + 4, width - 10);
             for (const bar of bars) {
                 const barHeight = Math.round(bar.value * height);

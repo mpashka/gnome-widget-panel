@@ -1,4 +1,5 @@
 // @ts-nocheck
+// @tag:widget-clock
 /*
  * Floating-Mini-Panel for GNOME Shell 46+
  *
@@ -36,9 +37,12 @@ const DATEARROWALIGNMENT = DATEMENU.menu._arrowAlignment;
 
 const shellVersion = parseFloat(Config.PACKAGE_VERSION);
 
+// Default strftime-style template used when `options.format` is unset.
+const DEFAULT_FORMAT = '%H:%M';
+
 export const DateButton = GObject.registerClass(
     class DateButton extends St.BoxLayout {
-        constructor(parent) {
+        constructor(parent, options) {
             super({
                 name: 'dateBtn',
                 reactive: true,
@@ -47,6 +51,13 @@ export const DateButton = GObject.registerClass(
             });
 
             this._parent = parent;
+
+            // strftime-style template rendered by GLib.DateTime.format, e.g.
+            // `%H:%M` or `%a %d %b %H:%M:%S`. Edited via prefs.ts.
+            this._format =
+                typeof options?.format === 'string' && options.format
+                    ? options.format
+                    : DEFAULT_FORMAT;
 
             // START CODE VERTICAL
             this.orientStr = shellVersion > 47 ? 'orientation' : 'vertical';
@@ -96,34 +107,8 @@ export const DateButton = GObject.registerClass(
                 return GLib.SOURCE_PROPAGATE;
             });
 
-            // START CODE VERTICAL
-            function formatDate(vertical) {
-                let dateStr = DATEMENU._clockDisplay.text;
-                if (vertical) {
-                    // Divide date from time and replace spaces with newlines
-                    dateStr = dateStr
-                        .replace(/\u2002/g, '\n――\n')
-                        .replace(/\s/g, '\n');
-                    // Seconds are active
-                    if (
-                        dateStr.split(':').length > 2 ||
-                        dateStr.split('∶').length > 2
-                    ) {
-                        dateStr = dateStr.replace(/:|∶/g, '\n𐤟 𐤟\n');
-                    } else {
-                        dateStr = dateStr.replace(/\n――/g, '');
-                    }
-                    // If 12h mode
-                    dateStr = dateStr.replace(/\n\n/g, '\n');
-                    // If 12h mode and time only
-                    if (dateStr[0] === '\n') dateStr = dateStr.substring(1);
-                }
-                return dateStr;
-            }
-
             this._dateLabel = new St.Label({
-                // START CODE VERTICAL
-                text: formatDate(this[this.orientStr]),
+                text: this._renderTime(),
                 x_expand: true,
                 x_align: Clutter.ActorAlign.CENTER,
                 y_expand: true,
@@ -132,21 +117,14 @@ export const DateButton = GObject.registerClass(
             });
             this.add_child(this._dateLabel);
 
-            // START CODE VERTICAL
-            this.connect('notify::' + this.orientStr, () => {
-                this._dateLabel.text = formatDate(this[this.orientStr]);
-            });
-
-            this._dateConId = DATEMENU._clockDisplay.bind_property_full(
-                'text',
-                this._dateLabel,
-                'text',
-                GObject.Binding.CREATE_SYNC,
-                // START CODE VERTICAL
+            // Refresh the formatted label once per second; released in destroy().
+            this._timerId = GLib.timeout_add_seconds(
+                GLib.PRIORITY_DEFAULT,
+                1,
                 () => {
-                    return [String, formatDate(this[this.orientStr])];
-                },
-                null
+                    this._dateLabel.text = this._renderTime();
+                    return GLib.SOURCE_CONTINUE;
+                }
             );
 
             this._noteIcon = new St.Icon({
@@ -177,6 +155,10 @@ export const DateButton = GObject.registerClass(
             );
         }
 
+        _renderTime() {
+            return GLib.DateTime.new_now_local().format(this._format) || '';
+        }
+
         _toggleCalendar() {
             if (this.visible || PANELBOX.visible) {
                 DATEMENU.menu.toggle();
@@ -199,7 +181,11 @@ export const DateButton = GObject.registerClass(
                 Main.wm._toggleCalendar.bind(Main.wm)
             );
 
-            this._dateConId = null;
+            if (this._timerId) {
+                GLib.Source.remove(this._timerId);
+                this._timerId = null;
+            }
+
             this._noteConId1 = null;
             this._noteConId2 = null;
 

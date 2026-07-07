@@ -7,8 +7,9 @@ generated GJS runtime code.
 
 - [`extension-src/`](extension-src/) — source of truth for TypeScript modules,
   static GNOME extension assets and plugin-local documentation.
-- [`extension/`](extension/) — generated install tree produced by
-  `npm run build`; do not edit generated JavaScript directly.
+- `extension/` — generated install tree produced by `npm run build`; a build
+  artifact (gitignored, not committed), regenerated wholesale on every build. Do
+  not edit it directly.
 - [`extension-src/plugins/`](extension-src/plugins/index.md) — built-in widget
   plugins, one directory per widget.
 - [`docs/`](docs/index.md) — architecture, object model, upstream notes,
@@ -18,7 +19,8 @@ generated GJS runtime code.
 ## Main files
 
 - [`AGENTS.md`](AGENTS.md) — working rules and LLM wiki documentation rules.
-- [`TODO.md`](TODO.md) — contract-typing backlog and panel roadmap.
+- [`TODO.md`](TODO.md) — contract-typing backlog, panel roadmap and the
+  requested-features backlog (new widgets and per-widget settings work).
 - [`README.md`](README.md) — user-facing overview, install and development
   commands.
 - [`build.sh`](build.sh) — regenerates `extension/` from `extension-src/`.

@@ -8,23 +8,49 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {renderTemplate} from '../../tooltipTemplate.js';
+
 const WIDTH = 32;
 const HEIGHT = 16;
 const UPDATE_INTERVAL_SECONDS = 2;
-const GREEN_TEMPERATURE_C = 50;
-const WARM_TEMPERATURE_C = 65;
-const HOT_TEMPERATURE_C = 80;
 const TOOLTIP_OFFSET = 6;
 const TOOLTIP_ANIMATION_TIME = 150;
-const BAND_COLORS = {
-    green: '#3dc752',
-    yellow: '#ffc729',
-    red: '#f03333',
-};
+// Default hover-tooltip template. Tokens: {load} (e.g. `37%`), {temp} (the
+// coloured `NN°C` or `?`) and {legend} (the coloured band-range legend). Literal
+// text is Pango-escaped; `\n` is a line break. See ../../tooltipTemplate.ts.
+const DEFAULT_TOOLTIP_TEMPLATE = 'cpu: {load}, {temp}\n°C: {legend}';
+const DEFAULT_BANDS = [
+    {name: 'green', temp: 50, color: '#3dc752'},
+    {name: 'yellow', temp: 65, color: '#ffc729'},
+    {name: 'red', temp: 80, color: '#f03333'},
+];
 
 function toNumber(value, fallback) {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
+}
+
+// Normalize the configured temperature bands: keep only valid entries, sort
+// ascending by temperature, fall back to defaults when missing or invalid.
+function normalizeBands(bands) {
+    const defaults = () => DEFAULT_BANDS.map(band => ({...band}));
+    if (!Array.isArray(bands))
+        return defaults();
+    const cleaned = bands
+        .filter(band =>
+            band
+            && Number.isFinite(Number(band.temp))
+            && typeof band.color === 'string'
+            && band.color.length > 0)
+        .map(band => ({
+            name: String(band.name ?? ''),
+            temp: Number(band.temp),
+            color: band.color,
+        }));
+    if (cleaned.length === 0)
+        return defaults();
+    cleaned.sort((a, b) => a.temp - b.temp);
+    return cleaned;
 }
 
 function hexToRgb(hex) {
@@ -42,26 +68,28 @@ function hexToRgb(hex) {
 export const CpuGraph = GObject.registerClass(
     class CpuGraph extends St.DrawingArea {
         constructor(options = {}) {
+            const width = Math.max(1, Math.round(toNumber(options.width, WIDTH)));
             super({
                 style_class: 'cpu-graph',
-                width: WIDTH,
+                width,
                 height: HEIGHT,
                 reactive: true,
                 track_hover: true,
             });
 
-            // Configurable thresholds, colours and tooltip.
-            this._greenC = toNumber(options.greenTemp, GREEN_TEMPERATURE_C);
-            this._warmC = toNumber(options.warmTemp, WARM_TEMPERATURE_C);
-            this._hotC = toNumber(options.hotTemp, HOT_TEMPERATURE_C);
-            this._colors = {
-                green: options.colorGreen || BAND_COLORS.green,
-                yellow: options.colorYellow || BAND_COLORS.yellow,
-                red: options.colorRed || BAND_COLORS.red,
-            };
+            // Configurable geometry, temperature bands and tooltip.
+            this._width = width;
+            this._bands = normalizeBands(options.bands);
+            this._updateInterval = Math.max(
+                1,
+                Math.round(toNumber(options.updateInterval, UPDATE_INTERVAL_SECONDS))
+            );
             this._showTooltip = options.showTooltip !== false;
+            this._template = typeof options.template === 'string'
+                ? options.template
+                : DEFAULT_TOOLTIP_TEMPLATE;
 
-            this._samples = Array(WIDTH).fill(0);
+            this._samples = Array(width).fill(0);
             this._previous = null;
             this._temperaturePath = this._findCpuTemperaturePath();
             this._temperature = null;
@@ -76,7 +104,7 @@ export const CpuGraph = GObject.registerClass(
             this._sample();
             this._timeoutId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
-                UPDATE_INTERVAL_SECONDS,
+                this._updateInterval,
                 () => {
                     this._sample();
                     return GLib.SOURCE_CONTINUE;
@@ -160,44 +188,56 @@ export const CpuGraph = GObject.registerClass(
             this._previous = current;
         }
 
-        _temperatureBand() {
+        // The active band is the highest band whose temp <= current temperature.
+        // Below the lowest band's temp (or unknown temperature) → null (normal:
+        // use the theme foreground colour).
+        _activeBand() {
             const t = this._temperature;
             if (t === null)
-                return 'normal';
-            if (t >= this._hotC)
-                return 'red';
-            if (t >= this._warmC)
-                return 'yellow';
-            if (t >= this._greenC)
-                return 'green';
-            return 'normal';
+                return null;
+            let active = null;
+            for (const band of this._bands) {
+                if (t >= band.temp)
+                    active = band;
+                else
+                    break;
+            }
+            return active;
         }
 
-        _tooltipMarkup() {
-            const band = this._temperatureBand();
+        // Build the coloured Pango-markup fragments for the tooltip tokens from
+        // live data. These are the same pieces the old fixed tooltip produced;
+        // `renderTemplate` splices them into the (configurable) template.
+        _tooltipFragments() {
+            const active = this._activeBand();
             const load = Math.round(this._lastLoad * 100);
             const tempStr = this._temperature === null
                 ? '?'
                 : `${Math.round(this._temperature)}°C`;
-            const temp = band === 'normal'
+            const temp = active === null
                 ? tempStr
-                : `<span foreground="${this._colors[band]}">${tempStr}</span>`;
+                : `<span foreground="${active.color}">${tempStr}</span>`;
 
-            // Legend: colored temperature bands; current band bold; the "normal"
-            // (grey, < green threshold) band is intentionally not drawn.
-            const ranges = [
-                ['green', `${this._greenC}..${this._warmC}`],
-                ['yellow', `${this._warmC}..${this._hotC}`],
-                ['red', `&gt;${this._hotC}`],
-            ];
-            const legend = ranges
-                .map(([b, label]) => {
-                    const inner = b === band ? `<b>${label}</b>` : label;
-                    return `<span foreground="${this._colors[b]}">${inner}</span>`;
+            // Legend: temperature ranges built from consecutive band temps
+            // (t0..t1, t1..t2, >tlast), each range in its band colour; the active
+            // band is bold. The below-lowest (normal) range is intentionally not
+            // drawn.
+            const legend = this._bands
+                .map((band, index) => {
+                    const next = this._bands[index + 1];
+                    const label = next
+                        ? `${band.temp}..${next.temp}`
+                        : `&gt;${band.temp}`;
+                    const inner = band === active ? `<b>${label}</b>` : label;
+                    return `<span foreground="${band.color}">${inner}</span>`;
                 })
                 .join(', ');
 
-            return `cpu: ${load}%, ${temp}\n°C: ${legend}`;
+            return {load: `${load}%`, temp, legend};
+        }
+
+        _tooltipMarkup() {
+            return renderTemplate(this._template, this._tooltipFragments());
         }
 
         _onHoverChanged() {
@@ -252,9 +292,9 @@ export const CpuGraph = GObject.registerClass(
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
 
-            const band = this._temperatureBand();
-            if (band !== 'normal') {
-                context.setSourceRGBA(...hexToRgb(this._colors[band]), 0.95);
+            const band = this._activeBand();
+            if (band !== null) {
+                context.setSourceRGBA(...hexToRgb(band.color), 0.95);
             } else {
                 context.setSourceRGBA(
                     color.red / 255,

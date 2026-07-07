@@ -31,8 +31,6 @@ that change, not a separate cleanup task.
 
 ## Panel roadmap
 
-- [ ] Add explicit Apps and Places menu plugins.
-- [ ] Add a dedicated “Show all applications” button plugin.
 - [ ] Support installing versioned plugins from external repositories.
 - [ ] Add a repository catalog with provenance, compatibility and permission
   data.
@@ -42,3 +40,49 @@ that change, not a separate cleanup task.
   UI (the preferences UI edits `widgets.json` via `configStore.ts`).
 - [ ] Isolate plugin failures and provide rollback to the previous pinned
   revision.
+
+## Requested features (backlog)
+
+Grouped work items requested for the panel and widgets.
+
+### Control menu / panel settings
+
+- [x] Remove the "Auto Position" and "Control Functions" sections from the
+  control button's context menu; move them into settings. The menu now has only
+  "Settings…"; a preferences "Panel" page holds auto-position + orientation
+  (stored in the panel GSettings, applied live); mouse gestures still work.
+
+### cpu-load-monitor settings
+
+- [x] Merge the "Temperature thresholds" and "Colours" groups: one row per
+  temperature band (name + temperature + colour). Bands are data-driven in
+  `options.bands`; names/count are fixed in the UI but editable in `widgets.json`.
+- [x] Templated tooltip with a live preview (shared `tooltipTemplate.ts`).
+- [x] Update-interval option.
+- [x] Widget-width option.
+
+### ai-agent-usage settings
+
+- [x] Templated tooltip with a live preview.
+- [x] Widget-width and update-interval options.
+- [x] "Show requests" toggle + template integration (`{requests}` token).
+- [x] Token-usage indicator: show/hide toggle and colour selection.
+- [x] Window-reset (time-left) indicator: show/hide toggle and colour selection.
+
+### clock settings
+
+- [x] Time format template (standard Linux `date`/strftime string, `options.format`).
+
+### New widgets
+
+- [x] `gnome-menu` widget — opens the app grid; configurable icon / text.
+- [x] `favorites` widget — Places menu (Home, XDG dirs, GTK bookmarks);
+  configurable icon / text.
+- [x] `activities` widget — toggles the Activities overview; configurable
+  icon / text.
+
+### Cross-cutting settings groundwork
+
+- [x] A reusable templated-tooltip mechanism (`tooltipTemplate.ts`,
+  template + live preview) shared by widgets, plus a shared width/update-interval
+  option pattern.

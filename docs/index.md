@@ -1,0 +1,25 @@
+# Documentation index
+
+Architecture, object model and process documentation for GNOME Widget Panel.
+Start here, then follow the links down to the code under
+[`../extension-src/`](../extension-src/index.md).
+
+## Files
+
+- [`architecture.md`](architecture.md) — host/plugin architecture, `ai-agent-usage`
+  design and roadmap.
+- [`preferences.md`](preferences.md) — widget-management preferences UI and the
+  per-widget settings mechanism.
+- [`development.md`](development.md) — reload-without-logout developer workflow
+  (symlink install + nested GNOME Shell).
+- [`object-model.md`](object-model.md) — runtime object map.
+- [`ai-management.md`](ai-management.md) — AI-assisted panel management concept.
+- [`upstream.md`](upstream.md) — Floating Mini Panel origin and license notes.
+- [`tags.md`](tags.md) — registry of `@tag:<slug>` cross-links between code and docs.
+
+## Directories
+
+- [`upstream/`](upstream/) — upstream reference material.
+
+Back to the [repository index](../index.md) and working rules in
+[`../AGENTS.md`](../AGENTS.md).

@@ -1,0 +1,52 @@
+// @ts-nocheck
+// @tag:widget-activities
+//
+// Per-widget settings UI for the activities widget. Loaded lazily by the panel
+// preferences UI (see ../../prefs.ts). Edits the widget `options` in
+// widgets.json; the widget reads them on the next GNOME Shell reload.
+
+import Adw from 'gi://Adw';
+
+const DEFAULT_ICON = 'focus-windows-symbolic';
+
+export function fillWidgetPreferences(context) {
+    const {window, options, save} = context;
+    const current = {...options};
+    const commit = () => save({...current});
+
+    const page = new Adw.PreferencesPage({
+        title: 'Activities',
+        icon_name: 'focus-windows-symbolic',
+    });
+    window.add(page);
+
+    const group = new Adw.PreferencesGroup({
+        title: 'Button',
+        description:
+            'Shown as an icon and/or a text label. Leave the text empty for an '
+            + 'icon-only button. Clearing both is not recommended: the button '
+            + 'then falls back to its default icon.',
+    });
+    page.add(group);
+
+    const iconRow = new Adw.EntryRow({
+        title: 'Icon name',
+        text:
+            typeof current.icon === 'string' ? current.icon : DEFAULT_ICON,
+    });
+    iconRow.connect('changed', () => {
+        current.icon = iconRow.get_text();
+        commit();
+    });
+    group.add(iconRow);
+
+    const textRow = new Adw.EntryRow({
+        title: 'Text',
+        text: typeof current.text === 'string' ? current.text : '',
+    });
+    textRow.connect('changed', () => {
+        current.text = textRow.get_text();
+        commit();
+    });
+    group.add(textRow);
+}

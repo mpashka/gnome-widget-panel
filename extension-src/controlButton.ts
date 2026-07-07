@@ -308,88 +308,6 @@ export const ControlButton = GObject.registerClass(
             this.menu.actor.hide();
 
             this.menu.addMenuItem(
-                new PopupMenu.PopupSeparatorMenuItem('Auto Position')
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Top - Start', 'Shift + Left Click', () => {
-                    this._doAlign(Alignment.TOP | Alignment.LEFT);
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Top - Center', 'Shift + Middle Click', () => {
-                    if (this[this.orientStr]) {
-                        this._doAlign(Alignment.LEFT | Alignment.CENTER);
-                    } else {
-                        this._doAlign(Alignment.TOP | Alignment.CENTER);
-                    }
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Top - End', 'Shift + Right Click', () => {
-                    if (this[this.orientStr]) {
-                        this._doAlign(Alignment.BOTTOM | Alignment.LEFT);
-                    } else {
-                        this._doAlign(Alignment.TOP | Alignment.RIGHT);
-                    }
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Bottom - Start', 'Ctrl + Left Click', () => {
-                    if (this[this.orientStr]) {
-                        this._doAlign(Alignment.TOP | Alignment.RIGHT);
-                    } else {
-                        this._doAlign(Alignment.BOTTOM | Alignment.LEFT);
-                    }
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Bottom - Center', 'Ctrl + Middle Click', () => {
-                    if (this[this.orientStr]) {
-                        this._doAlign(Alignment.RIGHT | Alignment.CENTER);
-                    } else {
-                        this._doAlign(Alignment.BOTTOM | Alignment.CENTER);
-                    }
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Bottom - End', 'Ctrl + Right Click', () => {
-                    this._doAlign(Alignment.BOTTOM | Alignment.RIGHT);
-                })
-            );
-
-            this.menu.addMenuItem(
-                new PopupMenu.PopupSeparatorMenuItem('Control Functions')
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Show AppGrid', 'Left Click', () => {
-                    !OVERVIEW.visible ? OVERVIEW.toggle() : OVERVIEW.showApps();
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Toggle Drawer', 'Middle Click', () => {
-                    this._parent._indsDrawer.toggle();
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Hide For 5 Seconds', 'Right LongPress', () => {
-                    this._parent._tmpHide();
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Move', 'Left LongPress', () => {}, {
-                    reactive: false,
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Toggle Orientation', 'Middle LongPress', () => {
-                    this._changeOrientation();
-                })
-            );
-            this.menu.addMenuItem(
-                new MenuItem('Toggle Menu', 'Right Click', () => {})
-            );
-
-            this.menu.addMenuItem(
                 new PopupMenu.PopupSeparatorMenuItem('Widgets')
             );
             this.menu.addMenuItem(
@@ -408,6 +326,11 @@ export const ControlButton = GObject.registerClass(
             });
 
             // START CODE VERTICAL
+            // Keep this control button's orientation in sync with the panel so
+            // the gestures in CtlActions can read `this[this.orientStr]`, and
+            // point the (Settings) menu arrow at the correct side. The former
+            // per-item label rewriting was dropped together with the alignment
+            // menu items; panel alignment now lives in the preferences window.
             this.orientStr = shellVersion > 47 ? 'orientation' : 'vertical';
             this._parent.bind_property_full(
                 this.orientStr,
@@ -415,22 +338,9 @@ export const ControlButton = GObject.registerClass(
                 this.orientStr,
                 GObject.BindingFlags.SYNC_CREATE,
                 (binding, value) => {
-                    if (value) {
-                        this.ltTxt = 'Left';
-                        this.rbTxt = 'Right';
-                        this.menu._boxPointer._userArrowSide = St.Side.LEFT;
-                    } else {
-                        this.ltTxt = 'Top';
-                        this.rbTxt = 'Bottom';
-                        this.menu._boxPointer._userArrowSide = St.Side.TOP;
-                    }
-                    let items = this.menu._getMenuItems();
-                    items[1].side.text = this.ltTxt + ' - Start';
-                    items[2].side.text = this.ltTxt + ' - Center';
-                    items[3].side.text = this.ltTxt + ' - End';
-                    items[4].side.text = this.rbTxt + ' - Start';
-                    items[5].side.text = this.rbTxt + ' - Center';
-                    items[6].side.text = this.rbTxt + ' - End';
+                    this.menu._boxPointer._userArrowSide = value
+                        ? St.Side.LEFT
+                        : St.Side.TOP;
                     return [binding, value];
                 },
                 null

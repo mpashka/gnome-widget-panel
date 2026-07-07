@@ -53,8 +53,11 @@ the order in the config file.
 
 ### `ControlButton`
 
-The panel handle/menu button. It owns drag/move actions, long press/click
-handling and panel control menu items.
+The panel handle/menu button. It owns drag/move actions and long-press/click
+gestures. Its context menu now holds only "Settings…" (which opens the
+preferences window); the former Auto-Position and Control-Functions menu sections
+were moved to the preferences "Panel" page, while the equivalent mouse gestures
+still work.
 
 ### `IndicatorsDrawer`
 

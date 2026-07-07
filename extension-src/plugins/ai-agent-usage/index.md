@@ -13,8 +13,9 @@ Codex and Claude Code.
 
 - `index.ts` — plugin entrypoint.
 - `prefs.ts` — widget settings UI: per-provider enable/colour, a Claude Code
-  status dot + Configure button, indicator colours, tooltip and advanced
-  options; edits the widget `options` in `widgets.json`. See
+  status dot + Configure button, per-indicator show/hide + colour, widget
+  width/update-interval, tooltip and advanced options; edits the widget
+  `options` in `widgets.json`. See
   [`../../../docs/preferences.md`](../../../docs/preferences.md).
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
   `isClaudeInstalled`), usable from both the shell and preferences processes.
@@ -39,7 +40,18 @@ vertical bars use configurable indicator colours — usage/rate-limit
 token-load graph first applies an idle threshold: samples below `minActiveTokens`
 default to zero.
 Active samples are autoscaled against the maximum active token count in a scale
-window twice as wide as the visible graph. Codex `token_count` events are
+window twice as wide as the visible graph.
+
+Each vertical bar can be hidden independently: `showUsageBar` (default true)
+controls the usage/rate-limit bar and `showWindowBar` (default true) controls the
+context/window bar. Hiding a bar also drops its part from the tooltip summary line
+(the usage cup + percent for `showUsageBar`, the reset hourglass + time for
+`showWindowBar`); when both are hidden the summary line still shows the agent
+name. `width` (px, default 54, min 24) sets the drawing-area width, and the two
+bars track the actor's right edge. `updateInterval` (seconds, default 5, min 1)
+sets the sampling timer and, to keep the visible history consistent, also drives
+the graph time window: the visible request window is `36 * updateInterval`
+seconds and the red request markers are positioned by `age / updateInterval`. Codex `token_count` events are
 counted once, so rereading the same newest JSONL event while Codex is idle does
 not keep the graph at 100%.
 
@@ -50,7 +62,10 @@ are deduplicated and pruned to twice the visible window. Codex populates request
 today; Claude statusLine does not carry prompt text, so no Claude markers appear
 yet.
 
-The widget has a compact hover tooltip (Pango markup). Its first line is
+The widget has a compact hover tooltip built from a user-editable template (see
+[`../../tooltipTemplate.ts`](../../tooltipTemplate.ts), `@tag:ui`) rendered with
+Pango markup. The default template `{agent}: {usage}{reset}\n{requests}`
+reproduces the original layout. Its first line is
 `<Agent>: <cup> <usage%>[ ⧗ <reset>]`, where the agent name is drawn in the
 provider colour, the usage cup uses the usage-bar colour and the reset hourglass
 uses the context/window-bar colour (so the icons match the bars). Usage and reset
@@ -61,6 +76,21 @@ monospace table with columns `agent | time | first N characters of the prompt`
 (N is `requestPreview`; the whole list can be hidden with `showRequests`; prompt
 text is markup-escaped). The tooltip updates in place without re-fading, so it
 does not blink while hovering.
+
+Template tokens (each a ready-built coloured markup fragment, empty when its
+feature is hidden/unavailable so the template collapses cleanly):
+
+- `{agent}` — provider-coloured agent name.
+- `{usage}` — coloured cup + ` NN%` (empty when the usage bar is hidden).
+- `{reset}` — ` ⧗ <time>` including the leading space, window-coloured (empty
+  when the window bar is hidden or no reset time is available).
+- `{requests}` — the left-aligned monospace request table (empty when there are
+  no visible requests or `showRequests` is off).
+
+Literal template text is Pango-escaped and `\n` is a line break; a trailing
+newline is trimmed so an empty `{requests}` does not leave a blank line. The
+settings page shows a live preview of the rendered template. `template` is stored
+in the widget `options` (default as above).
 
 Claude uses a generated statusLine command hook that forwards stdin JSON to the
 widget's localhost HTTP server. The hook secret is normally per-session, but the
