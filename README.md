@@ -65,4 +65,7 @@ private GNOME Shell APIs. Stable contracts should be typed incrementally.
   streams normalized JSON Lines over stdout.
 - UI: one graph receives all provider updates, selects the fresh provider with
   the largest token consumption, and samples its token count, context usage and
-  provider limit usage into the compact panel graph.
+  provider limit usage into the compact panel graph. Token samples below the
+  idle threshold are drawn as zero; active samples are autoscaled against the
+  maximum active token count in the recent scale window. Repeated reads of the
+  same Codex `token_count` event are not treated as new consumption.

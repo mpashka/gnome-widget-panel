@@ -53,8 +53,11 @@ Codex log parsing is isolated from GNOME Shell. The widget starts
 `extension/plugins/ai-agent-usage/helpers/codex-usage-helper.js` as a `gjs -m`
 child process through `Gio.Subprocess`; the helper recursively scans
 `~/.codex/sessions/**/*.jsonl`, extracts the newest `token_count` event, and
-streams normalized JSON Lines to stdout. The Shell process only reads small
-stdout lines asynchronously.
+streams normalized JSON Lines to stdout. For UI load, the helper uses
+`last_token_usage` because Codex `total_token_usage` is cumulative for the
+session and can exceed the context window by orders of magnitude. The cumulative
+value is still exposed as `tokens.session_total` for diagnostics. The Shell
+process only reads small stdout lines asynchronously.
 
 Communication options considered for the Codex child process:
 
@@ -70,14 +73,16 @@ Communication options considered for the Codex child process:
 
 The UI has one graph. It receives updates from all active providers, picks the
 fresh provider with the largest token count, then samples that provider's token
-count, context-window usage and best available server-limit usage.
+count, context-window usage and best available server-limit usage. The main
+token graph applies an idle threshold first: samples below `minActiveTokens`
+default to zero. Active samples are autoscaled against the maximum active token
+count in a scale window that is twice the visible graph width. Codex
+`token_count` events are counted only once; repeated reads of the same newest log
+event do not keep the graph artificially high. The blue vertical bar remains
+context-window usage, and the yellow vertical bar remains the best available
+server/rate-limit usage.
 
 ## Roadmap
 
-- add explicit Apps and Places menu plugins;
-- add a dedicated “Show all applications” button plugin;
-- support installing versioned plugins from external repositories;
-- add a repository catalog with provenance, compatibility and permission data;
-- add UI for searching, adding, removing, ordering and configuring plugins;
-- retain file configuration as the declarative source of truth beneath the UI;
-- isolate plugin failures and provide rollback to the previous pinned revision.
+The maintained backlog, including incremental TypeScript contract typing and
+future panel features, lives in [`../TODO.md`](../TODO.md).

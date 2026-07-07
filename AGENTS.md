@@ -17,6 +17,29 @@ Current built-ins are registered in `extension-src/pluginManager.ts`, ordered by
 the user config file as the source of truth; future preferences UI must edit the
 same schema rather than create a second settings model.
 
+## TypeScript contract typing rules
+
+Type stable contracts even while dynamic GNOME Shell implementation code remains
+under `// @ts-nocheck`. Every change that touches one of these areas must add or
+improve its TypeScript types in the same change; do not postpone newly exposed
+contract typing:
+
+- widget configuration and its parsed/validated representation;
+- the plugin registry, plugin module and `create(parent, options)` lifecycle
+  contract;
+- shared host/plugin context, parent and returned actor/lifecycle handles;
+- AI provider input payloads, normalized provider state and freshness metadata;
+- per-provider history, merged display samples, provider identity and color
+  configuration;
+- Codex helper JSON Lines messages and Claude statusLine HTTP request/response
+  payloads.
+
+Put shared contract types in dedicated source modules rather than duplicating
+inline object shapes. Validate untrusted JSON at runtime before treating it as a
+typed value. Remove `// @ts-nocheck` incrementally from files whose relevant
+boundaries have become typed. Update [`TODO.md`](TODO.md) when a contract is
+completed, split, or newly discovered.
+
 For `ai-agent-usage`, keep in-memory history separately per provider
 (`codex`, `claude`, future providers) rather than storing only the merged graph.
 Rendering may merge provider histories into one visible graph, but each rendered

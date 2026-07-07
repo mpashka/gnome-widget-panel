@@ -59,14 +59,17 @@ function parsePayload(path) {
     if (!text)
         return null;
     let latest = null;
+    let latestEvent = null;
     for (const line of text.split('\n')) {
         if (!line.trim())
             continue;
         try {
             const event = JSON.parse(line);
             const payload = event.payload ?? {};
-            if (event.type === 'event_msg' && payload.type === 'token_count')
+            if (event.type === 'event_msg' && payload.type === 'token_count') {
                 latest = payload;
+                latestEvent = event;
+            }
         }
         catch (_) {
             // Ignore partial or unrelated JSONL lines.
@@ -76,14 +79,18 @@ function parsePayload(path) {
         return null;
     const info = latest.info ?? {};
     const usage = info.total_token_usage ?? {};
+    const lastUsage = info.last_token_usage ?? {};
     const value = {
         provider: 'codex',
         updated_at: now(),
+        event_id: `${path}:${latestEvent?.timestamp ?? ''}:${usage.total_tokens ?? ''}`,
+        event_timestamp: latestEvent?.timestamp ?? null,
         tokens: {
-            input: Number(usage.input_tokens ?? 0),
-            output: Number(usage.output_tokens ?? 0),
-            cache_read: Number(usage.cached_input_tokens ?? 0),
-            total: Number(usage.total_tokens ?? 0),
+            input: Number(lastUsage.input_tokens ?? usage.input_tokens ?? 0),
+            output: Number(lastUsage.output_tokens ?? usage.output_tokens ?? 0),
+            cache_read: Number(lastUsage.cached_input_tokens ?? usage.cached_input_tokens ?? 0),
+            total: Number(lastUsage.total_tokens ?? usage.total_tokens ?? 0),
+            session_total: Number(usage.total_tokens ?? 0),
         },
         context: {
             window_tokens: Number(info.model_context_window ?? 0),

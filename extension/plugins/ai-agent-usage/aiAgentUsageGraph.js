@@ -1,17 +1,24 @@
 // @ts-nocheck
 'use strict';
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Soup from 'gi://Soup?version=3.0';
 import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 const WIDTH = 54;
 const HEIGHT = 16;
 const HISTORY_WIDTH = 36;
+const SCALE_HISTORY_WIDTH = HISTORY_WIDTH * 2;
+const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
 const SAMPLE_INTERVAL_SECONDS = 5;
+const TOKEN_EVENT_ACTIVE_SECONDS = SAMPLE_INTERVAL_SECONDS * 3;
 const STALE_AFTER_SECONDS = 120;
 const DEFAULT_CLAUDE_PORT = 17861;
 const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
+const TOOLTIP_OFFSET = 6;
+const TOOLTIP_ANIMATION_TIME = 150;
 function nowSeconds() {
     return Math.floor(Date.now() / 1000);
 }
@@ -52,6 +59,33 @@ function parseLimit(value) {
     }
     return values.length ? Math.max(...values) : 0;
 }
+function formatPercent(value) {
+    return `${Math.round(Math.clamp(Number(value ?? 0), 0, 1) * 100)}%`;
+}
+function formatTokenCount(value) {
+    const tokens = Number(value ?? 0);
+    if (!Number.isFinite(tokens))
+        return '0';
+    if (tokens >= 1_000_000)
+        return `${(tokens / 1_000_000).toFixed(1)}M`;
+    if (tokens >= 1_000)
+        return `${Math.round(tokens / 100) / 10}k`;
+    return `${Math.round(tokens)}`;
+}
+function activeTokens(tokens, minimumTokens) {
+    tokens = Number(tokens ?? 0);
+    if (!Number.isFinite(tokens) || tokens < minimumTokens)
+        return 0;
+    return tokens;
+}
+function eventAgeSeconds(value) {
+    if (!value?.event_timestamp)
+        return 0;
+    const timestamp = Date.parse(value.event_timestamp);
+    if (!Number.isFinite(timestamp))
+        return 0;
+    return Math.max(0, nowSeconds() - Math.floor(timestamp / 1000));
+}
 function normalizeClaudeStatusLine(data) {
     const context = data?.context_window ?? {};
     const usage = context.current_usage ?? {};
@@ -87,14 +121,19 @@ export const AiAgentUsageGraph = GObject.registerClass(class AiAgentUsageGraph e
             style_class: 'ai-agent-usage-graph',
             width: Number(options.width ?? WIDTH),
             height: Number(options.height ?? HEIGHT),
-            reactive: false,
+            reactive: true,
+            track_hover: true,
         });
         this._extensionPath = extensionPath;
         this._claudePort = Number(options.claudePort ?? DEFAULT_CLAUDE_PORT);
         this._enableClaude = options.enableClaude ?? true;
         this._enableCodex = options.enableCodex ?? true;
+        this._minActiveTokens = Number(options.minActiveTokens);
+        if (!Number.isFinite(this._minActiveTokens) || this._minActiveTokens < 0)
+            this._minActiveTokens = DEFAULT_MIN_ACTIVE_TOKENS;
         this._providers = new Map();
-        this._samples = Array(HISTORY_WIDTH).fill({
+        this._sampledEventIds = new Set();
+        this._samples = Array(SCALE_HISTORY_WIDTH).fill({
             tokens: 0,
             context: 0,
             limit: 0,
@@ -106,7 +145,13 @@ export const AiAgentUsageGraph = GObject.registerClass(class AiAgentUsageGraph e
         this._codexStdout = null;
         this._codexReadCancellable = null;
         this._sampleTimeoutId = null;
+        this._tooltip = new St.Label({
+            style_class: 'dash-label',
+            visible: false,
+        });
+        Main.uiGroup.add_child(this._tooltip);
         this._repaintId = this.connect('repaint', () => this._draw());
+        this._hoverId = this.connect('notify::hover', () => this._syncTooltip());
         if (this._enableClaude)
             this._startClaudeHttpHook();
         if (this._enableCodex)
@@ -280,19 +325,97 @@ else
         }
         return best;
     }
+    _tokensForSampling(value) {
+        if (!value)
+            return 0;
+        if (value.event_id) {
+            if (this._sampledEventIds.has(value.event_id))
+                return 0;
+            if (eventAgeSeconds(value) > TOKEN_EVENT_ACTIVE_SECONDS)
+                return 0;
+        }
+        return parseTokens(value);
+    }
+    _currentTokenProvider() {
+        const freshAfter = nowSeconds() - STALE_AFTER_SECONDS;
+        let best = null;
+        let bestTokens = 0;
+        for (const value of this._providers.values()) {
+            if ((value.updated_monotonic ?? 0) < freshAfter)
+                continue;
+            const tokens = this._tokensForSampling(value);
+            if (tokens > bestTokens) {
+                best = value;
+                bestTokens = tokens;
+            }
+        }
+        return best;
+    }
     _sample() {
-        const value = this._currentProvider();
-        const sample = value
+        const tokenValue = this._currentTokenProvider();
+        const statusValue = tokenValue ?? this._currentProvider();
+        const sample = statusValue
             ? {
-                tokens: parseTokens(value),
-                context: parseContext(value),
-                limit: parseLimit(value),
+                tokens: tokenValue ? parseTokens(tokenValue) : 0,
+                context: parseContext(statusValue),
+                limit: parseLimit(statusValue),
             }
             : { tokens: 0, context: 0, limit: 0 };
+        if (tokenValue?.event_id)
+            this._sampledEventIds.add(tokenValue.event_id);
         this._samples.push(sample);
         this._samples.shift();
-        this._maxTokens = Math.max(1, ...this._samples.map(item => item.tokens));
+        this._maxTokens = Math.max(1, ...this._samples.map(item => activeTokens(item.tokens, this._minActiveTokens)));
+        if (this.hover)
+            this._syncTooltip();
         this.queue_repaint();
+    }
+    _tooltipText() {
+        const provider = this._currentProvider();
+        const current = this._samples[this._samples.length - 1];
+        const providerName = provider?.provider ?? 'none';
+        const tokens = provider ? parseTokens(provider) : current.tokens;
+        const sessionTotal = provider?.tokens?.session_total;
+        const lines = [
+            `AI tokens: ${providerName}`,
+            `Graph: active token load history; < ${formatTokenCount(this._minActiveTokens)} tokens = 0`,
+            `Graph scale: max ${formatTokenCount(this._maxTokens)} tokens in last ${SCALE_HISTORY_WIDTH} samples`,
+            `Blue bar: context window used (${formatPercent(current.context)})`,
+            `Yellow bar: server/rate limit used (${formatPercent(current.limit)})`,
+            `Current request tokens: ${formatTokenCount(tokens)}`,
+        ];
+        if (sessionTotal !== undefined)
+            lines.push(`Codex session total: ${formatTokenCount(sessionTotal)}`);
+        if (!provider)
+            lines.push('No fresh provider data; samples reset to 0 after 120s.');
+        return lines.join('\n');
+    }
+    _syncTooltip() {
+        if (this.hover) {
+            this._tooltip.set({
+                text: this._tooltipText(),
+                visible: true,
+                opacity: 0,
+            });
+            const [stageX, stageY] = this.get_transformed_position();
+            const [actorWidth, actorHeight] = this.allocation.get_size();
+            const [tipWidth, tipHeight] = this._tooltip.get_size();
+            const monitor = Main.layoutManager.findMonitorForActor(this);
+            const x = Math.clamp(stageX + Math.floor((actorWidth - tipWidth) / 2), monitor.x, monitor.x + monitor.width - tipWidth);
+            const y = stageY - monitor.y > actorHeight + TOOLTIP_OFFSET
+                ? stageY - tipHeight - TOOLTIP_OFFSET
+                : stageY + actorHeight + TOOLTIP_OFFSET;
+            this._tooltip.set_position(x, y);
+        }
+        this._tooltip.ease({
+            opacity: this.hover ? 255 : 0,
+            duration: TOOLTIP_ANIMATION_TIME,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => {
+                if (this._tooltip)
+                    this._tooltip.visible = this.hover;
+            },
+        });
     }
     _draw() {
         const context = this.get_context();
@@ -303,7 +426,8 @@ else
         context.setSourceRGBA(color.red / 255, color.green / 255, color.blue / 255, 0.9);
         context.moveTo(0, height);
         for (let x = 0; x < HISTORY_WIDTH; x++) {
-            const value = this._samples[x].tokens / this._maxTokens;
+            const sample = this._samples[this._samples.length - HISTORY_WIDTH + x];
+            const value = Math.clamp(activeTokens(sample.tokens, this._minActiveTokens) / this._maxTokens, 0, 1);
             context.lineTo(x, height - value * (height - 1));
         }
         context.lineTo(HISTORY_WIDTH, height);
@@ -335,6 +459,14 @@ else
         if (this._repaintId) {
             this.disconnect(this._repaintId);
             this._repaintId = null;
+        }
+        if (this._hoverId) {
+            this.disconnect(this._hoverId);
+            this._hoverId = null;
+        }
+        if (this._tooltip) {
+            this._tooltip.destroy();
+            this._tooltip = null;
         }
         this._stopCodexHelper();
         this._stopClaudeHttpHook();

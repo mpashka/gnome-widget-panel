@@ -18,6 +18,7 @@ generated GJS runtime code.
 ## Main files
 
 - [`AGENTS.md`](AGENTS.md) — working rules and LLM wiki documentation rules.
+- [`TODO.md`](TODO.md) — contract-typing backlog and panel roadmap.
 - [`README.md`](README.md) — user-facing overview, install and development
   commands.
 - [`build.sh`](build.sh) — regenerates `extension/` from `extension-src/`.
