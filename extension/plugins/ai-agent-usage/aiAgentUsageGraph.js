@@ -19,8 +19,19 @@ const DEFAULT_CLAUDE_PORT = 17861;
 const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 const TOOLTIP_OFFSET = 6;
 const TOOLTIP_ANIMATION_TIME = 150;
+// Seconds of history visible in the graph body (one column per sample).
+const REQUEST_WINDOW_SECONDS = HISTORY_WIDTH * SAMPLE_INTERVAL_SECONDS;
+const REQUEST_TEXT_PREVIEW = 30;
+const REQUEST_COLOR = [0.90, 0.15, 0.15, 0.9];
 function nowSeconds() {
     return Math.floor(Date.now() / 1000);
+}
+function formatClock(tsSeconds) {
+    const date = new Date(tsSeconds * 1000);
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
 }
 function decodeBytes(bytes) {
     return new TextDecoder().decode(bytes);
@@ -133,6 +144,8 @@ export const AiAgentUsageGraph = GObject.registerClass(class AiAgentUsageGraph e
             this._minActiveTokens = DEFAULT_MIN_ACTIVE_TOKENS;
         this._providers = new Map();
         this._sampledEventIds = new Set();
+        this._requests = [];
+        this._requestKeys = new Set();
         this._samples = Array(SCALE_HISTORY_WIDTH).fill({
             tokens: 0,
             context: 0,
@@ -195,6 +208,7 @@ export const AiAgentUsageGraph = GObject.registerClass(class AiAgentUsageGraph e
             const payload = JSON.parse(decodeBytes(body));
             const value = normalizeClaudeStatusLine(payload);
             this._providers.set('claude', value);
+            this._ingestRequests(value);
             this.queue_repaint();
             msg.set_status(Soup.Status.OK, null);
             msg.set_response('text/plain', Soup.MemoryUse.COPY, new TextEncoder().encode(formatStatusLine(value)));
@@ -293,6 +307,7 @@ else
                     const value = JSON.parse(line);
                     value.updated_monotonic = nowSeconds();
                     this._providers.set('codex', value);
+                    this._ingestRequests(value);
                     this.queue_repaint();
                     this._readCodexLine();
                 }
@@ -313,6 +328,40 @@ else
             this._codexProcess.force_exit();
             this._codexProcess = null;
         }
+    }
+    _ingestRequests(value) {
+        if (!Array.isArray(value?.requests))
+            return;
+        const provider = value.provider ?? 'unknown';
+        for (const request of value.requests) {
+            const parsed = Date.parse(request?.timestamp);
+            if (!Number.isFinite(parsed))
+                continue;
+            const tsSeconds = Math.floor(parsed / 1000);
+            const text = String(request?.text ?? '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (!text)
+                continue;
+            const key = `${provider}:${tsSeconds}:${text.slice(0, 40)}`;
+            if (this._requestKeys.has(key))
+                continue;
+            this._requestKeys.add(key);
+            this._requests.push({ ts: tsSeconds, text, provider });
+        }
+        this._pruneRequests();
+    }
+    _pruneRequests() {
+        const oldest = nowSeconds() - REQUEST_WINDOW_SECONDS * 2;
+        this._requests = this._requests.filter(item => item.ts >= oldest);
+        this._requestKeys = new Set(this._requests.map(item => `${item.provider}:${item.ts}:${item.text.slice(0, 40)}`));
+    }
+    _visibleRequests() {
+        const now = nowSeconds();
+        const oldest = now - REQUEST_WINDOW_SECONDS;
+        return this._requests
+            .filter(item => item.ts >= oldest && item.ts <= now)
+            .sort((a, b) => a.ts - b.ts);
     }
     _currentProvider() {
         const freshAfter = nowSeconds() - STALE_AFTER_SECONDS;
@@ -388,6 +437,12 @@ else
             lines.push(`Codex session total: ${formatTokenCount(sessionTotal)}`);
         if (!provider)
             lines.push('No fresh provider data; samples reset to 0 after 120s.');
+        const requests = this._visibleRequests();
+        lines.push(`Red bars: requests in view (${requests.length})`);
+        for (const request of requests) {
+            const preview = request.text.slice(0, REQUEST_TEXT_PREVIEW);
+            lines.push(`  ${formatClock(request.ts)}  ${preview}`);
+        }
         return lines.join('\n');
     }
     _syncTooltip() {
@@ -433,6 +488,17 @@ else
         context.lineTo(HISTORY_WIDTH, height);
         context.closePath();
         context.fill();
+        // Vertical red markers: one per request in the visible window.
+        const now = nowSeconds();
+        for (const request of this._visibleRequests()) {
+            const age = now - request.ts;
+            const markerX = (HISTORY_WIDTH - 1) - age / SAMPLE_INTERVAL_SECONDS;
+            if (markerX < 0 || markerX > HISTORY_WIDTH)
+                continue;
+            context.setSourceRGBA(...REQUEST_COLOR);
+            context.rectangle(Math.round(markerX), 0, 1, height);
+            context.fill();
+        }
         const current = this._samples[this._samples.length - 1];
         const bars = [
             { value: current.context, color: [0.30, 0.65, 1.0, 0.95] },

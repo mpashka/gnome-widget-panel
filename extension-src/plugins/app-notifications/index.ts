@@ -1,4 +1,5 @@
 // @ts-nocheck
+// @tag:widget-app-notifications
 import * as IndicatorsDrawer from '../../indicatorsDrawer.js';
 
 export function create(parent) {

@@ -1,5 +1,7 @@
 # Architecture
 
+`@tag:mechanism`
+
 ```text
 widget repositories → reviewed installer/registry → GNOME Shell host
                               ↑                         ↓

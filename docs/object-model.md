@@ -1,5 +1,7 @@
 # Object model
 
+`@tag:ui` `@tag:mechanism`
+
 The project is authored in TypeScript under `extension-src/`. The build step
 transpiles it to GJS-compatible JavaScript under `extension/`; only generated
 JavaScript is installed into GNOME Shell.

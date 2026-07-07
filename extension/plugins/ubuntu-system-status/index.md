@@ -1,5 +1,7 @@
 # ubuntu-system-status widget
 
+`@tag:widget-ubuntu-system-status`
+
 Back to [plugins index](../index.md).
 
 ## Purpose

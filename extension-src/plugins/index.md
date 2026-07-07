@@ -1,7 +1,15 @@
 # Built-in plugins index
 
+`@tag:mechanism`
+
 Built-in widgets for GNOME Widget Panel. Each widget lives in its own directory
-and exposes `index.ts` with `create(parent, options)`.
+and exposes `index.ts` with `create(parent, options)`. A widget may also expose
+`prefs.ts` with `fillWidgetPreferences(context)` for its own settings UI; declare
+that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
+
+- `registry.ts` — process-independent metadata (label, description,
+  `hasPreferences`, lazy preferences loader) used by the preferences UI; see
+  [`../../docs/preferences.md`](../../docs/preferences.md).
 
 ## Widgets
 

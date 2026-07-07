@@ -1,5 +1,6 @@
 // @ts-nocheck
-import GLib from 'gi://GLib';
+// @tag:mechanism
+import {loadWidgetConfig} from './configStore.js';
 
 import * as AiAgentUsage from './plugins/ai-agent-usage/index.js';
 import * as AppNotifications from './plugins/app-notifications/index.js';
@@ -17,30 +18,8 @@ const REGISTRY = new Map([
     ['ubuntu-system-status', UbuntuSystemStatus],
 ]);
 
-function readConfig(extensionPath) {
-    const userPath = GLib.build_filenamev([
-        GLib.get_user_config_dir(),
-        'gnome-widget-panel',
-        'widgets.json',
-    ]);
-    const bundledPath = GLib.build_filenamev([
-        extensionPath,
-        'config',
-        'widgets.json',
-    ]);
-    const path = GLib.file_test(userPath, GLib.FileTest.EXISTS)
-        ? userPath
-        : bundledPath;
-    const [ok, contents] = GLib.file_get_contents(path);
-    if (!ok)
-        throw new Error(`Cannot read widget configuration: ${path}`);
-    return JSON.parse(new TextDecoder().decode(contents));
-}
-
 export function createConfiguredPlugins(parent, extensionPath) {
-    const config = readConfig(extensionPath);
-    if (config.schema !== 1 || !Array.isArray(config.plugins))
-        throw new Error('Unsupported widget configuration schema');
+    const config = loadWidgetConfig(extensionPath);
 
     const instances = new Map();
     for (const item of config.plugins) {

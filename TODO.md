@@ -5,10 +5,12 @@ list current when implementing or discovering stable contracts.
 
 ## Type stable contracts
 
-- [ ] Define and runtime-validate the widget configuration schema, including
-  plugin IDs, enabled state, ordering and typed plugin options.
-- [ ] Define the plugin registry/module contract and the
-  `create(parent, options)` lifecycle API.
+- [x] Define and runtime-validate the widget configuration schema, including
+  plugin IDs, enabled state, ordering and typed plugin options
+  (`contracts.ts` + `configStore.ts`).
+- [x] Define the plugin registry/module contract and the
+  `create(parent, options)` lifecycle API (`contracts.ts` +
+  `plugins/registry.ts`); `pluginManager.ts` stays `// @ts-nocheck` for now.
 - [ ] Define shared host/plugin context, parent actor and returned
   actor/disposable handles.
 - [ ] Define AI provider identifiers, normalized usage state, timestamps,
@@ -34,8 +36,9 @@ that change, not a separate cleanup task.
 - [ ] Support installing versioned plugins from external repositories.
 - [ ] Add a repository catalog with provenance, compatibility and permission
   data.
-- [ ] Add UI for searching, adding, removing, ordering and configuring plugins.
-- [ ] Keep file configuration as the declarative source of truth beneath the
-  UI.
+- [x] Add UI for adding, removing, ordering, enabling and configuring plugins
+  (`prefs.ts`); searching external repositories is still pending.
+- [x] Keep file configuration as the declarative source of truth beneath the
+  UI (the preferences UI edits `widgets.json` via `configStore.ts`).
 - [ ] Isolate plugin failures and provide rollback to the previous pinned
   revision.

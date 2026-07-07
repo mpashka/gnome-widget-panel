@@ -1,28 +1,95 @@
 # AGENTS.md
 
-Reusable GNOME Shell floating panel and widget host. Read `README.md` and
-`docs/*.md`. Source of truth is TypeScript in `extension-src/`; `extension/` is
+Working rules for AI agents in this repository. `CLAUDE.md` points here; this
+file is the single source of agent guidance.
+
+Reusable GNOME Shell floating panel and widget host. Read `README.md` and the
+documentation tree under `docs/` before making changes.
+
+## Language
+
+Write all code, comments, commit messages and agent-facing context in English.
+Documentation authored for AI agents (this file, `docs/`, and every `index.md`)
+is also English, regardless of the language a request is written in.
+
+## Source of truth: `extension-src/`, never `extension/`
+
+TypeScript in `extension-src/` is the source of truth; `extension/**/*.js` is
 generated JavaScript installed into GNOME Shell. Do not edit generated
 `extension/*.js` directly; change `extension-src/**/*.ts` and run
-`npm run build`. Provider collection that can block stays outside Shell. The
-`ai-agent-usage` plugin is GJS-only: Claude statusLine posts to a localhost HTTP
-server owned by the widget and Codex JSONL parsing runs in a managed GJS child
-process. Never execute unreviewed generated code. Target Shell 50; avoid
-blocking I/O and release every timer, signal, server and child process in
-`destroy()`.
+`npm run build`. `build.sh` copies every non-`.ts` asset (`.json`, `.md`,
+`.css`, `.xml`) verbatim from `extension-src/` into `extension/`, then compiles
+TypeScript into the same tree. Anything placed only in `extension/` is destroyed
+on the next build, so author docs, config and schemas under `extension-src/` too.
+Never execute unreviewed generated code.
 
-Current built-ins are registered in `extension-src/pluginManager.ts`, ordered by
-`extension-src/config/widgets.json`, and stored as
-`extension-src/plugins/<plugin-id>/index.ts` plus widget-local helper files. Keep
-the user config file as the source of truth; future preferences UI must edit the
-same schema rather than create a second settings model.
+## Commands
+
+```bash
+npm run build      # build.sh: copy assets + tsc extension-src -> extension
+npm run typecheck  # tsc --noEmit
+./install.sh       # npm install (if needed) + build + compile schemas + copy to extensions dir
+```
+
+There is no test suite. Verification is a real GNOME Shell reload: `./install.sh`,
+then log out and back in (Wayland cannot hot-reload the panel). UUID is
+`gnome-widget-panel@mpashka.github.com`; it installs alongside the original
+Floating Mini Panel.
+
+Imperative: perform code work — reading and editing files, navigation, builds,
+running commands and running tests — through the IntelliJ **IDEA MCP** tools
+(`mcp__idea__*`), not ad-hoc shell equivalents, so edits, builds and test runs
+go through the project's IDE. Use the IDEA MCP run/build/terminal tools for the
+commands above.
+
+## Architecture
+
+A GNOME Shell 50 floating panel host (derived from Floating Mini Panel v8) that
+loads an ordered list of built-in **plugins**. `extension.ts` owns positioning,
+panel lifecycle and error isolation; `pluginManager.ts` is the registry + loader.
+
+- **Config as source of truth:** `pluginManager.ts` reads
+  `~/.config/gnome-widget-panel/widgets.json`, falling back to the bundled
+  `extension/config/widgets.json` (authored at
+  `extension-src/config/widgets.json`). It is an ordered list — array order =
+  panel order, `enabled: false` skips a plugin. Unknown enabled IDs throw rather
+  than silently load code. Any future preferences UI must edit this same schema,
+  not introduce a second settings model.
+- **Plugin contract:** each plugin is `extension-src/plugins/<id>/index.ts`
+  exporting `create(parent, options)` that returns a Clutter/St actor with a
+  `destroy()`. Register it in the `REGISTRY` map in `pluginManager.ts`.
+  Widget-local helpers live next to the plugin's `index.ts`.
+- **Lifecycle discipline (Shell 50):** avoid blocking I/O on the Shell thread;
+  release every timer, signal, `Soup.Server` and child process in `destroy()`.
+
+### `ai-agent-usage` plugin — out-of-process collectors
+
+Provider collection that can block stays outside Shell. The plugin is GJS-only:
+
+- **Claude Code:** the widget runs a localhost-only `Soup.Server` with a
+  per-session secret, writes `~/.claude/gnome-widget-panel-claude-hook.js`, and
+  points Claude's `statusLine` at it. The hook forwards stdin JSON to the widget
+  and prints the returned status line. No cache file; data lives only in memory.
+- **Codex:** the widget spawns `helpers/codex-usage-helper.js` as a `gjs -m`
+  child via `Gio.Subprocess`. The helper scans `~/.codex/sessions/**/*.jsonl`,
+  extracts the newest `token_count` event, and streams normalized JSON Lines to
+  stdout. It uses `last_token_usage` (not cumulative `total_token_usage`);
+  repeated reads of the same event are not counted as new consumption.
+- **Rendering:** one graph receives all provider updates, picks the fresh
+  provider with the largest token count, and samples token count, context-window
+  usage and server-limit usage. Keep in-memory history **separately per
+  provider** (`codex`, `claude`, future providers); a merged rendered segment
+  must retain the provider identity that won that sample. Provider colors are
+  configurable: draw each winning segment in its provider's color.
 
 ## TypeScript contract typing rules
 
-Type stable contracts even while dynamic GNOME Shell implementation code remains
-under `// @ts-nocheck`. Every change that touches one of these areas must add or
-improve its TypeScript types in the same change; do not postpone newly exposed
-contract typing:
+Runtime files carry `// @ts-nocheck` because the extension depends heavily on
+dynamic GObject and private GNOME Shell APIs, and `strict` is off. This is
+intentional and migrated incrementally. Type stable contracts even while the
+dynamic implementation stays under `// @ts-nocheck`. Every change that touches
+one of these areas must add or improve its TypeScript types in the same change;
+do not postpone newly exposed contract typing:
 
 - widget configuration and its parsed/validated representation;
 - the plugin registry, plugin module and `create(parent, options)` lifecycle
@@ -40,29 +107,62 @@ typed value. Remove `// @ts-nocheck` incrementally from files whose relevant
 boundaries have become typed. Update [`TODO.md`](TODO.md) when a contract is
 completed, split, or newly discovered.
 
-For `ai-agent-usage`, keep in-memory history separately per provider
-(`codex`, `claude`, future providers) rather than storing only the merged graph.
-Rendering may merge provider histories into one visible graph, but each rendered
-segment must retain the provider identity that won that sample. Provider colors
-must be configurable: if Codex has the highest token consumption for a sample,
-draw that graph segment with the Codex color; if Claude wins, draw it with the
-Claude color.
+## Documentation: LLM wiki
 
-## LLM wiki documentation rules
+Documentation for AI agents lives in `docs/` and beside the code it describes. It
+is a tree: **every meaningful directory must have an `index.md`** that gives a
+one-line description of each file and each sub-directory in that folder, and
+links to parent and child pages. Keep index entries short (one line) and link to
+deeper pages instead of expanding them.
 
-Maintain documentation as an LLM-readable wiki:
+Imperative — read before you act, update as you go:
 
-1. Every meaningful directory must have an `index.md` explaining what lives
-   there, which files are source of truth, and where to go next.
-2. Index files describe directories and stable concepts, not long changelogs.
-   Keep entries short and link to deeper pages.
-3. Prefer many small pages over one large document. Put local object/plugin
-   details next to the code they describe.
-4. Keep bidirectional navigation: parent indexes link to child pages; child
-   pages link back to the parent index and to related architecture docs.
-5. When code moves, update the nearest `index.md`, `docs/object-model.md`, and
-   any plugin-level description in the same change.
-6. For generated output, author docs in `extension-src/` when possible so
-   `npm run build` copies them into `extension/`.
-7. Do not duplicate implementation details in multiple places. One page owns a
-   detail; other pages link to it.
+1. **Before every task**, read the relevant part of the documentation by
+   following `index.md` files from the nearest directory down to the code you
+   will touch.
+2. **During or after the task**, update the affected documentation and every
+   `index.md` whose one-line descriptions changed (files added, moved, removed,
+   or repurposed), in the same change.
+
+Further rules:
+
+- Index files describe directories and stable concepts, not changelogs. Prefer
+  many small pages over one large document; put local plugin/object details next
+  to the code they describe.
+- Keep bidirectional navigation: parent indexes link to child pages; child pages
+  link back to the parent index and to related architecture docs.
+- When code moves, update the nearest `index.md`, `docs/object-model.md`, and any
+  plugin-level description in the same change.
+- One page owns a detail; other pages link to it — do not duplicate.
+- For generated output, author docs in `extension-src/` so `npm run build`
+  copies them into `extension/`.
+
+## Tags
+
+Tags cross-link code and documentation beyond directory `index.md` navigation,
+so a concept that spans several files and folders can be found in one search. A
+tag is a short kebab-case slug written as the token `@tag:<slug>`.
+
+- **Tag a documentation file or directory:** add a `@tag:<slug>` line near the
+  top of the `.md` file; for a directory, put it in that directory's `index.md`.
+- **Tag a code file or directory:** add a `// @tag:<slug>` comment near the top
+  of the file; for a directory, put it in the leading comment of its main module
+  (or in the directory's `index.md`).
+- **Register every tag** in [`docs/tags.md`](docs/tags.md) with a one-line
+  description of the concept it links.
+
+Quick search — list every code and doc location carrying a tag:
+
+```bash
+grep -rn "@tag:<slug>" extension-src docs   # one tag
+grep -rn "@tag:" extension-src docs         # all tags
+```
+
+Imperative: when a concept spans both code and docs, create a tag, register it in
+`docs/tags.md`, and place `@tag:<slug>` on the relevant code and documentation
+locations. Keep `docs/tags.md` current when tags are added, renamed or removed.
+
+## Roadmap
+
+The maintained backlog, including incremental TypeScript contract typing and
+future panel features, lives in [`TODO.md`](TODO.md).

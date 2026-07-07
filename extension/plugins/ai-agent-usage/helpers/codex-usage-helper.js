@@ -4,8 +4,30 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 const INTERVAL_SECONDS = 5;
+const REQUEST_HISTORY_SECONDS = 20 * 60;
+const REQUEST_TEXT_MAX = 200;
 function now() {
     return new Date().toISOString();
+}
+function extractInputText(content) {
+    if (!Array.isArray(content))
+        return '';
+    const parts = [];
+    for (const item of content) {
+        if (item &&
+            (item.type === 'input_text' || item.type === 'text') &&
+            typeof item.text === 'string')
+            parts.push(item.text);
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+// Codex injects environment/instruction blocks as `role: user` messages. Skip
+// those heuristically so the graph only marks genuine user prompts.
+function isInjectedUserText(text) {
+    const trimmed = text.trimStart();
+    return (trimmed.startsWith('<') ||
+        trimmed.startsWith('# AGENTS') ||
+        trimmed.includes('AGENTS.md instructions'));
 }
 function readText(path) {
     const [ok, contents] = GLib.file_get_contents(path);
@@ -60,6 +82,7 @@ function parsePayload(path) {
         return null;
     let latest = null;
     let latestEvent = null;
+    const requests = [];
     for (const line of text.split('\n')) {
         if (!line.trim())
             continue;
@@ -69,6 +92,17 @@ function parsePayload(path) {
             if (event.type === 'event_msg' && payload.type === 'token_count') {
                 latest = payload;
                 latestEvent = event;
+            }
+            else if (event.type === 'response_item' &&
+                payload.type === 'message' &&
+                payload.role === 'user') {
+                const requestText = extractInputText(payload.content);
+                if (requestText && !isInjectedUserText(requestText)) {
+                    requests.push({
+                        timestamp: event.timestamp ?? null,
+                        text: requestText.slice(0, REQUEST_TEXT_MAX),
+                    });
+                }
             }
         }
         catch (_) {
@@ -109,6 +143,13 @@ function parsePayload(path) {
     }
     if (Object.keys(limits).length)
         value.limits = limits;
+    const cutoffMs = Date.now() - REQUEST_HISTORY_SECONDS * 1000;
+    const recentRequests = requests.filter((request) => {
+        const parsed = Date.parse(request.timestamp);
+        return Number.isFinite(parsed) && parsed >= cutoffMs;
+    });
+    if (recentRequests.length)
+        value.requests = recentRequests;
     return value;
 }
 function collect() {

@@ -11,8 +11,8 @@ generated GJS runtime code.
   `npm run build`; do not edit generated JavaScript directly.
 - [`extension-src/plugins/`](extension-src/plugins/index.md) — built-in widget
   plugins, one directory per widget.
-- [`docs/`](docs/) — architecture, object model, upstream notes and AI-assisted
-  management documentation.
+- [`docs/`](docs/index.md) — architecture, object model, upstream notes,
+  AI-assisted management and the tag registry.
 - [`schema/`](schema/) — JSON schemas for future external widget manifests.
 
 ## Main files

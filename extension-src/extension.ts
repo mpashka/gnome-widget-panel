@@ -1,4 +1,5 @@
 // @ts-nocheck
+// @tag:mechanism @tag:ui
 /*
  * Floating-Mini-Panel for GNOME Shell 46+
  *

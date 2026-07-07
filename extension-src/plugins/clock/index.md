@@ -1,5 +1,7 @@
 # clock widget
 
+`@tag:widget-clock`
+
 Back to [plugins index](../index.md).
 
 ## Purpose

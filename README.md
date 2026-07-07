@@ -22,8 +22,21 @@ plugins. `npm run build` generates the installable GJS extension under
 
 Plugin order and enabled state are configured in
 `~/.config/gnome-widget-panel/widgets.json`. The bundled default is
-`extension/config/widgets.json`. Edit the user file and reload GNOME Shell
-(logout/login on Wayland) to apply changes.
+`extension/config/widgets.json`. Reload GNOME Shell (logout/login on Wayland) to
+apply changes.
+
+## Configure widgets
+
+Open the preferences UI to add, remove, reorder, enable and configure widgets:
+
+```bash
+gnome-extensions prefs gnome-widget-panel@mpashka.github.com
+```
+
+Widgets that have their own settings (currently `ai-agent-usage`) show a settings
+button that opens the widget's own settings dialog. The UI edits the same
+`widgets.json`; you can still edit that file by hand. See
+[`docs/preferences.md`](docs/preferences.md).
 
 ## Install development build
 

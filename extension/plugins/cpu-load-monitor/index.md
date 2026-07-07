@@ -1,5 +1,7 @@
 # cpu-load-monitor widget
 
+`@tag:widget-cpu-load-monitor`
+
 Back to [plugins index](../index.md).
 
 ## Purpose

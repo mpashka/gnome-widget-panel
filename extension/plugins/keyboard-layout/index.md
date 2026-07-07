@@ -1,5 +1,7 @@
 # keyboard-layout widget
 
+`@tag:widget-keyboard-layout`
+
 Back to [plugins index](../index.md).
 
 ## Purpose

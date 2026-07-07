@@ -1,5 +1,7 @@
 # app-notifications widget
 
+`@tag:widget-app-notifications`
+
 Back to [plugins index](../index.md).
 
 ## Purpose

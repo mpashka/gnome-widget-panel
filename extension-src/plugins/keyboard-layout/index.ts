@@ -1,4 +1,5 @@
 // @ts-nocheck
+// @tag:widget-keyboard-layout
 import * as IndicatorsDrawer from '../../indicatorsDrawer.js';
 
 export function create(parent) {
