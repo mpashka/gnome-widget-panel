@@ -288,6 +288,31 @@ export const CpuGraph = GObject.registerClass(
             const [actorWidth, actorHeight] = this.allocation.get_size();
             const [tipWidth, tipHeight] = this._tooltip.get_size();
             const monitor = Main.layoutManager.findMonitorForActor(this);
+            if (this._rotated) {
+                // Vertical panel: the strip hugs a screen edge, so an above/below
+                // tooltip would overlap the strip and its neighbours. Place the
+                // tooltip beside the widget, on whichever side has more room
+                // (widget in the right half of the monitor → left, else right),
+                // vertically centred on the widget and clamped to the monitor.
+                const widgetCenterX = stageX + actorWidth / 2;
+                const placeLeft =
+                    widgetCenterX > monitor.x + monitor.width / 2;
+                const x = placeLeft
+                    ? stageX - tipWidth - TOOLTIP_OFFSET
+                    : stageX + actorWidth + TOOLTIP_OFFSET;
+                const clampedX = Math.clamp(
+                    x,
+                    monitor.x,
+                    monitor.x + monitor.width - tipWidth
+                );
+                const y = Math.clamp(
+                    stageY + Math.floor((actorHeight - tipHeight) / 2),
+                    monitor.y,
+                    monitor.y + monitor.height - tipHeight
+                );
+                this._tooltip.set_position(clampedX, y);
+                return;
+            }
             const x = Math.clamp(
                 stageX + Math.floor((actorWidth - tipWidth) / 2),
                 monitor.x,

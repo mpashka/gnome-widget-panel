@@ -21,7 +21,11 @@ configurable strftime/`date` template.
 - `index.ts` — plugin entrypoint; passes `options` to the button.
 - `dateButton.ts` — wraps GNOME Shell `dateMenu` (redirects menu source actor
   while mapped, restores it on unmap/destroy) and renders the `format` label on
-  a one-second timer released in `destroy()`.
+  a one-second timer released in `destroy()`. Implements
+  `setPanelLayout({vertical, rotation})`: in a vertical panel it rotates the time
+  label actor 90° (`rotation` `left`/`right` picks the direction) around its
+  centre so the time reads vertically; horizontal mode restores
+  `rotation_angle_z = 0`.
 - `prefs.ts` — per-widget settings UI: an `Adw.EntryRow` editing `format`.
 
 ## Related docs

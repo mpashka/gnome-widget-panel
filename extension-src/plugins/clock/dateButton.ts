@@ -159,6 +159,29 @@ export const DateButton = GObject.registerClass(
             return GLib.DateTime.new_now_local().format(this._format) || '';
         }
 
+        // Called by the panel host when its orientation/rotation changes. Text
+        // cannot be redrawn via Cairo like the graph widgets, so rotate the time
+        // label actor 90° around its centre so the time reads vertically. The
+        // rotated actor keeps its original (wide) allocation box, so it is
+        // centred within the vertical strip; rotation_angle_z is restored to 0
+        // (today's exact horizontal behaviour) when not vertical.
+        setPanelLayout(info) {
+            const vertical = !!(info && info.vertical);
+            const rotation = info && info.rotation === 'left' ? 'left' : 'right';
+            const label = this._dateLabel;
+            if (!label)
+                return;
+            try {
+                label.set_pivot_point(0.5, 0.5);
+                if (vertical)
+                    label.rotation_angle_z = rotation === 'left' ? -90 : 90;
+                else
+                    label.rotation_angle_z = 0;
+            } catch (error) {
+                console.error(`GNOME Widget Panel clock rotation failed: ${error}`);
+            }
+        }
+
         _toggleCalendar() {
             if (this.visible || PANELBOX.visible) {
                 DATEMENU.menu.toggle();

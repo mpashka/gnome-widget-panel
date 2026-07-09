@@ -52,6 +52,11 @@ host. When the panel is vertical it swaps its actor size and rotates the drawing
 request markers and indicator bars run along the vertical strip. See
 [preferences](../../../docs/preferences.md).
 
+In a vertical panel the hover tooltip is placed to the side of the widget (left
+when the widget is in the right half of the monitor, otherwise right), vertically
+centred and clamped to the monitor, so it does not overlap the strip; the
+horizontal panel keeps the original above/below placement.
+
 ## Data model
 
 Provider histories are kept separately in memory. Every graph column is coloured

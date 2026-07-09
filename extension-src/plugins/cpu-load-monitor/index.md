@@ -62,6 +62,11 @@ the Cairo drawing 90° so the time axis runs along the strip; `rotation` (`left`
 `right`, from the panel `vertical-rotation` setting) picks the direction. See
 [preferences](../../../docs/preferences.md).
 
+In a vertical panel the hover tooltip is placed to the side of the widget (left
+when the widget is in the right half of the monitor, otherwise right), vertically
+centred and clamped to the monitor, so it does not overlap the strip; the
+horizontal panel keeps the original above/below placement.
+
 ## Data and lifecycle
 
 Sampling runs on a GLib timer and must be stopped in `destroy()`. No persistent
