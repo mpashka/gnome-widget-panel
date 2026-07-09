@@ -309,24 +309,24 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         });
         layoutGroup.add(orientationRow);
 
-        // Frame size: padding (px) around the widgets' working body.
-        const frameRow = new Adw.SpinRow({
-            title: 'Frame size',
-            subtitle: 'Padding in pixels around the widgets.',
+        // Content padding: space (px) around the widgets' working body.
+        const paddingRow = new Adw.SpinRow({
+            title: 'Content padding',
+            subtitle: 'Space in pixels around the widgets.',
             adjustment: new Gtk.Adjustment({
                 lower: 0,
                 upper: 40,
                 step_increment: 1,
-                value: settings.get_int('frame-size'),
+                value: settings.get_int('content-padding'),
             }),
         });
         settings.bind(
-            'frame-size',
-            frameRow,
+            'content-padding',
+            paddingRow,
             'value',
             Gio.SettingsBindFlags.DEFAULT
         );
-        layoutGroup.add(frameRow);
+        layoutGroup.add(paddingRow);
     }
 
     _persist(state, rebuild) {

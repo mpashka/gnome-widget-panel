@@ -98,9 +98,9 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._sets.get_int('pos-y')
             );
 
-            // Frame size: padding (px) around the widgets' working body. Read
-            // before orientation/relocate so _adjustBorder applies it.
-            this._frameSize = this._sets.get_int('frame-size');
+            // Content padding (px) around the widgets' working body. Read before
+            // orientation/relocate so _adjustBorder applies it.
+            this._contentPadding = this._sets.get_int('content-padding');
 
             // START CODE VERTICAL
             this.orientStr = (shellVersion > 47) ? 'orientation' : 'vertical';
@@ -129,10 +129,10 @@ const FloatingMiniPanel = GObject.registerClass(
                     this._relocate(false);
                 }
             );
-            this._frameSizeChangedId = this._sets.connect(
-                'changed::frame-size',
+            this._contentPaddingChangedId = this._sets.connect(
+                'changed::content-padding',
                 () => {
-                    this._frameSize = this._sets.get_int('frame-size');
+                    this._contentPadding = this._sets.get_int('content-padding');
                     this._relocate(false);
                 }
             );
@@ -931,7 +931,7 @@ const FloatingMiniPanel = GObject.registerClass(
             const parts = [];
             if (radius)
                 parts.push(`border-radius: ${radius};`);
-            const frame = Number.isFinite(this._frameSize) ? this._frameSize : 0;
+            const frame = Number.isFinite(this._contentPadding) ? this._contentPadding : 0;
             if (frame > 0)
                 parts.push(`padding: ${frame}px;`);
             this.style = parts.length ? parts.join(' ') : null;
@@ -985,9 +985,9 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._sets.disconnect(this._verticalRotationChangedId);
                 this._verticalRotationChangedId = null;
             }
-            if (this._frameSizeChangedId) {
-                this._sets.disconnect(this._frameSizeChangedId);
-                this._frameSizeChangedId = null;
+            if (this._contentPaddingChangedId) {
+                this._sets.disconnect(this._contentPaddingChangedId);
+                this._contentPaddingChangedId = null;
             }
 
             PANELBOX.disconnect(this._pvConId);

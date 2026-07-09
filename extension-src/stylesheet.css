@@ -7,8 +7,8 @@
 
 #FloatingMiniPanel:vertical {
   /* No fixed width: the strip sizes to its widest child (an icon), so it stays
-     about one icon wide. Frame padding is applied inline from the frame-size
-     setting. */
+     about one icon wide. Content padding is applied inline from the
+     content-padding setting. */
   padding: 0px 0px;
 }
 

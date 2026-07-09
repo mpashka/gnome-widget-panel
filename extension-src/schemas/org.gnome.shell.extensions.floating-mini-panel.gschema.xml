@@ -36,11 +36,11 @@
         Is floating-mini-panel vertical oriented.
       </description>
     </key>
-    <key name="frame-size" type="i">
+    <key name="content-padding" type="i">
       <default>0</default>
-      <summary>Frame size</summary>
+      <summary>Content padding</summary>
       <description>
-        Padding in pixels around the widgets' working body (the frame between the
+        Padding in pixels around the widgets' working body (the space between the
         panel edge and its contents).
       </description>
     </key>
