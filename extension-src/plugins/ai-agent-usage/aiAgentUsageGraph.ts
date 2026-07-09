@@ -17,8 +17,10 @@ import {renderTemplate} from '../../tooltipTemplate.js';
 const WIDTH = 54;
 const MIN_WIDTH = 24;
 const HEIGHT = 16;
+// Visible window width in samples (columns drawn in the graph body). The full
+// normalisation window is HISTORY_WIDTH * scaleWindowRatio (default 2), computed
+// per-instance from options.
 const HISTORY_WIDTH = 36;
-const SCALE_HISTORY_WIDTH = HISTORY_WIDTH * 2;
 const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
 const SAMPLE_INTERVAL_SECONDS = 5;
 const STALE_AFTER_SECONDS = 120;
@@ -249,6 +251,19 @@ export const AiAgentUsageGraph = GObject.registerClass(
             // Seconds of history visible in the graph body (one column per sample).
             this._requestWindowSeconds = HISTORY_WIDTH * this._sampleInterval;
             this._tokenEventActiveSeconds = this._sampleInterval * 3;
+            // Normalisation window: the full window is `scaleWindowRatio` times the
+            // visible window (HISTORY_WIDTH). The graph is normalised so the max
+            // active token count in the full window is 100%. Configurable via
+            // `options.scaleWindowRatio` (default 2), intentionally not exposed in
+            // the settings UI.
+            let scaleRatio = Number(options.scaleWindowRatio);
+            if (!Number.isFinite(scaleRatio) || scaleRatio < 1)
+                scaleRatio = 2;
+            this._scaleWindowRatio = scaleRatio;
+            this._scaleHistoryWidth = Math.max(
+                HISTORY_WIDTH,
+                Math.round(HISTORY_WIDTH * scaleRatio)
+            );
             this._showUsageBar = options.showUsageBar !== false;
             this._showWindowBar = options.showWindowBar !== false;
 
@@ -277,7 +292,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._sampledEventIds = new Set();
             this._requests = [];
             this._requestKeys = new Set();
-            this._samples = Array(SCALE_HISTORY_WIDTH).fill({
+            this._samples = Array(this._scaleHistoryWidth).fill({
                 tokens: 0,
                 context: 0,
                 limit: 0,

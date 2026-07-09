@@ -68,8 +68,13 @@ vertical bars use configurable indicator colours — usage/rate-limit
 `#4ca6ff`) — and the matching tooltip icons reuse those same colours. The visible
 token-load graph first applies an idle threshold: samples below `minActiveTokens`
 default to zero.
-Active samples are autoscaled against the maximum active token count in a scale
-window twice as wide as the visible graph.
+Active samples are autoscaled (normalised) against the maximum active token
+count in the **full window**. The visible window is `HISTORY_WIDTH` (36) sample
+columns; the full window is `HISTORY_WIDTH * scaleWindowRatio` (default ratio 2,
+so twice the visible window). The tallest active sample in the full window is
+100% and every other column's height is normalised to it. `scaleWindowRatio` is
+read from the widget `options` (default 2) but is intentionally **not** exposed
+in the settings UI.
 
 Each vertical bar can be hidden independently: `showUsageBar` (default true)
 controls the usage/rate-limit bar and `showWindowBar` (default true) controls the
