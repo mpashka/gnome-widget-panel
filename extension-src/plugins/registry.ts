@@ -61,8 +61,9 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
     },
     {
         id: 'activities',
-        label: 'Activities',
-        description: 'Button that toggles the GNOME Activities overview.',
+        label: 'Gnome Action',
+        description:
+            'Runs a GNOME shell action (overview, app grid, show desktop).',
         hasPreferences: true,
         multiInstance: true,
         loadPreferences: () =>

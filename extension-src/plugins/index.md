@@ -33,8 +33,10 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   settings indicators for Wi-Fi, sound, battery and related system state.
 - [`gnome-menu`](gnome-menu/index.md) — button that opens the GNOME application
   grid.
-- [`activities`](activities/index.md) — button that toggles the GNOME Activities
-  overview (multi-instance).
+- [`activities`](activities/index.md) — "Gnome Action" button that runs a
+  configurable GNOME action (windows overview, all applications, show desktop);
+  multi-instance. Internal id kept as `activities` for config backward
+  compatibility; only the user-facing label was renamed to "Gnome Action".
 - [`favorites`](favorites/index.md) — button with a Places menu (Home, XDG user
   directories and GTK bookmarks).
 - [`printscreen`](printscreen/index.md) — button that opens the GNOME

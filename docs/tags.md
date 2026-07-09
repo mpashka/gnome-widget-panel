@@ -33,7 +33,7 @@ grep -rn "@tag:<slug>" extension-src docs
 | `widget-clock` | The `clock` built-in widget. |
 | `widget-ubuntu-system-status` | The `ubuntu-system-status` built-in widget. |
 | `widget-gnome-menu` | The `gnome-menu` built-in widget (opens the application grid). |
-| `widget-activities` | The `activities` built-in widget (toggles the Activities overview). |
+| `widget-activities` | The `activities` built-in widget, labelled "Gnome Action" (runs a configurable GNOME action: overview, app grid, show desktop). Id kept as `activities` for config compatibility. |
 | `widget-favorites` | The `favorites` built-in widget (Places menu). |
 | `widget-printscreen` | The `printscreen` built-in widget (opens the interactive screenshot UI). |
 | `widget-launch` | The `launch` built-in widget (multi-instance command launcher). |
