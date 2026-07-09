@@ -14,12 +14,13 @@ import {iconRow} from '../iconPicker.js';
 const DEFAULT_ICON = 'focus-windows-symbolic';
 const DEFAULT_ACTION = 'overview';
 
-// The implemented actions and their human labels, in display order. The id
-// order here maps to the Adw.ComboRow selected index.
+// The implemented actions, in display order. `short` is shown in the collapsed
+// row (so the value is not ellipsized); `label` is the longer description shown
+// only in the open dropdown. The id order maps to the ComboRow selected index.
 const ACTIONS = [
-    {id: 'overview', label: 'Windows overview'},
-    {id: 'apps', label: 'All applications'},
-    {id: 'show-desktop', label: 'Show desktop (minimize all)'},
+    {id: 'overview', short: 'Overview', label: 'Windows overview'},
+    {id: 'apps', short: 'Applications', label: 'All applications'},
+    {id: 'show-desktop', short: 'Show desktop', label: 'Show desktop (minimize all)'},
 ];
 
 export function fillWidgetPreferences(context) {
@@ -43,9 +44,7 @@ export function fillWidgetPreferences(context) {
     });
     page.add(group);
 
-    const model = new Gtk.StringList();
-    for (const action of ACTIONS)
-        model.append(action.label);
+    const model = Gtk.StringList.new(ACTIONS.map((a) => a.short));
 
     const currentAction =
         typeof current.action === 'string' && current.action.length > 0
@@ -58,10 +57,19 @@ export function fillWidgetPreferences(context) {
 
     const actionRow = new Adw.ComboRow({
         title: 'Action',
-        subtitle: 'Which GNOME action this button runs when clicked.',
         model,
         selected: selectedIndex,
     });
+    // Long descriptions in the open dropdown; the row shows the short label.
+    const listFactory = new Gtk.SignalListItemFactory();
+    listFactory.connect('setup', (_f, item) => {
+        item.set_child(new Gtk.Label({xalign: 0}));
+    });
+    listFactory.connect('bind', (_f, item) => {
+        const pos = item.get_position();
+        item.get_child().set_label(ACTIONS[pos]?.label ?? '');
+    });
+    actionRow.list_factory = listFactory;
     actionRow.connect('notify::selected', () => {
         const index = actionRow.get_selected();
         const chosen = ACTIONS[index] ?? ACTIONS[0];

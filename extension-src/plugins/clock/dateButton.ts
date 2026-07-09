@@ -25,6 +25,7 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
+import PangoCairo from 'gi://PangoCairo';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -40,6 +41,98 @@ const shellVersion = parseFloat(Config.PACKAGE_VERSION);
 
 // Default strftime-style template used when `options.format` is unset.
 const DEFAULT_FORMAT = '%H:%M';
+
+// Draws the time text with PangoCairo so it can be rotated 90° in a vertical
+// panel without being clipped: it requests the swapped (tall/narrow) size and
+// rotates the drawing, exactly like the graph widgets. An St.Label cannot do
+// this — Clutter actor rotation keeps the original wide allocation, which made
+// the panel too wide and truncated the time.
+const TimeDrawer = GObject.registerClass(
+    class TimeDrawer extends St.DrawingArea {
+        _init() {
+            super._init({
+                style_class: 'clock-time',
+                y_align: Clutter.ActorAlign.CENTER,
+                x_align: Clutter.ActorAlign.CENTER,
+            });
+            this._text = '';
+            this._rotated = false;
+            this._rotateDir = 'right';
+            this.connect('repaint', () => this._draw());
+            this.connect('notify::mapped', () => {
+                if (this.mapped)
+                    this._updateSize();
+            });
+        }
+
+        setText(text) {
+            const value = text || '';
+            if (value === this._text)
+                return;
+            this._text = value;
+            this._updateSize();
+            this.queue_repaint();
+        }
+
+        setPanelLayout(vertical, rotation) {
+            this._rotated = !!vertical;
+            this._rotateDir = rotation === 'left' ? 'left' : 'right';
+            this._updateSize();
+            this.queue_repaint();
+        }
+
+        // Request natural text size, swapped when rotated. Needs the theme node,
+        // so it only runs once the actor is on the stage.
+        _updateSize() {
+            if (!this.get_stage())
+                return;
+            try {
+                const layout = this.create_pango_layout(this._text || ' ');
+                const [tw, th] = layout.get_pixel_size();
+                if (this._rotated)
+                    this.set_size(th, tw);
+                else
+                    this.set_size(tw, th);
+            } catch (error) {
+                // Ignore; a later repaint/map will size it.
+            }
+        }
+
+        _draw() {
+            const ctx = this.get_context();
+            try {
+                const [sw, sh] = this.get_surface_size();
+                const themeNode = this.get_theme_node();
+                const color = themeNode.get_foreground_color();
+                ctx.setSourceRGBA(
+                    color.red / 255,
+                    color.green / 255,
+                    color.blue / 255,
+                    (color.alpha || 255) / 255
+                );
+                if (this._rotated) {
+                    if (this._rotateDir === 'left') {
+                        ctx.translate(0, sh);
+                        ctx.rotate(-Math.PI / 2);
+                    } else {
+                        ctx.translate(sw, 0);
+                        ctx.rotate(Math.PI / 2);
+                    }
+                }
+                const layout = PangoCairo.create_layout(ctx);
+                const font = themeNode.get_font();
+                if (font)
+                    layout.set_font_description(font);
+                layout.set_text(this._text, -1);
+                PangoCairo.show_layout(ctx, layout);
+            } catch (error) {
+                logError(error, 'GNOME Widget Panel clock draw failed');
+            } finally {
+                ctx.$dispose();
+            }
+        }
+    }
+);
 
 export const DateButton = GObject.registerClass(
     class DateButton extends St.BoxLayout {
@@ -108,22 +201,16 @@ export const DateButton = GObject.registerClass(
                 return GLib.SOURCE_PROPAGATE;
             });
 
-            this._dateLabel = new St.Label({
-                text: this._renderTime(),
-                x_expand: true,
-                x_align: Clutter.ActorAlign.CENTER,
-                y_expand: true,
-                y_align: Clutter.ActorAlign.CENTER,
-                style: 'padding-top: 2px;', // Align with percentage label
-            });
+            this._dateLabel = new TimeDrawer();
+            this._dateLabel.setText(this._renderTime());
             this.add_child(this._dateLabel);
 
-            // Refresh the formatted label once per second; released in destroy().
+            // Refresh the formatted time once per second; released in destroy().
             this._timerId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
                 1,
                 () => {
-                    this._dateLabel.text = this._renderTime();
+                    this._dateLabel.setText(this._renderTime());
                     return GLib.SOURCE_CONTINUE;
                 }
             );
@@ -166,37 +253,15 @@ export const DateButton = GObject.registerClass(
         // being ellipsized ("202…") in the narrow strip we disable ellipsizing
         // and pin the label to its natural (full-text) size, then rotate it about
         // its centre. Horizontal restores exactly the previous behaviour.
+        // Called by the panel host when its orientation/rotation changes; the
+        // TimeDrawer swaps its size and rotates the Cairo drawing so the time
+        // reads vertically without being clipped or widening the strip.
         setPanelLayout(info) {
+            if (!this._dateLabel)
+                return;
             const vertical = !!(info && info.vertical);
             const rotation = info && info.rotation === 'left' ? 'left' : 'right';
-            const label = this._dateLabel;
-            if (!label)
-                return;
-            try {
-                label.set_pivot_point(0.5, 0.5);
-                const clutterText = label.clutter_text;
-                if (vertical) {
-                    // Full text, no ellipsis; pin to natural size so rotation
-                    // shows the whole time instead of a width-clipped label.
-                    if (clutterText)
-                        clutterText.ellipsize = Pango.EllipsizeMode.NONE;
-                    label.x_expand = false;
-                    label.y_expand = false;
-                    const [, natWidth] = label.get_preferred_width(-1);
-                    const [, natHeight] = label.get_preferred_height(natWidth);
-                    label.set_size(natWidth, natHeight);
-                    label.rotation_angle_z = rotation === 'left' ? -90 : 90;
-                } else {
-                    label.rotation_angle_z = 0;
-                    if (clutterText)
-                        clutterText.ellipsize = Pango.EllipsizeMode.END;
-                    label.set_size(-1, -1);
-                    label.x_expand = true;
-                    label.y_expand = true;
-                }
-            } catch (error) {
-                console.error(`GNOME Widget Panel clock rotation failed: ${error}`);
-            }
+            this._dateLabel.setPanelLayout(vertical, rotation);
         }
 
         _toggleCalendar() {

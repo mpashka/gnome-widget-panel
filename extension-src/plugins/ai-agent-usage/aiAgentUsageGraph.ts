@@ -795,9 +795,12 @@ export const AiAgentUsageGraph = GObject.registerClass(
             if (vertical) {
                 this.width = this._baseHeight;
                 this.height = this._baseWidth;
+                this.x_align = Clutter.ActorAlign.CENTER;
+                this.x_expand = true;
             } else {
                 this.width = this._baseWidth;
                 this.height = this._baseHeight;
+                this.x_align = Clutter.ActorAlign.FILL;
             }
             this.queue_repaint();
         }

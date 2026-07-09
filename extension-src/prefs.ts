@@ -578,7 +578,12 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                     options: {...(item.options ?? {})},
                     save: (options) => {
                         item.options = options;
-                        this._persist(state, rebuild);
+                        // Persist only; do NOT rebuild the main list here. A
+                        // widget's option change does not alter the list rows,
+                        // and rebuilding resets the main page's scroll position
+                        // (which then shows at the top when the subpage is
+                        // popped). The running panel live-reloads from the file.
+                        saveWidgetConfig(state.config);
                     },
                 });
 

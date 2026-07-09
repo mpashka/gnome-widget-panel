@@ -384,9 +384,13 @@ export const CpuGraph = GObject.registerClass(
             if (vertical) {
                 this.width = this._baseHeight;
                 this.height = this._baseWidth;
+                // Centre the narrow graph in the vertical strip.
+                this.x_align = Clutter.ActorAlign.CENTER;
+                this.x_expand = true;
             } else {
                 this.width = this._baseWidth;
                 this.height = this._baseHeight;
+                this.x_align = Clutter.ActorAlign.FILL;
             }
             this.queue_repaint();
         }
