@@ -174,6 +174,13 @@ if [[ "$headless" != "1" ]]; then
     printf 'To shrink/resize it: window menu (menu) -> Monitors -> Emulate monitor\n'
     printf 'modes, then drag the window edge (the shell reflows to the new size).\n'
 fi
+printf '\n*** IMPORTANT: this dev shell uses an ISOLATED dconf profile (%s). ***\n' "$profile"
+printf 'Panel settings (orientation, content padding, position) are read from that\n'
+printf 'profile. Open Settings FROM THIS DEV WINDOW (right-click the panel handle ->\n'
+printf 'Settings...) so your changes reach this shell. Settings opened from your MAIN\n'
+printf 'session write a DIFFERENT dconf and will NOT apply here (this is the usual\n'
+printf 'reason "orientation shows Horizontal but the panel is Vertical" and changes\n'
+printf 'seem to do nothing). To test the real install instead: ./install.sh + logout/login.\n'
 
 printf '\nTailing extension/error log lines; Ctrl+C to stop.\n\n'
 tail -n +1 -f --pid="$shell_pid" "$logfile" 2>/dev/null \
