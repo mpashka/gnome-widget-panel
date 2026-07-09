@@ -60,6 +60,27 @@ you can then drag the panel to a convenient corner of the smaller window.
 The full log is at `/tmp/gnome-widget-panel-dev.log` (override with `GWP_LOG`);
 the terminal shows only extension/error lines.
 
+### Parallel run (dev shell alongside your main session)
+
+By default `dev-run.sh` disables the extension in your main session so the two
+shells never clash on the widget's localhost port. To run BOTH at once:
+
+```bash
+GWP_KEEP_MAIN=1 GWP_CLAUDE_PORT=17862 ./dev-run.sh
+```
+
+- `GWP_KEEP_MAIN=1` keeps the main session's extension enabled.
+- `GWP_CLAUDE_PORT=N` generates an isolated `.dev/widgets.json` (copied from your
+  config) with `ai-agent-usage`'s `claudePort` set to `N`, and points the dev
+  shell at it via `GWP_CONFIG_FILE` (a config-path override honored by
+  `configStore.ts`; dconf/XDG are left untouched, so enablement still works).
+  Pick a port different from your main session (default `17861`).
+
+Because the Claude hook registry lives under `~/.claude` (shared), both instances
+register their `{port, secret}` and Claude's status line fans out to both (see
+the ai-agent-usage widget's Claude hook docs). Same port on both still clashes;
+different ports do not.
+
 ### Why devkit (mutter 50 specifics)
 
 mutter 50 removed the windowed `--nested` flag; `gnome-shell --wayland` (with or

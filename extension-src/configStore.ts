@@ -14,8 +14,17 @@ import {parseWidgetConfig, serializeWidgetConfig} from './widgetConfig.js';
 const CONFIG_DIR_NAME = 'gnome-widget-panel';
 const CONFIG_FILE_NAME = 'widgets.json';
 
-/** User-owned, writable configuration path (source of truth once created). */
+/**
+ * User-owned, writable configuration path (source of truth once created).
+ *
+ * `GWP_CONFIG_FILE` overrides it: a dev-only hook so a second panel instance
+ * (see `dev-run.sh` parallel mode) can run against its own `widgets.json` — e.g.
+ * a different `ai-agent-usage` Claude port — without disturbing dconf.
+ */
 export function userConfigPath(): string {
+    const override = GLib.getenv('GWP_CONFIG_FILE');
+    if (override)
+        return override;
     return GLib.build_filenamev([
         GLib.get_user_config_dir(),
         CONFIG_DIR_NAME,

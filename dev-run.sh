@@ -20,12 +20,23 @@
 # Env knobs: GWP_HEADLESS=1 runs headless + log only (no window);
 # GWP_MONITOR_SPEC sizes the headless virtual monitor (default 1600x900);
 # GWP_LOG overrides the full shell log path.
+#
+# Parallel run (dev shell alongside your main session, both live):
+#   GWP_KEEP_MAIN=1   do NOT disable the extension in your main session.
+#   GWP_CLAUDE_PORT=N run the dev widget on Claude port N via an isolated
+#                     widgets.json (copied from yours), so it does not clash on
+#                     the localhost port with your main session (default 17861).
+#   The Claude hook registry (~/.claude) is shared, so Claude's status line fans
+#   out to BOTH instances. Example:
+#     GWP_KEEP_MAIN=1 GWP_CLAUDE_PORT=17862 ./dev-run.sh
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 uuid="gnome-widget-panel@mpashka.github.com"
 spec="${GWP_MONITOR_SPEC:-1600x900}"
 headless="${GWP_HEADLESS:-0}"
+keep_main="${GWP_KEEP_MAIN:-0}"
+claude_port="${GWP_CLAUDE_PORT:-}"
 logfile="${GWP_LOG:-/tmp/gnome-widget-panel-dev.log}"
 runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 devkit_bin="/usr/libexec/mutter-devkit"
@@ -64,8 +75,15 @@ fi
 "$root/build.sh"
 glib-compile-schemas "$root/extension/schemas"
 
-# --- Make sure the main session is not also running the extension ----------
-if gnome-extensions list --enabled 2>/dev/null | grep -qx "$uuid"; then
+# --- Main session extension: disable, unless keeping it for a parallel run --
+if [[ "$keep_main" == "1" ]]; then
+    printf 'Keeping %s enabled in your main session (parallel run).\n' "$uuid"
+    if [[ -z "$claude_port" ]] &&
+        gnome-extensions list --enabled 2>/dev/null | grep -qx "$uuid"; then
+        printf 'Note: without GWP_CLAUDE_PORT both instances share the same '
+        printf 'Claude port and will clash on it (handled, non-fatal).\n'
+    fi
+elif gnome-extensions list --enabled 2>/dev/null | grep -qx "$uuid"; then
     printf 'Disabling %s in your main session to avoid a second instance.\n' "$uuid"
     gnome-extensions disable "$uuid" 2>/dev/null || true
 fi
@@ -75,9 +93,37 @@ mkdir -p "$devdir"
 printf 'user-db:gwpdev\n' >"$profile"
 : >"$statusfile"
 
+# Optional isolated widgets.json so the dev widget uses a different Claude port.
+# We point the dev shell at it via GWP_CONFIG_FILE (a config-path override honored
+# by configStore.ts) — this leaves dconf/XDG untouched, so extension enablement
+# still works. ~/.claude (the hook registry) stays under HOME, so the Claude
+# status-line fan-out reaches both this instance and your main session.
+cfg_export=""
+if [[ -n "$claude_port" ]]; then
+    devcfg="$devdir/widgets.json"
+    src="$HOME/.config/gnome-widget-panel/widgets.json"
+    [[ -f "$src" ]] || src="$root/extension/config/widgets.json"
+    python3 - "$src" "$devcfg" "$claude_port" <<'PY'
+import json, sys
+src, dst, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+data = json.load(open(src))
+plugins = data.setdefault("plugins", [])
+ai = next((p for p in plugins if p.get("id") == "ai-agent-usage"), None)
+if ai is None:
+    ai = {"id": "ai-agent-usage", "enabled": True}
+    plugins.append(ai)
+ai["enabled"] = True
+ai.setdefault("options", {})["claudePort"] = port
+open(dst, "w").write(json.dumps(data, indent=2) + "\n")
+PY
+    printf 'Dev widget Claude port: %s (config %s)\n' "$claude_port" "$devcfg"
+    cfg_export="export GWP_CONFIG_FILE=\"$devcfg\""
+fi
+
 cat >"$inner" <<INNER
 #!/usr/bin/env bash
 set -u
+${cfg_export}
 export DCONF_PROFILE="$profile"
 rm -f "$runtime/gnome-shell-disable-extensions"
 
