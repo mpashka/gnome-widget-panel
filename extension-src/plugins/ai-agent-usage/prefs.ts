@@ -30,6 +30,7 @@ const SAMPLE_FRAGMENTS = {
 const DEFAULT_COLORS = {
     codexColor: '#10a37f',
     claudeColor: '#d97757',
+    geminiColor: '#4285f4',
     usageColor: '#ffb82e',
     windowColor: '#4ca6ff',
 };
@@ -87,6 +88,13 @@ function setStatus(image, state) {
 function codexInstalled() {
     return GLib.file_test(
         GLib.build_filenamev([GLib.get_home_dir(), '.codex', 'sessions']),
+        GLib.FileTest.IS_DIR
+    );
+}
+
+function geminiInstalled() {
+    return GLib.file_test(
+        GLib.build_filenamev([GLib.get_home_dir(), '.gemini', 'tmp']),
         GLib.FileTest.IS_DIR
     );
 }
@@ -169,6 +177,18 @@ export function fillWidgetPreferences(context) {
     codexRow.add_suffix(colorButton(current, 'codexColor', DEFAULT_COLORS.codexColor, commit));
     codexRow.add_suffix(enableSwitch(current, 'enableCodex', commit));
     providers.add(codexRow);
+
+    // Gemini: detection only (reads ~/.gemini/tmp via a helper process).
+    const geminiRow = new Adw.ActionRow({
+        title: 'Gemini CLI',
+        subtitle: 'Reads ~/.gemini/tmp via a helper process',
+    });
+    const geminiStatus = statusImage();
+    setStatus(geminiStatus, geminiInstalled() ? 'ok' : 'not-installed');
+    geminiRow.add_prefix(geminiStatus);
+    geminiRow.add_suffix(colorButton(current, 'geminiColor', DEFAULT_COLORS.geminiColor, commit));
+    geminiRow.add_suffix(enableSwitch(current, 'enableGemini', commit));
+    providers.add(geminiRow);
 
     // --- Indicators -------------------------------------------------------
     const indicators = new Adw.PreferencesGroup({

@@ -6,8 +6,8 @@ Back to [plugins index](../index.md).
 
 ## Purpose
 
-Shows one compact graph for AI agent token usage. Providers currently planned:
-Codex and Claude Code.
+Shows one compact graph for AI agent token usage. Providers: Codex, Claude Code
+and Gemini CLI.
 
 ## Source files
 
@@ -28,12 +28,28 @@ Codex and Claude Code.
   `tokens.session_total` for diagnostics. It also extracts recent user prompts
   (`response_item` messages with `role: user`) as a `requests` array, skipping
   injected environment/instruction blocks.
+- `helpers/gemini-usage-helper.ts` — out-of-process GJS helper for Gemini CLI.
+  It picks the most recently active project under `~/.gemini/tmp/<project_hash>/`
+  (override the root with `GEMINI_DATA_DIR`, matching ccusage), reads recent user
+  prompts from that project's `logs.json` (`{sessionId, messageId, type:"user",
+  message, timestamp}` records) into a `requests` array, and defensively extracts
+  the latest turn's token usage from the newest `chats/*.json` conversation
+  record (Gemini `usageMetadata`: `totalTokenCount` / `promptTokenCount` /
+  `candidatesTokenCount` / `cachedContentTokenCount`, plus snake_case fallbacks).
+  Every read/parse is guarded and it emits nothing when the data dir is absent,
+  so it never crashes or blocks the Shell. **Source/confidence:** the `logs.json`
+  prompt records are a stable, observed format (high confidence); the on-disk
+  token schema is version-dependent (a JSONL migration is in flight upstream), so
+  token extraction is best-effort — when no token object is found, prompts are
+  still emitted and tokens default to zero (lower confidence). No rate-limit data
+  is available on disk, so Gemini reports no `limits`.
 
 ## Data model
 
 Provider histories are kept separately in memory. Every graph column is coloured
 by the provider that won that sample, using configurable per-provider colours
-(defaults: OpenAI/Codex teal `#10a37f`, Anthropic/Claude clay `#d97757`). The two
+(defaults: OpenAI/Codex teal `#10a37f`, Anthropic/Claude clay `#d97757`,
+Google/Gemini blue `#4285f4`). The two
 vertical bars use configurable indicator colours — usage/rate-limit
 (`usageColor`, default `#ffb82e`) and context window (`windowColor`, default
 `#4ca6ff`) — and the matching tooltip icons reuse those same colours. The visible
@@ -58,9 +74,15 @@ not keep the graph at 100%.
 Requests (user prompts) reported by a provider in its `requests: AgentRequest[]`
 array (see [`../../contracts.ts`](../../contracts.ts)) are drawn as vertical red
 markers positioned by their timestamp within the visible graph window. Markers
-are deduplicated and pruned to twice the visible window. Codex populates requests
-today; Claude statusLine does not carry prompt text, so no Claude markers appear
-yet.
+are deduplicated and pruned to twice the visible window. Codex and Gemini CLI
+populate requests today (from their session/log files); Claude statusLine does not
+carry prompt text, so no Claude markers appear yet.
+
+Each provider has an enable toggle (`enableClaude`, `enableCodex`, `enableGemini`,
+all default true) and a graph colour option (`claudeColor`, `codexColor`,
+`geminiColor`). The Providers group in preferences shows a status dot per provider:
+green when detected/configured, grey when the provider is not found on this system
+(Codex looks for `~/.codex/sessions`, Gemini for `~/.gemini/tmp`).
 
 The widget has a compact hover tooltip built from a user-editable template (see
 [`../../tooltipTemplate.ts`](../../tooltipTemplate.ts), `@tag:ui`) rendered with

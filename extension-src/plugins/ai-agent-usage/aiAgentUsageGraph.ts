@@ -31,9 +31,10 @@ const REQUEST_COLOR = [0.90, 0.15, 0.15, 0.9];
 // icons: usage = rate-limit bar + usage cup; window = context bar + reset icon.
 const DEFAULT_USAGE_COLOR = '#ffb82e';
 const DEFAULT_WINDOW_COLOR = '#4ca6ff';
-// Per-provider graph colours (brand palette): OpenAI/Codex teal, Anthropic/Claude clay.
+// Per-provider graph colours (brand palette): OpenAI/Codex teal, Anthropic/Claude clay, Google/Gemini blue.
 const DEFAULT_CODEX_COLOR = '#10a37f';
 const DEFAULT_CLAUDE_COLOR = '#d97757';
+const DEFAULT_GEMINI_COLOR = '#4285f4';
 // Fill-level "cup" glyphs (empty → full): ○ ◔ ◑ ◕ ●
 const CUP_LEVELS = ['○', '◔', '◑', '◕', '●'];
 // Hourglass, for the limit-window reset time.
@@ -247,6 +248,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._claudePort = Number(options.claudePort ?? DEFAULT_CLAUDE_PORT);
             this._enableClaude = options.enableClaude ?? true;
             this._enableCodex = options.enableCodex ?? true;
+            this._enableGemini = options.enableGemini ?? true;
             this._minActiveTokens = Number(options.minActiveTokens);
             if (!Number.isFinite(this._minActiveTokens) || this._minActiveTokens < 0)
                 this._minActiveTokens = DEFAULT_MIN_ACTIVE_TOKENS;
@@ -255,6 +257,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._windowColor = options.windowColor || DEFAULT_WINDOW_COLOR;
             this._codexColor = options.codexColor || DEFAULT_CODEX_COLOR;
             this._claudeColor = options.claudeColor || DEFAULT_CLAUDE_COLOR;
+            this._geminiColor = options.geminiColor || DEFAULT_GEMINI_COLOR;
             this._requestPreview = Number(options.requestPreview) > 0
                 ? Number(options.requestPreview)
                 : REQUEST_TEXT_PREVIEW;
@@ -280,6 +283,9 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._codexProcess = null;
             this._codexStdout = null;
             this._codexReadCancellable = null;
+            this._geminiProcess = null;
+            this._geminiStdout = null;
+            this._geminiReadCancellable = null;
             this._sampleTimeoutId = null;
             this._tooltip = new St.Label({
                 style_class: 'dash-label',
@@ -294,6 +300,8 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 this._startClaudeHttpHook();
             if (this._enableCodex)
                 this._startCodexHelper();
+            if (this._enableGemini)
+                this._startGeminiHelper();
 
             this._sampleTimeoutId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
@@ -440,6 +448,69 @@ export const AiAgentUsageGraph = GObject.registerClass(
             }
         }
 
+        _startGeminiHelper() {
+            const helperPath = GLib.build_filenamev([
+                this._extensionPath,
+                'plugins',
+                'ai-agent-usage',
+                'helpers',
+                'gemini-usage-helper.js',
+            ]);
+            if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
+                return;
+            try {
+                this._geminiProcess = Gio.Subprocess.new(
+                    ['gjs', '-m', helperPath],
+                    Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
+                );
+                this._geminiReadCancellable = new Gio.Cancellable();
+                this._geminiStdout = new Gio.DataInputStream({
+                    base_stream: this._geminiProcess.get_stdout_pipe(),
+                });
+                this._readGeminiLine();
+            } catch (error) {
+                console.error(`GNOME Widget Panel Gemini helper failed: ${error}`);
+                this._stopGeminiHelper();
+            }
+        }
+
+        _readGeminiLine() {
+            if (!this._geminiStdout)
+                return;
+            this._geminiStdout.read_line_async(
+                GLib.PRIORITY_DEFAULT,
+                this._geminiReadCancellable,
+                (stream, result) => {
+                    try {
+                        const [line] = stream.read_line_finish_utf8(result);
+                        if (line !== null) {
+                            const value = JSON.parse(line);
+                            value.updated_monotonic = nowSeconds();
+                            this._providers.set('gemini', value);
+                            this._ingestRequests(value);
+                            this.queue_repaint();
+                            this._readGeminiLine();
+                        }
+                    } catch (error) {
+                        if (!this._geminiReadCancellable?.is_cancelled())
+                            console.error(`GNOME Widget Panel Gemini read failed: ${error}`);
+                    }
+                }
+            );
+        }
+
+        _stopGeminiHelper() {
+            if (this._geminiReadCancellable) {
+                this._geminiReadCancellable.cancel();
+                this._geminiReadCancellable = null;
+            }
+            this._geminiStdout = null;
+            if (this._geminiProcess) {
+                this._geminiProcess.force_exit();
+                this._geminiProcess = null;
+            }
+        }
+
         _ingestRequests(value) {
             if (!Array.isArray(value?.requests))
                 return;
@@ -528,6 +599,8 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 return this._codexColor;
             if (name === 'claude')
                 return this._claudeColor;
+            if (name === 'gemini')
+                return this._geminiColor;
             return null;
         }
 
@@ -745,6 +818,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 this._tooltip = null;
             }
             this._stopCodexHelper();
+            this._stopGeminiHelper();
             this._stopClaudeHttpHook();
             super.destroy();
         }

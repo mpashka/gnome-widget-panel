@@ -16,6 +16,8 @@ Start here, then follow the links down to the code under
 - [`ai-management.md`](ai-management.md) — AI-assisted panel management concept.
 - [`upstream.md`](upstream.md) — Floating Mini Panel origin and license notes.
 - [`tags.md`](tags.md) — registry of `@tag:<slug>` cross-links between code and docs.
+- [`xfce-widget-ideas.md`](xfce-widget-ideas.md) — reference: XFCE-inspired
+  candidate widgets and a prioritized shortlist for what to add next.
 
 ## Directories
 
