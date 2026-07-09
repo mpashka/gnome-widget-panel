@@ -42,6 +42,10 @@ and orientation groups on the same page edit the panel `GSettings`. Actions:
 - **Configure** a widget: rows whose widget declares `hasPreferences: true` show
   a settings button that opens that widget's own settings as an **in-window
   subpage** (not a dialog) — see below.
+- **Request a widget…** — the top of the "Add a widget" subpage has a
+  `Adw.ActionRow` that opens a prefilled GitHub **widget request** issue form
+  (`widget_request.yml`) in the browser via `systemInfo.openUrl(
+  systemInfo.widgetRequestUrl())`, for widgets that do not exist yet.
 
 Widget changes are written immediately and applied **live**: the running
 `FloatingMiniPanel` watches `widgets.json` with a `Gio.FileMonitor` and rebuilds
@@ -75,6 +79,37 @@ Gestures on the panel handle stay the primary interaction and keep working
 exactly as before (left = app grid, middle = drawer toggle, right = menu;
 Shift/Ctrl click variants snap alignment; long-press moves / toggles orientation
 / hides for 5 s).
+
+## About and GitHub issue integration
+
+An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added by
+`_addAboutGroup`). It is also the target of the control-button **About** menu
+item: `openAbout()` on the `Extension` simply calls `openPreferences()` (jumping
+straight to an About subpage from the Shell process is not reliably supported),
+so the About group is always reachable there. Rows:
+
+- **Name + version** (`this.metadata.name` / `this.metadata.version`) with an
+  external-link button opening `systemInfo.repoUrl` (the GitHub repository).
+- **Report a bug** → `systemInfo.openUrl(systemInfo.bugReportUrl())` — opens the
+  `bug_report.yml` issue form prefilled with `collectSystemInfo()` in the
+  form's `system` field.
+- **Suggest a feature** → `featureRequestUrl()` (`feature_request.yml`).
+- **Roadmap** → `systemInfo.roadmapUrl`
+  (`…/issues?q=is%3Aissue+label%3Aroadmap`); voting is via GitHub reactions.
+
+All of this is built by the shared
+[`../extension-src/systemInfo.ts`](../extension-src/systemInfo.ts), which runs in
+the preferences process too. `collectSystemInfo()` is best-effort and never
+throws: extension version (from `metadata.json`), GNOME Shell version
+(`Config.PACKAGE_VERSION` in the Shell, else `gnome-shell --version`), OS/distro
+(`/etc/os-release` `PRETTY_NAME`), kernel (`uname -sr` / `/proc/sys/kernel/osrelease`),
+session type (`XDG_SESSION_TYPE`) and Wayland/X11. The issue forms live in
+[`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE) (`bug_report.yml`,
+`feature_request.yml`, `widget_request.yml`, `config.yml`); the `template=<file>`
+names in `systemInfo.ts` match those filenames.
+
+Note: GitHub issue forms cannot pre-attach an image via URL — the bug form has a
+**Screenshots** area where users drag and drop image files manually.
 
 ## How per-widget settings work
 

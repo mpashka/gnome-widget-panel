@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap and voting
+    url: https://github.com/mpashka/gnome-widget-panel/issues?q=is%3Aissue+label%3Aroadmap
+    about: Browse planned work and vote with GitHub reactions.
+  - name: Questions and documentation
+    url: https://github.com/mpashka/gnome-widget-panel#readme
+    about: Read the README and documentation before opening an issue.

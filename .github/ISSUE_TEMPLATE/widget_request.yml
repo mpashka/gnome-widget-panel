@@ -1,0 +1,34 @@
+name: Widget request
+description: Request a new panel widget for GNOME Widget Panel
+title: "[Widget]: "
+labels: [widget-request]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Request a new widget for the panel. The more detail you provide about
+        what it should show and where its data comes from, the better.
+  - type: input
+    id: widget-name
+    attributes:
+      label: Widget name
+      description: A short name for the widget you want.
+      placeholder: Battery status
+    validations:
+      required: true
+  - type: textarea
+    id: what-it-does
+    attributes:
+      label: What should it show or do?
+      description: Describe what the widget should display and how it should behave.
+    validations:
+      required: true
+  - type: textarea
+    id: data-source
+    attributes:
+      label: Data source (if known)
+      description: >-
+        Where would the widget get its data? (a file, command, D-Bus service,
+        HTTP API, ...). Leave blank if you are not sure.
+    validations:
+      required: false

@@ -337,6 +337,12 @@ export const ControlButton = GObject.registerClass(
                 })
             );
 
+            this.menu.addMenuItem(
+                new MenuItem('About', '', () => {
+                    this._parent.openAbout();
+                })
+            );
+
             this.menu.connect('open-state-changed', () => {
                 if (this.has_style_pseudo_class('active')) {
                     this.remove_style_pseudo_class('active');

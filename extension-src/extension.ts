@@ -572,6 +572,10 @@ const FloatingMiniPanel = GObject.registerClass(
             this._extension.openPreferences();
         }
 
+        openAbout() {
+            this._extension.openAbout?.();
+        }
+
         // Watch the user config directory for widgets.json changes and arm a
         // debounced reload. Monitoring the directory (not the file) keeps the
         // watch valid across the replace/rename writes configStore performs.
@@ -982,5 +986,13 @@ export default class FloatingMiniPanelExtension extends Extension {
     disable() {
         this._floatingMiniPanel.destroy();
         this._floatingMiniPanel = null;
+    }
+
+    // Open the preferences window; the "About" preferences group lives at the
+    // bottom of the single preferences page (see prefs.ts). Jumping straight to
+    // an About subpage from the Shell process is not reliably supported, so we
+    // simply open preferences and rely on the always-present About group there.
+    openAbout() {
+        this.openPreferences();
     }
 }

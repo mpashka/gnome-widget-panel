@@ -19,6 +19,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 import {loadWidgetConfig, saveWidgetConfig} from './configStore.js';
 import {DESCRIPTORS_BY_ID, PLUGIN_DESCRIPTORS} from './plugins/registry.js';
+import * as SystemInfo from './systemInfo.js';
 
 // Panel alignment bitfield, mirrored from controlButton.ts / extension.ts.
 const Alignment = {
@@ -86,6 +87,94 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         rebuild();
 
         this._addPanelGroups(page);
+        this._addAboutGroup(page);
+    }
+
+    // "About" group at the bottom of the main page: extension name + version
+    // with a link to the repository, plus rows that open prefilled GitHub issue
+    // forms (bug report / feature request) and the roadmap. Opening URLs and
+    // building them is delegated to the shared `systemInfo` helper, which runs in
+    // this preferences process too.
+    _addAboutGroup(page) {
+        const version = this.metadata?.version ?? 'unknown';
+        const name = this.metadata?.name ?? 'GNOME Widget Panel';
+
+        const aboutGroup = new Adw.PreferencesGroup({
+            title: 'About',
+            description:
+                'Report bugs, suggest features and follow the roadmap on ' +
+                'GitHub. Roadmap voting is via GitHub reactions.',
+        });
+        page.add(aboutGroup);
+
+        // Name + version, opens the repository.
+        const versionRow = new Adw.ActionRow({
+            title: name,
+            subtitle: `Version ${version}`,
+            activatable: true,
+        });
+        versionRow.add_suffix(
+            this._linkButton('adw-external-link-symbolic', 'Open repository', () =>
+                SystemInfo.openUrl(SystemInfo.repoUrl)
+            )
+        );
+        versionRow.connect('activated', () =>
+            SystemInfo.openUrl(SystemInfo.repoUrl)
+        );
+        aboutGroup.add(versionRow);
+
+        // Report a bug (prefilled with system info).
+        aboutGroup.add(
+            this._aboutLinkRow(
+                'Report a bug',
+                'Opens a prefilled GitHub issue with your system information.',
+                () => SystemInfo.openUrl(SystemInfo.bugReportUrl())
+            )
+        );
+
+        // Suggest a feature.
+        aboutGroup.add(
+            this._aboutLinkRow(
+                'Suggest a feature',
+                'Opens a GitHub feature-request form.',
+                () => SystemInfo.openUrl(SystemInfo.featureRequestUrl())
+            )
+        );
+
+        // Roadmap.
+        aboutGroup.add(
+            this._aboutLinkRow(
+                'Roadmap',
+                'Browse planned work and vote with GitHub reactions.',
+                () => SystemInfo.openUrl(SystemInfo.roadmapUrl)
+            )
+        );
+    }
+
+    // A clickable Adw.ActionRow that opens a URL (via `onActivate`) with an
+    // external-link suffix button, used for the About group's action rows.
+    _aboutLinkRow(title, subtitle, onActivate) {
+        const row = new Adw.ActionRow({
+            title,
+            subtitle,
+            activatable: true,
+        });
+        row.add_suffix(
+            this._linkButton('adw-external-link-symbolic', title, onActivate)
+        );
+        row.connect('activated', () => onActivate());
+        return row;
+    }
+
+    _linkButton(iconName, tooltip, onClick) {
+        const button = new Gtk.Button({
+            icon_name: iconName,
+            tooltip_text: tooltip,
+            valign: Gtk.Align.CENTER,
+        });
+        button.add_css_class('flat');
+        button.connect('clicked', () => onClick());
+        return button;
     }
 
     // Panel-level settings that used to live in the control button context menu
@@ -288,6 +377,32 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         );
 
         const content = new Adw.PreferencesPage();
+
+        // "Request a widget…" opens a prefilled GitHub widget-request issue form
+        // so users can ask for a widget that does not exist yet.
+        const requestGroup = new Adw.PreferencesGroup();
+        const requestRow = new Adw.ActionRow({
+            title: 'Request a widget…',
+            subtitle: "Missing a widget? Open a request on GitHub.",
+            activatable: true,
+        });
+        requestRow.add_prefix(
+            new Gtk.Image({
+                icon_name: 'chat-message-new-symbolic',
+                valign: Gtk.Align.CENTER,
+            })
+        );
+        requestRow.add_suffix(
+            new Gtk.Image({
+                icon_name: 'adw-external-link-symbolic',
+                valign: Gtk.Align.CENTER,
+            })
+        );
+        requestRow.connect('activated', () =>
+            SystemInfo.openUrl(SystemInfo.widgetRequestUrl())
+        );
+        requestGroup.add(requestRow);
+        content.add(requestGroup);
 
         if (available.length === 0) {
             const group = new Adw.PreferencesGroup({title: 'Available widgets'});

@@ -25,6 +25,10 @@ generated GJS runtime code.
   requested-features backlog (new widgets and per-widget settings work).
 - [`README.md`](README.md) — user-facing overview, install and development
   commands.
+- `.github/ISSUE_TEMPLATE/` — GitHub issue *forms* (`bug_report.yml`,
+  `feature_request.yml`, `widget_request.yml`, `config.yml`) opened prefilled
+  from the extension's About page and Add-a-widget subpage via
+  `extension-src/systemInfo.ts`.
 - [`build.sh`](build.sh) — regenerates `extension/` from `extension-src/`.
 - [`install.sh`](install.sh) — builds and installs the extension into the user
   GNOME Shell extension directory.

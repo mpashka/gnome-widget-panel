@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a problem with GNOME Widget Panel
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in the sections
+        below. The "System information" field is prefilled automatically when
+        you open this form from the extension's About page.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem.
+      placeholder: The panel disappeared when I maximized a window.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the problem?
+      placeholder: |
+        1. Enable the ai-agent-usage widget
+        2. Drag the panel to the top edge
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: false
+  - type: textarea
+    id: system
+    attributes:
+      label: System information
+      description: >-
+        Extension / GNOME Shell / OS / kernel / session details. This is
+        prefilled when you open the form from the extension's About page.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: >-
+        If applicable, add screenshots to help explain the problem. Drag and
+        drop image files into this area to attach them (URLs cannot pre-attach
+        images).
+    validations:
+      required: false
