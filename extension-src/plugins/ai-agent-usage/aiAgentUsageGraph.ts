@@ -318,7 +318,12 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     this._claudePort,
                     Soup.ServerListenOptions.IPV4_ONLY
                 );
-                ClaudeHook.installHook(this._claudePort, this._claudeSecret);
+                // Install the port-independent hook and register this endpoint
+                // so Claude's status line fans out to it (alongside any other
+                // running panel instances on their own ports).
+                ClaudeHook.installHook();
+                ClaudeHook.registerPort(this._claudePort, this._claudeSecret);
+                this._claudeRegistered = true;
             } catch (error) {
                 console.error(`GNOME Widget Panel Claude hook failed: ${error}`);
                 this._stopClaudeHttpHook();
@@ -358,6 +363,14 @@ export const AiAgentUsageGraph = GObject.registerClass(
 
 
         _stopClaudeHttpHook() {
+            if (this._claudeRegistered) {
+                try {
+                    ClaudeHook.deregisterPort(this._claudePort);
+                } catch (error) {
+                    console.error(`GNOME Widget Panel Claude deregister failed: ${error}`);
+                }
+                this._claudeRegistered = false;
+            }
             if (this._server) {
                 this._server.disconnect();
                 this._server = null;

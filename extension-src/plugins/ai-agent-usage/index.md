@@ -92,12 +92,21 @@ newline is trimmed so an empty `{requests}` does not leave a blank line. The
 settings page shows a live preview of the rendered template. `template` is stored
 in the widget `options` (default as above).
 
-Claude uses a generated statusLine command hook that forwards stdin JSON to the
-widget's localhost HTTP server. The hook secret is normally per-session, but the
-preferences **Configure** button persists a secret (and port) into the widget
-options so the hook and the server agree after a reload; the widget prefers
-`options.claudeSecret` when present. Codex uses stdout JSON Lines from the helper.
-No cache file or persistence is part of the active architecture.
+Claude uses a generated statusLine command hook
+(`~/.claude/gnome-widget-panel-claude-hook.js`, written by
+[`claudeHook.ts`](claudeHook.ts)) that forwards stdin JSON to the widget's
+localhost HTTP server. The hook is **port-independent**: it reads a shared
+endpoint registry `~/.claude/gnome-widget-panel-ports.json` and fans the request
+out to every registered `{port, secret}`, printing the first OK status line. Each
+running widget registers its own `{claudePort, claudeSecret}` when it starts its
+server and deregisters on `destroy()` (deduped by port). This lets several panel
+instances on different `claudePort`s (e.g. a main session and a dev session) each
+receive Claude data without overwriting one another's hook — same localhost port
+on two instances still conflicts, different ports do not. The **Configure**
+button persists a secret into the widget options and registers the endpoint so
+the widget prefers `options.claudeSecret` after a reload. Codex uses stdout JSON
+Lines from the helper. No cache file or persistence is part of the active
+architecture.
 
 ## Related docs
 
