@@ -79,6 +79,12 @@ export const CpuGraph = GObject.registerClass(
 
             // Configurable geometry, temperature bands and tooltip.
             this._width = width;
+            // Base (unrotated) size; the actor size is swapped when the panel is
+            // vertical (see setPanelLayout / the rotated branch in _draw).
+            this._baseWidth = width;
+            this._baseHeight = HEIGHT;
+            this._rotated = false;
+            this._rotateDir = 'right';
             this._bands = normalizeBands(options.bands);
             this._updateInterval = Math.max(
                 1,
@@ -293,12 +299,33 @@ export const CpuGraph = GObject.registerClass(
             this._tooltip.set_position(x, y);
         }
 
+        // Rotate the vertical panel: when rotated the actor/surface is swapped
+        // (see setPanelLayout); draw in the base (unrotated) coordinate space and
+        // let the transform map it into the tall/narrow surface. Verified so the
+        // time axis runs top->bottom (right) or bottom->top (left).
+        _applyRotation(context, sw, sh) {
+            if (!this._rotated)
+                return;
+            if (this._rotateDir === 'left') {
+                context.translate(0, sh);
+                context.rotate(-Math.PI / 2);
+            } else {
+                context.translate(sw, 0);
+                context.rotate(Math.PI / 2);
+            }
+        }
+
         _draw() {
             const context = this.get_context();
-            const [width, height] = this.get_surface_size();
+            const [sw, sh] = this.get_surface_size();
+            const width = this._rotated ? this._baseWidth : sw;
+            const height = this._rotated ? this._baseHeight : sh;
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
             const fg = [color.red / 255, color.green / 255, color.blue / 255];
+
+            context.save();
+            this._applyRotation(context, sw, sh);
 
             // One column per sample, coloured by the temperature band that
             // sample was recorded in (not the current temperature).
@@ -317,7 +344,26 @@ export const CpuGraph = GObject.registerClass(
                 context.rectangle(x, height - barHeight, 1, barHeight);
                 context.fill();
             }
+            context.restore();
             context.$dispose();
+        }
+
+        // Called by the panel host when its orientation/rotation changes. When
+        // vertical the graph rotates 90° and swaps its actor size so the layout
+        // reserves a tall/narrow slot.
+        setPanelLayout(info) {
+            const vertical = !!(info && info.vertical);
+            this._rotated = vertical;
+            this._rotateDir =
+                info && info.rotation === 'left' ? 'left' : 'right';
+            if (vertical) {
+                this.width = this._baseHeight;
+                this.height = this._baseWidth;
+            } else {
+                this.width = this._baseWidth;
+                this.height = this._baseHeight;
+            }
+            this.queue_repaint();
         }
 
         destroy() {

@@ -249,6 +249,33 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             Gio.SettingsBindFlags.DEFAULT
         );
         orientationGroup.add(verticalRow);
+
+        // Direction the graph widgets rotate when the panel is vertical.
+        const rotationModel = new Gtk.StringList();
+        rotationModel.append('Left (time bottom→top)');
+        rotationModel.append('Right (time top→bottom)');
+        const rotationRow = new Adw.ComboRow({
+            title: 'Vertical graph rotation',
+            subtitle: 'Which way graphs rotate when the panel is vertical.',
+            model: rotationModel,
+            selected: settings.get_int('vertical-rotation') === 0 ? 0 : 1,
+        });
+        rotationRow.connect('notify::selected', () => {
+            const value = rotationRow.selected === 0 ? 0 : 1;
+            if (settings.get_int('vertical-rotation') !== value)
+                settings.set_int('vertical-rotation', value);
+        });
+        const rotationChangedId = settings.connect(
+            'changed::vertical-rotation',
+            () => {
+                rotationRow.selected =
+                    settings.get_int('vertical-rotation') === 0 ? 0 : 1;
+            }
+        );
+        rotationRow.connect('destroy', () =>
+            settings.disconnect(rotationChangedId)
+        );
+        orientationGroup.add(rotationRow);
     }
 
     _persist(state, rebuild) {

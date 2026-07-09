@@ -54,6 +54,14 @@ The widget reads per-widget `options` from `widgets.json`:
   literal text is Pango-escaped and `\n` is a line break. Edited with a live
   preview in the settings page.
 
+## Vertical panel rotation
+
+The graph implements `setPanelLayout({vertical, rotation})`, called by the panel
+host. When the panel is vertical it swaps its actor size (tall/narrow) and rotates
+the Cairo drawing 90° so the time axis runs along the strip; `rotation` (`left` /
+`right`, from the panel `vertical-rotation` setting) picks the direction. See
+[preferences](../../../docs/preferences.md).
+
 ## Data and lifecycle
 
 Sampling runs on a GLib timer and must be stopped in `destroy()`. No persistent

@@ -77,6 +77,13 @@ to the running panel — no reload needed.
   `settings.bind('vertical', row, 'active', Gio.SettingsBindFlags.DEFAULT)`. The
   panel listens on `changed::vertical` and re-applies its layout/pseudo-classes
   (`FloatingMiniPanel._setOrientation`) then relocates.
+- **Vertical graph rotation** — an `Adw.ComboRow` writing the `vertical-rotation`
+  int (0 = left/CCW, time bottom→top; 1 = right/CW, time top→bottom). When the
+  panel is vertical the graph widgets rotate 90° so their time axis runs along
+  the strip. The panel pushes `{vertical, rotation}` to every plugin that
+  implements `setPanelLayout(...)` (the cpu and ai graphs) on startup and on
+  `changed::vertical` / `changed::vertical-rotation`; those widgets swap their
+  actor size and rotate the Cairo drawing.
 
 Gestures on the panel handle stay the primary interaction and keep working
 exactly as before (left = app grid, middle = drawer toggle, right = menu;

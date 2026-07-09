@@ -44,6 +44,14 @@ and Gemini CLI.
   still emitted and tokens default to zero (lower confidence). No rate-limit data
   is available on disk, so Gemini reports no `limits`.
 
+## Vertical panel rotation
+
+The graph implements `setPanelLayout({vertical, rotation})`, called by the panel
+host. When the panel is vertical it swaps its actor size and rotates the drawing
+90° (direction from the panel `vertical-rotation` setting) so the token history,
+request markers and indicator bars run along the vertical strip. See
+[preferences](../../../docs/preferences.md).
+
 ## Data model
 
 Provider histories are kept separately in memory. Every graph column is coloured

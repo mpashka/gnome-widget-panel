@@ -223,13 +223,21 @@ export const AiAgentUsageGraph = GObject.registerClass(
             if (!Number.isFinite(width) || width < MIN_WIDTH)
                 width = Number.isFinite(width) ? MIN_WIDTH : WIDTH;
             width = Math.max(MIN_WIDTH, width);
+            const height = Number(options.height ?? HEIGHT);
             super({
                 style_class: 'ai-agent-usage-graph',
                 width,
-                height: Number(options.height ?? HEIGHT),
+                height,
                 reactive: true,
                 track_hover: true,
             });
+
+            // Base (unrotated) size; swapped when the panel is vertical (see
+            // setPanelLayout / the rotated branch in _draw).
+            this._baseWidth = width;
+            this._baseHeight = height;
+            this._rotated = false;
+            this._rotateDir = 'right';
 
             // Sampling period (seconds) drives both the sampling timer and the
             // visible time-window math (request window, token-event freshness and
@@ -738,11 +746,47 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._tooltip.set_position(x, y);
         }
 
+        // Rotate for a vertical panel: when rotated the actor/surface is swapped
+        // (see setPanelLayout); draw in the base coordinate space and let the
+        // transform map it into the tall/narrow surface.
+        _applyRotation(context, sw, sh) {
+            if (!this._rotated)
+                return;
+            if (this._rotateDir === 'left') {
+                context.translate(0, sh);
+                context.rotate(-Math.PI / 2);
+            } else {
+                context.translate(sw, 0);
+                context.rotate(Math.PI / 2);
+            }
+        }
+
+        // Called by the panel host on orientation/rotation changes.
+        setPanelLayout(info) {
+            const vertical = !!(info && info.vertical);
+            this._rotated = vertical;
+            this._rotateDir =
+                info && info.rotation === 'left' ? 'left' : 'right';
+            if (vertical) {
+                this.width = this._baseHeight;
+                this.height = this._baseWidth;
+            } else {
+                this.width = this._baseWidth;
+                this.height = this._baseHeight;
+            }
+            this.queue_repaint();
+        }
+
         _draw() {
             const context = this.get_context();
-            const [width, height] = this.get_surface_size();
+            const [sw, sh] = this.get_surface_size();
+            const width = this._rotated ? this._baseWidth : sw;
+            const height = this._rotated ? this._baseHeight : sh;
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
+
+            context.save();
+            this._applyRotation(context, sw, sh);
 
             context.setLineWidth(1);
             const foreground = [color.red / 255, color.green / 255, color.blue / 255];
@@ -797,6 +841,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 x += 5;
             }
 
+            context.restore();
             context.$dispose();
         }
 

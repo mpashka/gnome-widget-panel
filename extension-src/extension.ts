@@ -114,6 +114,14 @@ const FloatingMiniPanel = GObject.registerClass(
                 'changed::vertical',
                 () => {
                     this._setOrientation(this._sets.get_boolean('vertical'));
+                    this._applyPanelLayoutToPlugins();
+                    this._relocate(false);
+                }
+            );
+            this._verticalRotationChangedId = this._sets.connect(
+                'changed::vertical-rotation',
+                () => {
+                    this._applyPanelLayoutToPlugins();
                     this._relocate(false);
                 }
             );
@@ -136,6 +144,10 @@ const FloatingMiniPanel = GObject.registerClass(
             this._indsDrawer =
                 this._plugins.find(p => p.id === 'app-notifications')?.actor ??
                 null;
+
+            // Tell layout-aware widgets (the graphs) the panel orientation and
+            // rotation direction so they can rotate when the panel is vertical.
+            this._applyPanelLayoutToPlugins();
 
             // Live-reload widgets when widgets.json changes ------------------
             // Editing the config (directly or via the settings UI) must apply
@@ -673,6 +685,7 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._indsDrawer =
                     this._plugins.find(p => p.id === 'app-notifications')
                         ?.actor ?? null;
+                this._applyPanelLayoutToPlugins();
 
                 // Widget set changed, so the panel size likely changed; keep the
                 // saved alignment applied. Guarded so it can never throw here.
@@ -724,6 +737,27 @@ const FloatingMiniPanel = GObject.registerClass(
                 this.add_style_pseudo_class('horizontal');
             }
             this.queue_relayout();
+        }
+
+        // Push the panel orientation + rotation direction to any plugin that
+        // opts in via `setPanelLayout({vertical, rotation})` (the graph widgets
+        // rotate when vertical). Duck-typed and guarded so a plugin without the
+        // hook, or one that throws, cannot break the panel.
+        _applyPanelLayoutToPlugins() {
+            if (!this._plugins)
+                return;
+            const vertical = this._sets.get_boolean('vertical');
+            const rotation =
+                this._sets.get_int('vertical-rotation') === 0 ? 'left' : 'right';
+            for (const {actor} of this._plugins) {
+                if (typeof actor?.setPanelLayout !== 'function')
+                    continue;
+                try {
+                    actor.setPanelLayout({vertical, rotation});
+                } catch (e) {
+                    logError(e, 'FloatingMiniPanel: setPanelLayout failed');
+                }
+            }
         }
         // END CODE VERTICAL
 
@@ -923,6 +957,10 @@ const FloatingMiniPanel = GObject.registerClass(
             if (this._verticalChangedId) {
                 this._sets.disconnect(this._verticalChangedId);
                 this._verticalChangedId = null;
+            }
+            if (this._verticalRotationChangedId) {
+                this._sets.disconnect(this._verticalRotationChangedId);
+                this._verticalRotationChangedId = null;
             }
 
             PANELBOX.disconnect(this._pvConId);
