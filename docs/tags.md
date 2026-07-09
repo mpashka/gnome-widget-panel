@@ -35,6 +35,8 @@ grep -rn "@tag:<slug>" extension-src docs
 | `widget-gnome-menu` | The `gnome-menu` built-in widget (opens the application grid). |
 | `widget-activities` | The `activities` built-in widget (toggles the Activities overview). |
 | `widget-favorites` | The `favorites` built-in widget (Places menu). |
+| `widget-printscreen` | The `printscreen` built-in widget (opens the interactive screenshot UI). |
+| `widget-launch` | The `launch` built-in widget (multi-instance command launcher). |
 | `dev` | Developer reload-without-logout workflow: symlink install and nested-shell runner (`dev-install.sh`, `dev-run.sh`, `docs/development.md`). |
 
 Per-widget tags live on that widget's `index.ts` (code) and `index.md` (docs)

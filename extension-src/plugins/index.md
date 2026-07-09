@@ -11,7 +11,8 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   `hasPreferences`, lazy preferences loader) used by the preferences UI; see
   [`../../docs/preferences.md`](../../docs/preferences.md).
 - `panelButtonContent.ts` — shared helper that builds the icon/label child for
-  the clickable panel-button widgets (`gnome-menu`, `activities`, `favorites`).
+  the clickable panel-button widgets (`gnome-menu`, `activities`, `favorites`,
+  `printscreen`, `launch`).
 - `iconPicker.ts` — shared preferences helper (`@tag:ui`) that builds a
   searchable icon-chooser row for those same button widgets: it shows the actual
   selected icon and opens a search dialog over the display icon theme.
@@ -33,9 +34,13 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
 - [`gnome-menu`](gnome-menu/index.md) — button that opens the GNOME application
   grid.
 - [`activities`](activities/index.md) — button that toggles the GNOME Activities
-  overview.
+  overview (multi-instance).
 - [`favorites`](favorites/index.md) — button with a Places menu (Home, XDG user
   directories and GTK bookmarks).
+- [`printscreen`](printscreen/index.md) — button that opens the GNOME
+  interactive screenshot UI (disabled by default).
+- [`launch`](launch/index.md) — button that launches a configured command
+  (multi-instance; not in the default config).
 
 Further per-widget settings work is tracked in
 [`../../TODO.md`](../../TODO.md).

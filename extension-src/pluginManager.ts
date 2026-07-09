@@ -10,6 +10,8 @@ import * as CpuLoadMonitor from './plugins/cpu-load-monitor/index.js';
 import * as Favorites from './plugins/favorites/index.js';
 import * as GnomeMenu from './plugins/gnome-menu/index.js';
 import * as KeyboardLayout from './plugins/keyboard-layout/index.js';
+import * as Launch from './plugins/launch/index.js';
+import * as PrintScreen from './plugins/printscreen/index.js';
 import * as UbuntuSystemStatus from './plugins/ubuntu-system-status/index.js';
 
 const REGISTRY = new Map([
@@ -22,12 +24,17 @@ const REGISTRY = new Map([
     ['gnome-menu', GnomeMenu],
     ['activities', Activities],
     ['favorites', Favorites],
+    ['printscreen', PrintScreen],
+    ['launch', Launch],
 ]);
 
+// Build the enabled plugin actors in config order. Returns an ARRAY of
+// `{id, actor}` rather than a Map keyed by id, so the same widget id may appear
+// more than once (multi-instance widgets). Unknown enabled ids still throw.
 export function createConfiguredPlugins(parent, extensionPath) {
     const config = loadWidgetConfig(extensionPath);
 
-    const instances = new Map();
+    const instances = [];
     for (const item of config.plugins) {
         if (!item.enabled)
             continue;
@@ -36,7 +43,7 @@ export function createConfiguredPlugins(parent, extensionPath) {
             throw new Error(`Unknown panel plugin: ${item.id}`);
         const actor = plugin.create(parent, item.options ?? {});
         actor._panelPluginId = item.id;
-        instances.set(item.id, actor);
+        instances.push({id: item.id, actor});
     }
     return instances;
 }

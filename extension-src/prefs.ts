@@ -371,9 +371,13 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     // already-added widget can never appear. Activating a row appends the widget
     // (persisting + rebuilding the main list) and pops back to it.
     _openAddWidgetSubpage(window, state, rebuild) {
+        // A descriptor stays available (addable) if it is not already in the
+        // config, OR if it is a multi-instance widget (which may appear any
+        // number of times, so it never leaves the "Add a widget" list).
         const present = new Set(state.config.plugins.map((item) => item.id));
         const available = PLUGIN_DESCRIPTORS.filter(
-            (descriptor) => !present.has(descriptor.id)
+            (descriptor) =>
+                !present.has(descriptor.id) || descriptor.multiInstance
         );
 
         const content = new Adw.PreferencesPage();

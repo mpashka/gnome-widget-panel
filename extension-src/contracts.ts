@@ -75,6 +75,13 @@ export interface PluginDescriptor {
     description: string;
     /** Whether this widget exposes its own settings UI. */
     hasPreferences: boolean;
+    /**
+     * When true, the widget may appear more than once in the panel, each
+     * instance with its own `options`. Such a widget stays available in the
+     * "Add a widget" list even after it has already been added. Defaults to
+     * false (single-instance).
+     */
+    multiInstance?: boolean;
     /** Lazily import the widget's preferences module (Adw/Gtk). */
     loadPreferences?: () => Promise<PluginPreferencesModule>;
 }

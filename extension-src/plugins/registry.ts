@@ -64,6 +64,7 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
         label: 'Activities',
         description: 'Button that toggles the GNOME Activities overview.',
         hasPreferences: true,
+        multiInstance: true,
         loadPreferences: () =>
             import('./activities/prefs.js') as Promise<PluginPreferencesModule>,
     },
@@ -76,6 +77,23 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
         hasPreferences: true,
         loadPreferences: () =>
             import('./favorites/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
+        id: 'printscreen',
+        label: 'Screenshot',
+        description: 'Button that opens the GNOME interactive screenshot UI.',
+        hasPreferences: true,
+        loadPreferences: () =>
+            import('./printscreen/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
+        id: 'launch',
+        label: 'Launch',
+        description: 'Launch an application/command.',
+        hasPreferences: true,
+        multiInstance: true,
+        loadPreferences: () =>
+            import('./launch/prefs.js') as Promise<PluginPreferencesModule>,
     },
 ];
 

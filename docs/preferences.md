@@ -36,9 +36,12 @@ and orientation groups on the same page edit the panel `GSettings`. Actions:
   open an in-window **"Add a widget"** subpage (an `Adw.NavigationPage` with an
   `Adw.ToolbarView` + `Adw.HeaderBar` and an `Adw.PreferencesPage` of activatable
   rows) listing only the widgets not already added. The list is rebuilt from the
-  current config every time it opens, so an added widget never reappears; when
-  nothing is left it shows an "All widgets added" empty row. Activating a row
-  appends the widget, saves, and `window.pop_subpage()` back to the list.
+  current config every time it opens, so an added widget never reappears —
+  unless it is a **multi-instance** widget (`descriptor.multiInstance`, e.g.
+  `launch`, `activities`), which stays in the list so it can be added several
+  times, each instance with its own `options`. When nothing addable is left it
+  shows an "All widgets added" empty row. Activating a row appends the widget,
+  saves, and `window.pop_subpage()` back to the list.
 - **Configure** a widget: rows whose widget declares `hasPreferences: true` show
   a settings button that opens that widget's own settings as an **in-window
   subpage** (not a dialog) — see below.

@@ -9,6 +9,7 @@
     {"id": "cpu-load-monitor", "enabled": true},
     {"id": "ai-agent-usage", "enabled": true},
     {"id": "clock", "enabled": true},
-    {"id": "ubuntu-system-status", "enabled": true}
+    {"id": "ubuntu-system-status", "enabled": true},
+    {"id": "printscreen", "enabled": false}
   ]
 }

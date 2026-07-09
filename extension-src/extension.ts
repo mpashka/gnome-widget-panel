@@ -125,13 +125,17 @@ const FloatingMiniPanel = GObject.registerClass(
             this.add_child(this._ctlBtn);
 
             // Configured plugins ----------------------------------------------
+            // `createConfiguredPlugins` returns an ARRAY of {id, actor} in
+            // config order so a widget id may appear multiple times.
             this._plugins = PluginManager.createConfiguredPlugins(
                 this,
                 extensionPath
             );
-            for (const actor of this._plugins.values())
+            for (const {actor} of this._plugins)
                 this.add_child(actor);
-            this._indsDrawer = this._plugins.get('app-notifications');
+            this._indsDrawer =
+                this._plugins.find(p => p.id === 'app-notifications')?.actor ??
+                null;
 
             // Live-reload widgets when widgets.json changes ------------------
             // Editing the config (directly or via the settings UI) must apply
@@ -642,7 +646,7 @@ const FloatingMiniPanel = GObject.registerClass(
         // half-written config does not tear down the working panel. Only on
         // success are the old actors destroyed and replaced. The control button
         // and every non-plugin child stay in place: they were added first and
-        // are untouched here, so re-adding the new plugin actors in Map
+        // are untouched here, so re-adding the new plugin actors in array
         // (config) order preserves "control button, then plugins in order".
         // Never throws out of the timeout callback.
         _reloadPlugins() {
@@ -661,12 +665,14 @@ const FloatingMiniPanel = GObject.registerClass(
             }
 
             try {
-                for (const actor of this._plugins.values())
+                for (const {actor} of this._plugins)
                     actor.destroy();
                 this._plugins = next;
-                for (const actor of this._plugins.values())
+                for (const {actor} of this._plugins)
                     this.add_child(actor);
-                this._indsDrawer = this._plugins.get('app-notifications');
+                this._indsDrawer =
+                    this._plugins.find(p => p.id === 'app-notifications')
+                        ?.actor ?? null;
 
                 // Widget set changed, so the panel size likely changed; keep the
                 // saved alignment applied. Guarded so it can never throw here.
@@ -878,9 +884,9 @@ const FloatingMiniPanel = GObject.registerClass(
             this._hideFloatingMiniPanel();
 
             this._ctlBtn.destroy();
-            for (const actor of [...this._plugins.values()].reverse())
+            for (const {actor} of [...this._plugins].reverse())
                 actor.destroy();
-            this._plugins.clear();
+            this._plugins = [];
 
             // Release the config watcher and any pending debounced reload.
             if (this._reloadTimeoutId) {
