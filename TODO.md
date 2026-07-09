@@ -29,8 +29,29 @@ list current when implementing or discovering stable contracts.
 When code touches an item above, its types and runtime validation are part of
 that change, not a separate cleanup task.
 
+## Versioning
+
+Two version fields live in `extension-src/metadata.json`:
+
+- `version` — an **integer**, the extensions.gnome.org (EGO) version *code*. It
+  must stay an integer and increments by one on every EGO upload. It is `1`
+  before the first publication.
+- `version-name` — a human-readable semver **string** (currently `"0.1.0"`).
+
+Release policy:
+
+- **alpha `0.x.y`** now (pre-publication / early testing).
+- becomes **beta** once published on extensions.gnome.org.
+- becomes **`1.0.0`** once it is known to work across a reasonably wide range of
+  operating systems with no big problems.
+
+The About page prefers `version-name` over the integer `version`
+(`this.metadata['version-name'] ?? this.metadata.version`), so it shows `0.1.0`.
+
 ## Panel roadmap
 
+- See [Versioning](#versioning) for the alpha→beta→1.0.0 release policy and the
+  integer EGO `version` vs. human-readable `version-name` split.
 - [ ] Support installing versioned plugins from external repositories.
 - [ ] Add a repository catalog with provenance, compatibility and permission
   data.

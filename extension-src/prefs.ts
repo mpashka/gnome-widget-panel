@@ -11,7 +11,6 @@
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
-import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
@@ -96,7 +95,10 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     // building them is delegated to the shared `systemInfo` helper, which runs in
     // this preferences process too.
     _addAboutGroup(page) {
-        const version = this.metadata?.version ?? 'unknown';
+        const version =
+            this.metadata?.['version-name'] ??
+            this.metadata?.version ??
+            'unknown';
         const name = this.metadata?.name ?? 'GNOME Widget Panel';
 
         const aboutGroup = new Adw.PreferencesGroup({
@@ -184,13 +186,15 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     _addPanelGroups(page) {
         const settings = this.getSettings();
 
-        const positionGroup = new Adw.PreferencesGroup({
-            title: 'Auto position',
+        // One "Panel layout" group holds both the snap position and the
+        // orientation. Applied immediately to the running panel.
+        const layoutGroup = new Adw.PreferencesGroup({
+            title: 'Panel layout',
             description:
-                'Snap the floating panel to a fixed screen position. ' +
+                'Where the floating panel snaps to and how it is laid out. ' +
                 'Applies immediately to the running panel.',
         });
-        page.add(positionGroup);
+        page.add(layoutGroup);
 
         const model = new Gtk.StringList();
         for (const preset of ALIGN_PRESETS)
@@ -231,51 +235,65 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         alignedRow.connect('destroy', () =>
             settings.disconnect(alignedChangedId)
         );
-        positionGroup.add(alignedRow);
+        layoutGroup.add(alignedRow);
 
-        const orientationGroup = new Adw.PreferencesGroup({
+        // A single orientation row replaces the old separate `vertical` switch
+        // and `vertical-rotation` combo. Its three values map onto the two
+        // underlying GSettings keys:
+        //   0 Horizontal → vertical=false
+        //   1 Left       → vertical=true,  vertical-rotation=0
+        //   2 Right      → vertical=true,  vertical-rotation=1
+        // "Left"/"Right" describe which way graphs rotate (their time axis) when
+        // the panel is a vertical strip.
+        const orientationModel = new Gtk.StringList();
+        orientationModel.append('Horizontal');
+        orientationModel.append('Vertical — rotate left');
+        orientationModel.append('Vertical — rotate right');
+        const orientationRow = new Adw.ComboRow({
             title: 'Orientation',
+            subtitle:
+                'Horizontal strip, or a vertical strip with graphs rotated ' +
+                'left (time bottom→top) or right (time top→bottom).',
+            model: orientationModel,
         });
-        page.add(orientationGroup);
 
-        const verticalRow = new Adw.SwitchRow({
-            title: 'Vertical orientation',
-            subtitle: 'Lay the panel out as a vertical strip.',
+        const orientationSelected = () => {
+            if (!settings.get_boolean('vertical'))
+                return 0;
+            return settings.get_int('vertical-rotation') === 1 ? 2 : 1;
+        };
+        const syncOrientation = () => {
+            orientationRow.selected = orientationSelected();
+        };
+        syncOrientation();
+
+        orientationRow.connect('notify::selected', () => {
+            const index = orientationRow.selected;
+            if (index < 0 || index > 2)
+                return;
+            const vertical = index !== 0;
+            const rotation = index === 2 ? 1 : 0;
+            if (settings.get_boolean('vertical') !== vertical)
+                settings.set_boolean('vertical', vertical);
+            // Only meaningful when vertical; keep it stored so the panel and the
+            // row agree when switching back to a vertical mode.
+            if (vertical && settings.get_int('vertical-rotation') !== rotation)
+                settings.set_int('vertical-rotation', rotation);
         });
-        settings.bind(
-            'vertical',
-            verticalRow,
-            'active',
-            Gio.SettingsBindFlags.DEFAULT
+        // Reflect external changes to either key back into the single row.
+        const verticalChangedId = settings.connect(
+            'changed::vertical',
+            syncOrientation
         );
-        orientationGroup.add(verticalRow);
-
-        // Direction the graph widgets rotate when the panel is vertical.
-        const rotationModel = new Gtk.StringList();
-        rotationModel.append('Left (time bottom→top)');
-        rotationModel.append('Right (time top→bottom)');
-        const rotationRow = new Adw.ComboRow({
-            title: 'Vertical graph rotation',
-            subtitle: 'Which way graphs rotate when the panel is vertical.',
-            model: rotationModel,
-            selected: settings.get_int('vertical-rotation') === 0 ? 0 : 1,
-        });
-        rotationRow.connect('notify::selected', () => {
-            const value = rotationRow.selected === 0 ? 0 : 1;
-            if (settings.get_int('vertical-rotation') !== value)
-                settings.set_int('vertical-rotation', value);
-        });
         const rotationChangedId = settings.connect(
             'changed::vertical-rotation',
-            () => {
-                rotationRow.selected =
-                    settings.get_int('vertical-rotation') === 0 ? 0 : 1;
-            }
+            syncOrientation
         );
-        rotationRow.connect('destroy', () =>
-            settings.disconnect(rotationChangedId)
-        );
-        orientationGroup.add(rotationRow);
+        orientationRow.connect('destroy', () => {
+            settings.disconnect(verticalChangedId);
+            settings.disconnect(rotationChangedId);
+        });
+        layoutGroup.add(orientationRow);
     }
 
     _persist(state, rebuild) {

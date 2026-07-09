@@ -58,13 +58,14 @@ live-reload note in [`object-model.md`](object-model.md).
 
 ## Panel settings
 
-Two groups on the same page expose panel-level settings that used to live in the
-control-button context menu (which now only keeps **Settings…**; all other panel
-control is via mouse gestures on the panel handle). They edit the panel
-`GSettings` (`this.getSettings()`), not `widgets.json`, and are applied **live**
-to the running panel — no reload needed.
+A single **Panel layout** `Adw.PreferencesGroup` on the same page exposes the
+panel-level settings that used to live in the control-button context menu (which
+now keeps **Settings…**, **About** and **Report a bug**; all other panel control
+is via mouse gestures on the panel handle). It edits the panel `GSettings`
+(`this.getSettings()`), not `widgets.json`, and is applied **live** to the
+running panel — no reload needed. It has exactly two rows:
 
-- **Auto position** — an `Adw.ComboRow` whose first entry is
+- **Position** — an `Adw.ComboRow` whose first entry is
   **Floating (keep position)** (`aligned = 0`), followed by the six snap presets
   the old menu offered (Top/Bottom × Start/Center/End). Selecting one writes the
   `aligned` int bitfield (`NONE 0, TOP 1, BOTTOM 2, LEFT 4, RIGHT 8, CENTER 16`).
@@ -73,17 +74,26 @@ to the running panel — no reload needed.
   snapping. `syncSelected` maps `aligned === 0` to the Floating row, so it shows
   as selected. Any other custom value that matches no preset leaves the combo
   unselected until a preset is picked again.
-- **Orientation** — an `Adw.SwitchRow` bound to the `vertical` bool via
-  `settings.bind('vertical', row, 'active', Gio.SettingsBindFlags.DEFAULT)`. The
-  panel listens on `changed::vertical` and re-applies its layout/pseudo-classes
-  (`FloatingMiniPanel._setOrientation`) then relocates.
-- **Vertical graph rotation** — an `Adw.ComboRow` writing the `vertical-rotation`
-  int (0 = left/CCW, time bottom→top; 1 = right/CW, time top→bottom). When the
-  panel is vertical the graph widgets rotate 90° so their time axis runs along
-  the strip. The panel pushes `{vertical, rotation}` to every plugin that
-  implements `setPanelLayout(...)` (the cpu and ai graphs) on startup and on
+- **Orientation** — a single `Adw.ComboRow` with **three** values that together
+  drive the **two** underlying GSettings keys `vertical` (bool) and
+  `vertical-rotation` (int, 0 = left/CCW time bottom→top, 1 = right/CW time
+  top→bottom):
+    - **Horizontal** → `vertical = false`.
+    - **Vertical — rotate left** → `vertical = true`, `vertical-rotation = 0`.
+    - **Vertical — rotate right** → `vertical = true`, `vertical-rotation = 1`.
+
+  On `notify::selected` it writes `vertical` always and `vertical-rotation` only
+  when vertical (so the stored rotation survives a round-trip through Horizontal).
+  It connects `changed::vertical` and `changed::vertical-rotation` to recompute
+  the row's `selected`, so external changes reflect, and disconnects both on row
+  destroy. The panel listens on `changed::vertical` (re-applies its
+  layout/pseudo-classes via `FloatingMiniPanel._setOrientation`, then relocates)
+  and, when vertical, rotates graph widgets 90° so their time axis runs along the
+  strip: it pushes `{vertical, rotation}` to every plugin that implements
+  `setPanelLayout(...)` (the cpu and ai graphs) on startup and on
   `changed::vertical` / `changed::vertical-rotation`; those widgets swap their
-  actor size and rotate the Cairo drawing.
+  actor size and rotate the Cairo drawing. (This single row replaces the former
+  separate `vertical` switch and `vertical-rotation` combo.)
 
 Gestures on the panel handle stay the primary interaction and keep working
 exactly as before (left = app grid, middle = drawer toggle, right = menu;
@@ -98,11 +108,15 @@ item: `openAbout()` on the `Extension` simply calls `openPreferences()` (jumping
 straight to an About subpage from the Shell process is not reliably supported),
 so the About group is always reachable there. Rows:
 
-- **Name + version** (`this.metadata.name` / `this.metadata.version`) with an
-  external-link button opening `systemInfo.repoUrl` (the GitHub repository).
+- **Name + version** (`this.metadata.name` / the human-readable
+  `this.metadata['version-name'] ?? this.metadata.version`, so it shows `0.1.0`
+  rather than the integer EGO version code — see [Versioning](../TODO.md#versioning))
+  with an external-link button opening `systemInfo.repoUrl` (the GitHub repository).
 - **Report a bug** → `systemInfo.openUrl(systemInfo.bugReportUrl())` — opens the
   `bug_report.yml` issue form prefilled with `collectSystemInfo()` in the
-  form's `system` field.
+  form's `system` field. The control-button context menu also has a **Report a
+  bug** item that calls the same `systemInfo.openUrl(systemInfo.bugReportUrl())`
+  directly from the Shell process (`controlButton.ts`).
 - **Suggest a feature** → `featureRequestUrl()` (`feature_request.yml`).
 - **Roadmap** → `systemInfo.roadmapUrl`
   (`…/issues?q=is%3Aissue+label%3Aroadmap`); voting is via GitHub reactions.

@@ -31,6 +31,8 @@ import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import * as SystemInfo from './systemInfo.js';
+
 const DISPLAY = global.display;
 
 const shellVersion = parseFloat(Config.PACKAGE_VERSION);
@@ -340,6 +342,16 @@ export const ControlButton = GObject.registerClass(
             this.menu.addMenuItem(
                 new MenuItem('About', '', () => {
                     this._parent.openAbout();
+                })
+            );
+
+            // Opens a prefilled GitHub bug-report issue form in the browser.
+            // controlButton runs in the Shell process; systemInfo is process-safe
+            // (guards its Shell-only reads), so call it directly to keep the panel
+            // and menu decoupled.
+            this.menu.addMenuItem(
+                new MenuItem('Report a bug', '', () => {
+                    SystemInfo.openUrl(SystemInfo.bugReportUrl());
                 })
             );
 
