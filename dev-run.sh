@@ -11,31 +11,30 @@
 # development kit: `gnome-shell --devkit` runs a fully interactive nested shell
 # in a window (needs the `mutter-dev-bin` package).
 #
-# Isolation: the dev shell uses its own dconf profile, so the extension is
-# enabled only here while `widgets.json` stays shared. The extension is also
-# disabled in your main session first (it is a per-user setting and the widget
-# binds a localhost port), so the two shells never fight over it.
+# Isolation: the dev shell is fully separate from your main GNOME session:
+#   - it loads extensions from its own dir (XDG_DATA_HOME=<root>/.dev/data), so
+#     the widget is NEVER installed into your main session's extensions dir;
+#   - it reads panel GSettings from its own dconf profile (DCONF_PROFILE=gwpdev).
+# So the main session and this dev shell have completely separate extension sets;
+# nothing you do here touches your main session, and the widget need not be
+# installed there at all.
 #
 # Reload: edit sources, close the devkit window (or Ctrl+C here), rerun.
 # Env knobs: GWP_HEADLESS=1 runs headless + log only (no window);
 # GWP_MONITOR_SPEC sizes the headless virtual monitor (default 1600x900);
 # GWP_LOG overrides the full shell log path.
 #
-# Parallel run (dev shell alongside your main session, both live):
-#   GWP_KEEP_MAIN=1   do NOT disable the extension in your main session.
-#   GWP_CLAUDE_PORT=N run the dev widget on Claude port N via an isolated
-#                     widgets.json (copied from yours), so it does not clash on
-#                     the localhost port with your main session (default 17861).
-#   The Claude hook registry (~/.claude) is shared, so Claude's status line fans
-#   out to BOTH instances. Example:
-#     GWP_KEEP_MAIN=1 GWP_CLAUDE_PORT=17862 ./dev-run.sh
+# Parallel run with a separate main-session install (both live): if you also
+# ./install.sh the widget into your main session, use GWP_CLAUDE_PORT=N to run
+# this dev widget on a different Claude port so they don't clash on the localhost
+# port (the ~/.claude hook registry is shared, so Claude's status line fans out
+# to both). Example:  GWP_CLAUDE_PORT=17862 ./dev-run.sh
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 uuid="gnome-widget-panel@mpashka.github.com"
 spec="${GWP_MONITOR_SPEC:-1600x900}"
 headless="${GWP_HEADLESS:-0}"
-keep_main="${GWP_KEEP_MAIN:-0}"
 claude_port="${GWP_CLAUDE_PORT:-}"
 logfile="${GWP_LOG:-/tmp/gnome-widget-panel-dev.log}"
 runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -45,6 +44,10 @@ devdir="$root/.dev"
 profile="$devdir/dconf-profile"
 statusfile="$devdir/status"
 inner="$devdir/inner.sh"
+# Isolated extensions dir: the dev shell loads extensions from here via
+# XDG_DATA_HOME, so the widget stays entirely out of your main GNOME session's
+# extensions dir. The two sessions have completely separate extension sets.
+datahome="$devdir/data"
 shell_pid=""
 
 cleanup() {
@@ -75,18 +78,12 @@ fi
 "$root/build.sh"
 glib-compile-schemas "$root/extension/schemas"
 
-# --- Main session extension: disable, unless keeping it for a parallel run --
-if [[ "$keep_main" == "1" ]]; then
-    printf 'Keeping %s enabled in your main session (parallel run).\n' "$uuid"
-    if [[ -z "$claude_port" ]] &&
-        gnome-extensions list --enabled 2>/dev/null | grep -qx "$uuid"; then
-        printf 'Note: without GWP_CLAUDE_PORT both instances share the same '
-        printf 'Claude port and will clash on it (handled, non-fatal).\n'
-    fi
-elif gnome-extensions list --enabled 2>/dev/null | grep -qx "$uuid"; then
-    printf 'Disabling %s in your main session to avoid a second instance.\n' "$uuid"
-    gnome-extensions disable "$uuid" 2>/dev/null || true
-fi
+# --- Isolated extensions dir (XDG_DATA_HOME) -------------------------------
+# Symlink the built tree into the dev-only extensions dir so the dev shell loads
+# it without ever installing into your main session's extensions dir. The main
+# session and this dev shell therefore have completely separate extension sets.
+mkdir -p "$datahome/gnome-shell/extensions"
+ln -sfn "$root/extension" "$datahome/gnome-shell/extensions/$uuid"
 
 # --- Dev-only settings (isolated dconf profile) ----------------------------
 mkdir -p "$devdir"
@@ -124,6 +121,8 @@ cat >"$inner" <<INNER
 #!/usr/bin/env bash
 set -u
 ${cfg_export}
+# Isolated extensions dir so the dev shell never touches the main session's.
+export XDG_DATA_HOME="$datahome"
 export DCONF_PROFILE="$profile"
 rm -f "$runtime/gnome-shell-disable-extensions"
 

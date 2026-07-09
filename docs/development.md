@@ -19,10 +19,13 @@ sudo apt install mutter-dev-bin   # provides /usr/libexec/mutter-devkit
 ./dev-install.sh                  # or: npm run dev:install
 ```
 
-`dev-install.sh` builds and symlinks the built tree into
-`~/.local/share/gnome-shell/extensions/<uuid>` instead of copying it. After this,
-every `npm run build` is immediately live on disk; only a shell (re)start loads
-it.
+`dev-install.sh` builds and symlinks the built tree into an **isolated dev
+extensions dir** — `<repo>/.dev/data/gnome-shell/extensions/<uuid>` — **not** your
+main session's `~/.local/share/gnome-shell/extensions/`. The dev shell loads it
+from there via `XDG_DATA_HOME` (see below), so the widget is never installed into
+your main session. After this, every `npm run build` is immediately live on disk;
+only a shell (re)start loads it. (`dev-run.sh` also (re)creates this symlink each
+run, so running `dev-install.sh` first is optional.)
 
 ## Reload loop
 
@@ -33,14 +36,20 @@ it.
 Each run `dev-run.sh`:
 
 1. rebuilds and recompiles the schema;
-2. **disables the extension in your main session** if it is enabled there (it is
-   a per-user setting and the widget binds a localhost port, so two live copies
-   would clash);
+2. symlinks the built tree into the isolated dev extensions dir
+   (`.dev/data/gnome-shell/extensions/<uuid>`);
 3. starts an interactive nested GNOME Shell **in a window** via
-   `gnome-shell --devkit`, using an **isolated dconf profile** where only this
-   extension is enabled — your main session stays untouched;
+   `gnome-shell --devkit`, **fully isolated from your main session**:
+   `XDG_DATA_HOME=<repo>/.dev/data` (its own extensions set — your main
+   session's extensions dir is untouched and need not contain this widget) and
+   `DCONF_PROFILE=gwpdev` (its own panel GSettings);
 4. verifies the extension loaded (prints `ENABLED`);
 5. tails the extension's log until you close the window or press `Ctrl+C`.
+
+Because the dev shell reads panel GSettings from its own dconf profile, edit the
+panel's **Settings from within the dev window** (right-click the panel handle →
+Settings…) — a settings window opened from your main session writes a different
+dconf and will not reach the dev shell.
 
 The panel appears inside the nested window; interact with it directly. Reload:
 edit sources, close the window (or `Ctrl+C`), rerun `./dev-run.sh`. Optionally
@@ -60,21 +69,22 @@ you can then drag the panel to a convenient corner of the smaller window.
 The full log is at `/tmp/gnome-widget-panel-dev.log` (override with `GWP_LOG`);
 the terminal shows only extension/error lines.
 
-### Parallel run (dev shell alongside your main session)
+### Parallel run (dev shell alongside a separate main-session install)
 
-By default `dev-run.sh` disables the extension in your main session so the two
-shells never clash on the widget's localhost port. To run BOTH at once:
+The dev shell is isolated from your main session (separate extensions dir + dconf
+profile), so the two never interfere. If you ALSO install the widget into your
+main session (`./install.sh` + logout/login) and want both running live, give the
+dev widget a different Claude port so they don't clash on the localhost port:
 
 ```bash
-GWP_KEEP_MAIN=1 GWP_CLAUDE_PORT=17862 ./dev-run.sh
+GWP_CLAUDE_PORT=17862 ./dev-run.sh
 ```
 
-- `GWP_KEEP_MAIN=1` keeps the main session's extension enabled.
 - `GWP_CLAUDE_PORT=N` generates an isolated `.dev/widgets.json` (copied from your
   config) with `ai-agent-usage`'s `claudePort` set to `N`, and points the dev
   shell at it via `GWP_CONFIG_FILE` (a config-path override honored by
-  `configStore.ts`; dconf/XDG are left untouched, so enablement still works).
-  Pick a port different from your main session (default `17861`).
+  `configStore.ts`). Pick a port different from your main session (default
+  `17861`).
 
 Because the Claude hook registry lives under `~/.claude` (shared), both instances
 register their `{port, secret}` and Claude's status line fans out to both (see
@@ -107,11 +117,13 @@ window, provided by `/usr/libexec/mutter-devkit` (package `mutter-dev-bin`).
 - A shell killed mid-startup leaves `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions`,
   which forces safe mode (all extensions off) next time. `dev-run.sh` removes it
   on start and on exit.
-- Dev-only artifacts (the dconf profile, inner script, status file) live under
-  `.dev/` and are gitignored.
-- `dev-install.sh` replaces a previous copy-install with a symlink. Run
-  [`install.sh`](../install.sh) again to return to a normal install. After dev
-  work, re-enable the extension in your main session with
-  `gnome-extensions enable <uuid>` (and log in/out to load it there).
+- Dev-only artifacts (the isolated extensions dir `data/`, dconf profile, inner
+  script, status file) live under `.dev/` and are gitignored.
+- The dev extensions dir is separate from your main session, so dev work never
+  installs, enables, or disables the widget in your main session. For a real
+  main-session install use [`install.sh`](../install.sh) (copies into
+  `~/.local/share/gnome-shell/extensions/`) + logout/login — independent of the
+  dev setup. Do NOT use `install.sh` for iterating; it copies (freezing the code)
+  and needs a logout/login each time.
 
 Back to the [docs index](index.md) and [architecture](architecture.md).

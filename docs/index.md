@@ -12,6 +12,7 @@ Start here, then follow the links down to the code under
   per-widget settings mechanism.
 - [`development.md`](development.md) — reload-without-logout developer workflow
   (symlink install + nested GNOME Shell).
+- [`bug.md`](bug.md) — analysis of the dev-shell panel settings live-apply issue.
 - [`object-model.md`](object-model.md) — runtime object map.
 - [`ai-management.md`](ai-management.md) — AI-assisted panel management concept.
 - [`upstream.md`](upstream.md) — Floating Mini Panel origin and license notes.

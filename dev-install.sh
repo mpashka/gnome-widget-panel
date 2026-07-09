@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # @tag:dev
 #
-# Developer installation: symlink the built extension tree into the GNOME Shell
-# extensions directory instead of copying it. After this one-time setup, every
-# `npm run build` is immediately live; you only need to (re)start a GNOME Shell
-# process to load the new code. Use ./dev-run.sh for that without logging out.
+# Developer installation: symlink the built extension tree into an ISOLATED
+# extensions directory used only by the dev shell (`./dev-run.sh` points GNOME
+# Shell at it via XDG_DATA_HOME). This keeps the widget entirely out of your main
+# GNOME session's extensions dir (`~/.local/share/gnome-shell/extensions`), so
+# the two are completely separate. After this one-time setup, every
+# `npm run build` is immediately live; just (re)start the dev shell to load it.
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 uuid="gnome-widget-panel@mpashka.github.com"
-target="$HOME/.local/share/gnome-shell/extensions/$uuid"
+# Isolated dev extensions dir (XDG_DATA_HOME=<root>/.dev/data). NOT the user's
+# main extensions dir, so the main session never sees this widget.
+target="$root/.dev/data/gnome-shell/extensions/$uuid"
 config_dir="$HOME/.config/gnome-widget-panel"
 
 if [[ ! -x "$root/node_modules/.bin/tsc" ]]; then
@@ -28,6 +32,6 @@ if [[ ! -f "$config_dir/widgets.json" ]]; then
   cp "$root/extension/config/widgets.json" "$config_dir/widgets.json"
 fi
 
-printf 'Dev-installed %s\n' "$uuid"
+printf 'Dev-installed %s (isolated from your main session)\n' "$uuid"
 printf '  %s -> %s/extension (symlink)\n' "$target" "$root"
 printf 'Iterate with ./dev-run.sh (nested GNOME Shell; no logout needed).\n'
