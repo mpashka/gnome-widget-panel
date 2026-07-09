@@ -276,12 +276,26 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                 return 0;
             return settings.get_int('vertical-rotation') === 1 ? 2 : 1;
         };
+        // Programmatic `orientationRow.selected` writes (syncOrientation) re-fire
+        // `notify::selected`, re-entering the write path below. Because this row
+        // maps one selection onto two GSettings keys (`vertical` +
+        // `vertical-rotation`), a re-entrant write could persist a stale
+        // intermediate `vertical-rotation`. Guard programmatic syncs so only a
+        // genuine user selection drives the write path.
+        this._syncingOrientation = false;
         const syncOrientation = () => {
-            orientationRow.selected = orientationSelected();
+            this._syncingOrientation = true;
+            try {
+                orientationRow.selected = orientationSelected();
+            } finally {
+                this._syncingOrientation = false;
+            }
         };
         syncOrientation();
 
         orientationRow.connect('notify::selected', () => {
+            if (this._syncingOrientation)
+                return;
             const index = orientationRow.selected;
             if (index < 0 || index > 2)
                 return;
