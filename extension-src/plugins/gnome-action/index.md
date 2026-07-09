@@ -1,6 +1,6 @@
 # Gnome Action widget
 
-`@tag:widget-activities`
+`@tag:widget-gnome-action`
 
 Back to [plugins index](../index.md).
 
@@ -8,13 +8,13 @@ Back to [plugins index](../index.md).
 
 A clickable panel button that runs a configurable **GNOME shell action** on
 click. This widget was previously the "Activities" button; it is now the more
-general "Gnome Action" widget.
+general **Gnome Action** widget (id `gnome-action`).
 
-**Internal id kept for backward compatibility.** The plugin id stays
-`activities` (the directory is still `activities/`, and the `pluginManager.ts`
-registry key is still `activities`), so existing user configs in
-`widgets.json` and the bundled default config keep working unchanged. Only the
-user-facing **label** changed from "Activities" to "Gnome Action".
+**Backward compatibility.** The widget was renamed from `activities` to
+`gnome-action` (directory, id, registry, default config). The old `activities`
+id still resolves via an alias in `pluginManager.ts`, so existing user configs
+in `widgets.json` keep working. Unknown/incompatible ids are skipped (not fatal)
+by the config loader, so a stale config can never disable the panel.
 
 The default action is `overview`, which reproduces the historical
 Activities-button behaviour exactly, so widgets created before the `action`

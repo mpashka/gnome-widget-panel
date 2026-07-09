@@ -1,12 +1,11 @@
 // @ts-nocheck
-// @tag:widget-activities
+// @tag:widget-gnome-action
 //
-// "Gnome Action" panel button: a single click runs a configurable GNOME shell
-// action. The internal plugin id stays `activities` for backward compatibility
-// (existing user configs and the bundled default config keep working); only the
-// user-facing label is "Gnome Action". The default action is `overview`, which
-// reproduces the historical Activities-button behaviour exactly, so widgets
-// created before this option existed are unchanged.
+// "Gnome Action" panel button (id `gnome-action`): a single click runs a
+// configurable GNOME shell action. Formerly the `activities` widget; that id
+// still resolves via a backward-compat alias in pluginManager, so existing user
+// configs keep working. The default action is `overview`, which reproduces the
+// historical Activities-button behaviour exactly.
 //
 // Actions:
 //   - overview      Windows overview (tiled open windows + workspace thumbnails

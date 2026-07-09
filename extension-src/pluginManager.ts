@@ -2,7 +2,7 @@
 // @tag:mechanism
 import {loadWidgetConfig} from './configStore.js';
 
-import * as Activities from './plugins/activities/index.js';
+import * as GnomeAction from './plugins/gnome-action/index.js';
 import * as AiAgentUsage from './plugins/ai-agent-usage/index.js';
 import * as AppNotifications from './plugins/app-notifications/index.js';
 import * as Clock from './plugins/clock/index.js';
@@ -22,7 +22,9 @@ const REGISTRY = new Map([
     ['clock', Clock],
     ['ubuntu-system-status', UbuntuSystemStatus],
     ['gnome-menu', GnomeMenu],
-    ['activities', Activities],
+    ['gnome-action', GnomeAction],
+    // Backward-compat alias: the widget was formerly `activities`.
+    ['activities', GnomeAction],
     ['favorites', Favorites],
     ['printscreen', PrintScreen],
     ['launch', Launch],
@@ -30,7 +32,11 @@ const REGISTRY = new Map([
 
 // Build the enabled plugin actors in config order. Returns an ARRAY of
 // `{id, actor}` rather than a Map keyed by id, so the same widget id may appear
-// more than once (multi-instance widgets). Unknown enabled ids still throw.
+// more than once (multi-instance widgets).
+//
+// Robust by design: an unknown widget id or a widget whose `create` throws is
+// skipped (and logged) rather than aborting the whole panel, so an incompatible
+// or partially-broken config can never disable the extension.
 export function createConfiguredPlugins(parent, extensionPath) {
     const config = loadWidgetConfig(extensionPath);
 
@@ -39,11 +45,17 @@ export function createConfiguredPlugins(parent, extensionPath) {
         if (!item.enabled)
             continue;
         const plugin = REGISTRY.get(item.id);
-        if (!plugin)
-            throw new Error(`Unknown panel plugin: ${item.id}`);
-        const actor = plugin.create(parent, item.options ?? {});
-        actor._panelPluginId = item.id;
-        instances.push({id: item.id, actor});
+        if (!plugin) {
+            log(`widget-panel: skipping unknown widget id "${item.id}"`);
+            continue;
+        }
+        try {
+            const actor = plugin.create(parent, item.options ?? {});
+            actor._panelPluginId = item.id;
+            instances.push({id: item.id, actor});
+        } catch (error) {
+            logError(error, `widget-panel: widget "${item.id}" failed to load; skipping`);
+        }
     }
     return instances;
 }

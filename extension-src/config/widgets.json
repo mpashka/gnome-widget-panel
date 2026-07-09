@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "plugins": [
-    {"id": "activities", "enabled": true},
+    {"id": "gnome-action", "enabled": true},
     {"id": "gnome-menu", "enabled": true},
     {"id": "favorites", "enabled": true},
     {"id": "keyboard-layout", "enabled": true},

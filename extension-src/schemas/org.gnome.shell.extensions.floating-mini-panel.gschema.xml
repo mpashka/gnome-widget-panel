@@ -36,6 +36,14 @@
         Is floating-mini-panel vertical oriented.
       </description>
     </key>
+    <key name="frame-size" type="i">
+      <default>0</default>
+      <summary>Frame size</summary>
+      <description>
+        Padding in pixels around the widgets' working body (the frame between the
+        panel edge and its contents).
+      </description>
+    </key>
     <key name="vertical-rotation" type="i">
       <default>1</default>
       <summary>Vertical graph rotation</summary>

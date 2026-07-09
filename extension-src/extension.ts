@@ -98,6 +98,10 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._sets.get_int('pos-y')
             );
 
+            // Frame size: padding (px) around the widgets' working body. Read
+            // before orientation/relocate so _adjustBorder applies it.
+            this._frameSize = this._sets.get_int('frame-size');
+
             // START CODE VERTICAL
             this.orientStr = (shellVersion > 47) ? 'orientation' : 'vertical';
             this._setOrientation(this._sets.get_boolean('vertical'));
@@ -125,6 +129,13 @@ const FloatingMiniPanel = GObject.registerClass(
                     this._relocate(false);
                 }
             );
+            this._frameSizeChangedId = this._sets.connect(
+                'changed::frame-size',
+                () => {
+                    this._frameSize = this._sets.get_int('frame-size');
+                    this._relocate(false);
+                }
+            );
 
             this._panelHidingExts = [];
 
@@ -145,9 +156,6 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._plugins.find(p => p.id === 'app-notifications')?.actor ??
                 null;
 
-            // Tell layout-aware widgets (the graphs) the panel orientation and
-            // rotation direction so they can rotate when the panel is vertical.
-            this._applyPanelLayoutToPlugins();
 
             // Live-reload widgets when widgets.json changes ------------------
             // Editing the config (directly or via the settings UI) must apply
@@ -181,6 +189,10 @@ const FloatingMiniPanel = GObject.registerClass(
                     return;
                 this.disconnect(this._initRelocateId);
                 this._initRelocateId = 0;
+                // Apply orientation/rotation to layout-aware widgets now that the
+                // actor is on the stage (the clock queries its label size, which
+                // needs the theme node), then relocate.
+                this._applyPanelLayoutToPlugins();
                 try {
                     this._relocate(false);
                 } catch (e) {
@@ -879,39 +891,50 @@ const FloatingMiniPanel = GObject.registerClass(
         }
 
         _adjustBorder(align) {
+            let radius = null;
             switch (align) {
                 case Alignment.LEFT | Alignment.TOP:
-                    this.style = 'border-radius: 0px 0px 15px 0px;';
+                    radius = '0px 0px 15px 0px';
                     break;
                 case Alignment.LEFT | Alignment.BOTTOM:
-                    this.style = 'border-radius: 0px 15px 0px 0px;';
+                    radius = '0px 15px 0px 0px';
                     break;
                case Alignment.RIGHT | Alignment.TOP:
-                    this.style = 'border-radius: 0px 0px 0px 15px;';
+                    radius = '0px 0px 0px 15px';
                     break;
                 case Alignment.RIGHT | Alignment.BOTTOM:
-                    this.style = 'border-radius: 15px 0px 0px 0px;';
+                    radius = '15px 0px 0px 0px';
                     break;
                 case Alignment.TOP:
                 case Alignment.TOP | Alignment.CENTER:
-                    this.style = 'border-radius: 0px 0px 15px 15px;';
+                    radius = '0px 0px 15px 15px';
                     break;
                 case Alignment.BOTTOM:
                 case Alignment.BOTTOM | Alignment.CENTER:
-                    this.style = 'border-radius: 15px 15px 0px 0px;';
+                    radius = '15px 15px 0px 0px';
                     break;
                 case Alignment.LEFT:
                 case Alignment.LEFT | Alignment.CENTER:
-                    this.style = 'border-radius: 0px 15px 15px 0px;';
+                    radius = '0px 15px 15px 0px';
                     break;
                 case Alignment.RIGHT:
                 case Alignment.RIGHT | Alignment.CENTER:
-                    this.style = 'border-radius: 15px 0px 0px 15px;';
+                    radius = '15px 0px 0px 15px';
                     break;
                 default:
-                    this.style = null;
+                    radius = null;
                     break;
             }
+
+            // Combine the alignment border-radius with the configurable frame
+            // size (padding = the frame around the widgets' working body).
+            const parts = [];
+            if (radius)
+                parts.push(`border-radius: ${radius};`);
+            const frame = Number.isFinite(this._frameSize) ? this._frameSize : 0;
+            if (frame > 0)
+                parts.push(`padding: ${frame}px;`);
+            this.style = parts.length ? parts.join(' ') : null;
         }
 
         destroy() {
@@ -961,6 +984,10 @@ const FloatingMiniPanel = GObject.registerClass(
             if (this._verticalRotationChangedId) {
                 this._sets.disconnect(this._verticalRotationChangedId);
                 this._verticalRotationChangedId = null;
+            }
+            if (this._frameSizeChangedId) {
+                this._sets.disconnect(this._frameSizeChangedId);
+                this._frameSizeChangedId = null;
             }
 
             PANELBOX.disconnect(this._pvConId);

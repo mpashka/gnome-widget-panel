@@ -48,10 +48,12 @@ test('rejects a non-array plugins field', () => {
     assert.throws(() => parseWidgetConfig('{"schema":1,"plugins":{}}'));
 });
 
-test('rejects a plugin entry without a string id', () => {
-    assert.throws(() =>
-        parseWidgetConfig('{"schema":1,"plugins":[{"enabled":true}]}')
+test('skips a plugin entry without a string id (does not throw)', () => {
+    const config = parseWidgetConfig(
+        '{"schema":1,"plugins":[{"enabled":true},{"id":"clock"}]}'
     );
+    assert.equal(config.plugins.length, 1);
+    assert.equal(config.plugins[0].id, 'clock');
 });
 
 test('rejects invalid JSON', () => {

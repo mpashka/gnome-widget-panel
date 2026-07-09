@@ -60,14 +60,14 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
             import('./gnome-menu/prefs.js') as Promise<PluginPreferencesModule>,
     },
     {
-        id: 'activities',
+        id: 'gnome-action',
         label: 'Gnome Action',
         description:
             'Runs a GNOME shell action (overview, app grid, show desktop).',
         hasPreferences: true,
         multiInstance: true,
         loadPreferences: () =>
-            import('./activities/prefs.js') as Promise<PluginPreferencesModule>,
+            import('./gnome-action/prefs.js') as Promise<PluginPreferencesModule>,
     },
     {
         id: 'favorites',

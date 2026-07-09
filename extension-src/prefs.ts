@@ -11,6 +11,7 @@
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
+import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
@@ -245,17 +246,30 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         //   2 Right      → vertical=true,  vertical-rotation=1
         // "Left"/"Right" describe which way graphs rotate (their time axis) when
         // the panel is a vertical strip.
-        const orientationModel = new Gtk.StringList();
-        orientationModel.append('Horizontal');
-        orientationModel.append('Vertical — rotate left');
-        orientationModel.append('Vertical — rotate right');
+        // Short labels for the collapsed row (so the value is not ellipsized in
+        // the main window); long, descriptive labels only in the open dropdown.
+        const orientationShort = ['Horizontal', 'Vertical left', 'Vertical right'];
+        const orientationLong = [
+            'Horizontal strip',
+            'Vertical — graphs rotate left (time bottom→top)',
+            'Vertical — graphs rotate right (time top→bottom)',
+        ];
+        const orientationModel = Gtk.StringList.new(orientationShort);
         const orientationRow = new Adw.ComboRow({
             title: 'Orientation',
-            subtitle:
-                'Horizontal strip, or a vertical strip with graphs rotated ' +
-                'left (time bottom→top) or right (time top→bottom).',
             model: orientationModel,
         });
+        // Dropdown-only factory showing the long descriptions (the selected value
+        // shown in the row keeps the short StringList label).
+        const orientationListFactory = new Gtk.SignalListItemFactory();
+        orientationListFactory.connect('setup', (_f, item) => {
+            item.set_child(new Gtk.Label({xalign: 0}));
+        });
+        orientationListFactory.connect('bind', (_f, item) => {
+            const pos = item.get_position();
+            item.get_child().set_label(orientationLong[pos] ?? '');
+        });
+        orientationRow.list_factory = orientationListFactory;
 
         const orientationSelected = () => {
             if (!settings.get_boolean('vertical'))
@@ -294,6 +308,25 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             settings.disconnect(rotationChangedId);
         });
         layoutGroup.add(orientationRow);
+
+        // Frame size: padding (px) around the widgets' working body.
+        const frameRow = new Adw.SpinRow({
+            title: 'Frame size',
+            subtitle: 'Padding in pixels around the widgets.',
+            adjustment: new Gtk.Adjustment({
+                lower: 0,
+                upper: 40,
+                step_increment: 1,
+                value: settings.get_int('frame-size'),
+            }),
+        });
+        settings.bind(
+            'frame-size',
+            frameRow,
+            'value',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        layoutGroup.add(frameRow);
     }
 
     _persist(state, rebuild) {

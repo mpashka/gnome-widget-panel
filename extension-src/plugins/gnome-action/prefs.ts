@@ -1,8 +1,8 @@
 // @ts-nocheck
-// @tag:widget-activities
+// @tag:widget-gnome-action
 //
-// Per-widget settings UI for the "Gnome Action" widget (internal id still
-// `activities`). Loaded lazily by the panel preferences UI (see ../../prefs.ts).
+// Per-widget settings UI for the "Gnome Action" widget (id `gnome-action`,
+// formerly `activities`). Loaded lazily by the panel preferences UI (see ../../prefs.ts).
 // Edits the widget `options` in widgets.json; the widget reads them on the next
 // GNOME Shell reload.
 

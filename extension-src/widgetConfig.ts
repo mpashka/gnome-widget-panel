@@ -11,7 +11,14 @@ import {
     type WidgetConfig,
 } from './contracts.js';
 
-/** Parse and validate raw `widgets.json` text. Throws on invalid input. */
+/**
+ * Parse and validate raw `widgets.json` text. Lenient by design so a bad or
+ * partially-incompatible config never crashes the panel:
+ * - throws only when the input is not JSON or the top-level schema is
+ *   unsupported (the caller then falls back to a safe default);
+ * - individual malformed plugin entries (not an object, or no string id) are
+ *   skipped rather than aborting the whole config.
+ */
 export function parseWidgetConfig(raw: string): WidgetConfig {
     const data: unknown = JSON.parse(raw);
     if (
@@ -22,28 +29,27 @@ export function parseWidgetConfig(raw: string): WidgetConfig {
     )
         throw new Error('Unsupported widget configuration schema');
 
-    const plugins: PluginConfig[] = (data as {plugins: unknown[]}).plugins.map(
-        (entry) => {
-            if (
-                !entry ||
-                typeof entry !== 'object' ||
-                typeof (entry as {id?: unknown}).id !== 'string'
-            )
-                throw new Error('Invalid plugin entry in widget configuration');
-            const item = entry as {
-                id: string;
-                enabled?: unknown;
-                options?: unknown;
-            };
-            const config: PluginConfig = {
-                id: item.id,
-                enabled: item.enabled !== false,
-            };
-            if (item.options && typeof item.options === 'object')
-                config.options = item.options as Record<string, unknown>;
-            return config;
-        }
-    );
+    const plugins: PluginConfig[] = [];
+    for (const entry of (data as {plugins: unknown[]}).plugins) {
+        if (
+            !entry ||
+            typeof entry !== 'object' ||
+            typeof (entry as {id?: unknown}).id !== 'string'
+        )
+            continue; // skip a malformed entry rather than failing the config
+        const item = entry as {
+            id: string;
+            enabled?: unknown;
+            options?: unknown;
+        };
+        const config: PluginConfig = {
+            id: item.id,
+            enabled: item.enabled !== false,
+        };
+        if (item.options && typeof item.options === 'object')
+            config.options = item.options as Record<string, unknown>;
+        plugins.push(config);
+    }
 
     return {schema: WIDGET_CONFIG_SCHEMA, plugins};
 }

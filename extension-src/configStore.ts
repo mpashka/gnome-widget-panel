@@ -8,7 +8,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
-import {type WidgetConfig} from './contracts.js';
+import {WIDGET_CONFIG_SCHEMA, type WidgetConfig} from './contracts.js';
 import {parseWidgetConfig, serializeWidgetConfig} from './widgetConfig.js';
 
 const CONFIG_DIR_NAME = 'gnome-widget-panel';
@@ -37,15 +37,32 @@ export function bundledConfigPath(extensionPath: string): string {
     return GLib.build_filenamev([extensionPath, 'config', CONFIG_FILE_NAME]);
 }
 
-/** Read the effective configuration: the user file, else the bundled default. */
+function readConfigFile(path: string): WidgetConfig | null {
+    if (!GLib.file_test(path, GLib.FileTest.EXISTS))
+        return null;
+    try {
+        const [ok, contents] = GLib.file_get_contents(path);
+        if (!ok)
+            return null;
+        return parseWidgetConfig(new TextDecoder().decode(contents));
+    } catch (error) {
+        logError(error, `widget-panel: invalid widget config at ${path}`);
+        return null;
+    }
+}
+
+/**
+ * Read the effective configuration, degrading gracefully so a broken or
+ * incompatible config can never crash the panel: try the user file, then the
+ * bundled default, then an empty config (a bare panel). Errors are logged, not
+ * thrown. Malformed individual widget entries are skipped by `parseWidgetConfig`.
+ */
 export function loadWidgetConfig(extensionPath: string): WidgetConfig {
-    const userPath = userConfigPath();
-    const path = GLib.file_test(userPath, GLib.FileTest.EXISTS)
-        ? userPath
-        : bundledConfigPath(extensionPath);
-    const [ok, contents] = GLib.file_get_contents(path);
-    if (!ok) throw new Error(`Cannot read widget configuration: ${path}`);
-    return parseWidgetConfig(new TextDecoder().decode(contents));
+    return (
+        readConfigFile(userConfigPath()) ??
+        readConfigFile(bundledConfigPath(extensionPath)) ??
+        {schema: WIDGET_CONFIG_SCHEMA, plugins: []}
+    );
 }
 
 /** Persist the configuration to the user file, creating its directory. */

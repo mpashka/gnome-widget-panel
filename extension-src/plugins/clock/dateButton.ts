@@ -24,6 +24,7 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -161,10 +162,10 @@ export const DateButton = GObject.registerClass(
 
         // Called by the panel host when its orientation/rotation changes. Text
         // cannot be redrawn via Cairo like the graph widgets, so rotate the time
-        // label actor 90° around its centre so the time reads vertically. The
-        // rotated actor keeps its original (wide) allocation box, so it is
-        // centred within the vertical strip; rotation_angle_z is restored to 0
-        // (today's exact horizontal behaviour) when not vertical.
+        // label actor 90° so the time reads vertically. To stop the time from
+        // being ellipsized ("202…") in the narrow strip we disable ellipsizing
+        // and pin the label to its natural (full-text) size, then rotate it about
+        // its centre. Horizontal restores exactly the previous behaviour.
         setPanelLayout(info) {
             const vertical = !!(info && info.vertical);
             const rotation = info && info.rotation === 'left' ? 'left' : 'right';
@@ -173,10 +174,26 @@ export const DateButton = GObject.registerClass(
                 return;
             try {
                 label.set_pivot_point(0.5, 0.5);
-                if (vertical)
+                const clutterText = label.clutter_text;
+                if (vertical) {
+                    // Full text, no ellipsis; pin to natural size so rotation
+                    // shows the whole time instead of a width-clipped label.
+                    if (clutterText)
+                        clutterText.ellipsize = Pango.EllipsizeMode.NONE;
+                    label.x_expand = false;
+                    label.y_expand = false;
+                    const [, natWidth] = label.get_preferred_width(-1);
+                    const [, natHeight] = label.get_preferred_height(natWidth);
+                    label.set_size(natWidth, natHeight);
                     label.rotation_angle_z = rotation === 'left' ? -90 : 90;
-                else
+                } else {
                     label.rotation_angle_z = 0;
+                    if (clutterText)
+                        clutterText.ellipsize = Pango.EllipsizeMode.END;
+                    label.set_size(-1, -1);
+                    label.x_expand = true;
+                    label.y_expand = true;
+                }
             } catch (error) {
                 console.error(`GNOME Widget Panel clock rotation failed: ${error}`);
             }

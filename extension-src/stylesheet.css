@@ -6,7 +6,9 @@
 }
 
 #FloatingMiniPanel:vertical {
-  width: 48px;
+  /* No fixed width: the strip sizes to its widest child (an icon), so it stays
+     about one icon wide. Frame padding is applied inline from the frame-size
+     setting. */
   padding: 0px 0px;
 }
 
@@ -19,7 +21,7 @@
 
 #FloatingMiniPanel:vertical .system-status-icon {
   height: 24px;
-  padding: 0px 16px;
+  padding: 2px 2px;
   -st-icon-style: symbolic !important;
 }
 
@@ -33,9 +35,9 @@
 
 #FloatingMiniPanel:vertical .system-status-icon-2 {
   height: 24px;
-  padding-left: 16px;
-  padding-right: 16px;
-  padding-top: 8px;
+  padding-left: 2px;
+  padding-right: 2px;
+  padding-top: 4px;
   -st-icon-style: symbolic !important;
 }
 
@@ -91,8 +93,12 @@
 }
 
 
-#FloatingMiniPanel .cpu-graph {
+/* Horizontal only: in a vertical panel the graph swaps its own actor size (see
+   setPanelLayout), so a fixed CSS width/height must not override it. */
+#FloatingMiniPanel:horizontal .cpu-graph {
   width: 32px;
   height: 16px;
+}
+#FloatingMiniPanel .cpu-graph {
   margin: 2px 4px;
 }
