@@ -8,6 +8,15 @@
 
 import type {PluginDescriptor, PluginPreferencesModule} from '../contracts.js';
 
+// Human labels for the Gnome Action `action` option (mirrors gnome-action/prefs
+// so the widget list can show the selected action). Kept here (gi-free) so the
+// registry has no dependency on the Adw/Gtk prefs module.
+const GNOME_ACTION_LABELS: Record<string, string> = {
+    overview: 'Windows overview',
+    apps: 'All applications',
+    'show-desktop': 'Show desktop (minimize all)',
+};
+
 export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
     {
         id: 'keyboard-layout',
@@ -66,6 +75,12 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
             'Runs a GNOME shell action (overview, app grid, show desktop).',
         hasPreferences: true,
         multiInstance: true,
+        summary: (options) => {
+            const action = typeof options?.action === 'string'
+                ? options.action
+                : 'overview';
+            return GNOME_ACTION_LABELS[action] ?? action;
+        },
         loadPreferences: () =>
             import('./gnome-action/prefs.js') as Promise<PluginPreferencesModule>,
     },

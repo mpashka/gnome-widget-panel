@@ -36,4 +36,13 @@ fi
 find "$out" -type f \( -name '*.js' -o -name '*.json' -o -name '*.md' -o -name '*.css' -o -name '*.xml' \) \
   -exec perl -0pi -e 's/[ \t]+$//mg' {} +
 
+# Compile the GSettings schema so the built tree always has an up-to-date
+# gschemas.compiled. Without this, `rm -rf extension` above wipes the compiled
+# schema and a symlink install (dev-install.sh) would expose a stale/missing
+# schema, so new settings keys (e.g. content-padding) would be unknown at
+# runtime and their live handlers could not work.
+if [[ -d "$out/schemas" ]] && command -v glib-compile-schemas >/dev/null 2>&1; then
+  glib-compile-schemas "$out/schemas"
+fi
+
 printf 'Built GNOME extension into %s\n' "$out"

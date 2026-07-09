@@ -82,6 +82,12 @@ export interface PluginDescriptor {
      * false (single-instance).
      */
     multiInstance?: boolean;
+    /**
+     * Optional one-line summary of a configured instance's `options`, shown as
+     * the row subtitle in the widget list (e.g. the selected Gnome Action). Pure
+     * function, no `gi://` use. Falls back to `description` when absent.
+     */
+    summary?: (options: Record<string, unknown>) => string;
     /** Lazily import the widget's preferences module (Adw/Gtk). */
     loadPreferences?: () => Promise<PluginPreferencesModule>;
 }

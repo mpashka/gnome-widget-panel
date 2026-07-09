@@ -342,11 +342,25 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         const plugins = state.config.plugins;
         plugins.forEach((item, index) => {
             const descriptor = DESCRIPTORS_BY_ID.get(item.id);
+            // Prefer a per-instance summary of the options (e.g. the selected
+            // Gnome Action) over the generic description, so multiple instances
+            // are distinguishable in the list.
+            let subtitle = 'Unknown widget id (kept but not loaded).';
+            if (descriptor) {
+                subtitle = descriptor.description;
+                if (typeof descriptor.summary === 'function') {
+                    try {
+                        const s = descriptor.summary(item.options ?? {});
+                        if (s)
+                            subtitle = s;
+                    } catch (e) {
+                        // fall back to description
+                    }
+                }
+            }
             const row = new Adw.ActionRow({
                 title: descriptor?.label ?? item.id,
-                subtitle: descriptor
-                    ? descriptor.description
-                    : 'Unknown widget id (kept but not loaded).',
+                subtitle,
             });
 
             // Drag-to-reorder: a visible handle prefix plus a DragSource that

@@ -99,8 +99,10 @@ const FloatingMiniPanel = GObject.registerClass(
             );
 
             // Content padding (px) around the widgets' working body. Read before
-            // orientation/relocate so _adjustBorder applies it.
-            this._contentPadding = this._sets.get_int('content-padding');
+            // orientation/relocate so _adjustBorder applies it. Guarded so a
+            // stale/mismatched schema (missing this newer key) cannot throw out
+            // of the constructor and disable the whole extension.
+            this._contentPadding = this._getSettingInt('content-padding', 0);
 
             // START CODE VERTICAL
             this.orientStr = (shellVersion > 47) ? 'orientation' : 'vertical';
@@ -132,7 +134,7 @@ const FloatingMiniPanel = GObject.registerClass(
             this._contentPaddingChangedId = this._sets.connect(
                 'changed::content-padding',
                 () => {
-                    this._contentPadding = this._sets.get_int('content-padding');
+                    this._contentPadding = this._getSettingInt('content-padding', 0);
                     this._relocate(false);
                 }
             );
@@ -755,12 +757,22 @@ const FloatingMiniPanel = GObject.registerClass(
         // opts in via `setPanelLayout({vertical, rotation})` (the graph widgets
         // rotate when vertical). Duck-typed and guarded so a plugin without the
         // hook, or one that throws, cannot break the panel.
+        // Read an int setting, tolerating a stale/mismatched schema that lacks a
+        // newer key (returns the fallback instead of throwing).
+        _getSettingInt(key, fallback) {
+            try {
+                return this._sets.get_int(key);
+            } catch (e) {
+                return fallback;
+            }
+        }
+
         _applyPanelLayoutToPlugins() {
             if (!this._plugins)
                 return;
             const vertical = this._sets.get_boolean('vertical');
             const rotation =
-                this._sets.get_int('vertical-rotation') === 0 ? 'left' : 'right';
+                this._getSettingInt('vertical-rotation', 1) === 0 ? 'left' : 'right';
             for (const {actor} of this._plugins) {
                 if (typeof actor?.setPanelLayout !== 'function')
                     continue;
