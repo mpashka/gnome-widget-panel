@@ -158,6 +158,13 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._plugins.find(p => p.id === 'app-notifications')?.actor ??
                 null;
 
+            // Apply orientation/rotation to layout-aware widgets (the graphs and
+            // clock) NOW, when the plugins are built — NOT gated on `notify::mapped`
+            // (which fired unreliably, so widgets never rotated in a vertical
+            // panel). The graphs only swap size (no theme access); the clock's
+            // TimeDrawer guards its size query on `get_stage()` and re-sizes on its
+            // own map, so this is safe before the panel is on the stage.
+            this._applyPanelLayoutToPlugins();
 
             // Live-reload widgets when widgets.json changes ------------------
             // Editing the config (directly or via the settings UI) must apply
