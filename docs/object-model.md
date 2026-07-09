@@ -32,12 +32,28 @@ single `FloatingMiniPanel` instance.
 
 Main panel actor. It owns:
 
-- panel positioning and relocation;
+- panel positioning and relocation. On startup the constructor restores the raw
+  `pos-x`/`pos-y` and then calls `_relocate(false)` so the saved `aligned`
+  preset (edge snapping / centering) is re-applied after a reload. When
+  `aligned === NONE` the panel keeps its exact stored (floating) position across
+  restarts; only out-of-bounds positions are clamped back on screen;
 - auto/permanent/off state;
 - top-panel hiding integration;
 - GNOME Shell quick settings toggle;
 - control button;
 - configured plugin actors returned by `PluginManager`.
+
+It also **live-reloads its widgets** when `widgets.json` changes (edited directly
+or through the settings UI), so per-widget settings and add/remove/reorder/enable
+changes apply without a full GNOME Shell reload. A `Gio.FileMonitor` on the
+config directory (`~/.config/gnome-widget-panel/`) feeds a ~300 ms debounced
+timer that calls `_reloadPlugins()`. `_reloadPlugins()` builds the new plugin
+instances first and only swaps them in on success, so an invalid or half-written
+config keeps the current widgets. Because new actors are constructed before the
+old ones are destroyed, a widget owning an exclusive resource (e.g.
+`ai-agent-usage`'s localhost `Soup.Server`) briefly overlaps with its old
+instance; the handled bind error is non-fatal and the next sample recovers. The
+monitor, its signal and the debounce timer are released in `destroy()`.
 
 Every timer, signal, child actor and compositor override must be released in
 `destroy()`.
@@ -54,10 +70,19 @@ the order in the config file.
 ### `ControlButton`
 
 The panel handle/menu button. It owns drag/move actions and long-press/click
-gestures. Its context menu now holds only "Settings…" (which opens the
-preferences window); the former Auto-Position and Control-Functions menu sections
-were moved to the preferences "Panel" page, while the equivalent mouse gestures
-still work.
+gestures. Its context menu now holds only the "Settings…" item (which opens the
+preferences window) with no separator above it; the former Auto-Position and
+Control-Functions menu sections were moved to the preferences "Panel" page, while
+the equivalent mouse gestures still work.
+
+Gesture notes:
+
+- A plain left click on the handle is a no-op (it no longer toggles the overview
+  or app grid); use a dedicated activities/gnome-menu widget for that.
+- A plain right click reliably opens/closes the context menu every time. It
+  snapshots the menu's open state on button press and toggles from that snapshot,
+  avoiding a race with the panel menu-manager's `ClickGesture`, which closes an
+  open menu on the same release.
 
 ### `IndicatorsDrawer`
 

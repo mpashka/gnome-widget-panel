@@ -32,7 +32,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const DISPLAY = global.display;
-const OVERVIEW = Main.overview;
 
 const shellVersion = parseFloat(Config.PACKAGE_VERSION);
 
@@ -53,6 +52,7 @@ const CtlActions = GObject.registerClass(
             this._parent = this._actor._parent;
             this._click = false;
             this._longpress = false;
+            this._menuOpenAtPress = false;
             this._grab = null;
         }
 
@@ -68,6 +68,17 @@ const CtlActions = GObject.registerClass(
                     }
                     break;
                 case Clutter.EventType.BUTTON_PRESS:
+                    // Reset the per-sequence gesture flags here in addition to
+                    // vfunc_register_sequence: the panel menu-manager's modal
+                    // grab can consume a sequence's register callback, leaving
+                    // stale _click/_longpress from the previous cycle and
+                    // breaking the next click. Also snapshot the menu's open
+                    // state *now*, before the grab's ClickGesture can toggle it
+                    // on the matching release, so right-click can toggle the
+                    // menu deterministically (see _rightBtnClick).
+                    this._click = false;
+                    this._longpress = false;
+                    this._menuOpenAtPress = this._actor.menu.isOpen;
                     // Test longpress
                     if (this._timeoutId) {
                         GLib.Source.remove(this._timeoutId);
@@ -165,7 +176,10 @@ const CtlActions = GObject.registerClass(
         _leftBtnClick(state) {
             switch (state) {
                 case 0:
-                    OVERVIEW.visible ? OVERVIEW.toggle() : OVERVIEW.showApps();
+                    // No-op: a plain left click on the drag handle must not open
+                    // the overview / app grid. The handle is only for dragging
+                    // and the (long-press) menu now; a dedicated activities /
+                    // gnome-menu widget provides that entry point instead.
                     break;
                 case Clutter.ModifierType.SHIFT_MASK:
                     this._actor._doAlign(Alignment.LEFT | Alignment.TOP);
@@ -215,7 +229,17 @@ const CtlActions = GObject.registerClass(
         _rightBtnClick(state) {
             switch (state) {
                 case 0:
-                    this._actor.menu.toggle();
+                    // Toggle deterministically from the press-time snapshot.
+                    // Reading menu.isOpen (or calling menu.toggle()) here would
+                    // race with the panel menu-manager's ClickGesture, which
+                    // closes an open menu on this same release. That race made
+                    // right-click open the menu only every other time. Deciding
+                    // from the state captured on press removes the race.
+                    if (this._menuOpenAtPress) {
+                        this._actor.menu.close();
+                    } else {
+                        this._actor.menu.open();
+                    }
                     break;
                 case Clutter.ModifierType.SHIFT_MASK:
                     if (this._actor[this._actor.orientStr]) {
@@ -307,9 +331,6 @@ export const ControlButton = GObject.registerClass(
             Main.panel.menuManager.addMenu(this.menu);
             this.menu.actor.hide();
 
-            this.menu.addMenuItem(
-                new PopupMenu.PopupSeparatorMenuItem('Widgets')
-            );
             this.menu.addMenuItem(
                 new MenuItem('Settings…', '', () => {
                     this._parent.openPreferences();

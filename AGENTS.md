@@ -30,12 +30,17 @@ Never execute unreviewed generated code.
 ```bash
 npm run build       # build.sh: copy assets + tsc extension-src -> extension
 npm run typecheck   # tsc --noEmit
+npm test            # build, then node --test on gi-free pure-logic modules
 ./install.sh        # build + compile schemas + copy to extensions dir (needs logout to apply)
 ./dev-install.sh    # one-time: symlink the build tree into the extensions dir
 ./dev-run.sh        # rebuild + run a restartable nested GNOME Shell window (no logout)
 ```
 
-There is no test suite. A plain `./install.sh` needs a logout/login on Wayland to
+Tests (`npm test`, Node's built-in runner) cover only the **gi-free** pure-logic
+modules (`tooltipTemplate.ts`, `widgetConfig.ts`); see [`tests/`](tests/index.md).
+Prefer extracting pure logic into a gi-free module and testing it there over
+loading Shell-only code. Most of the extension is dynamic GJS/Shell code and is
+verified by running it (see below). A plain `./install.sh` needs a logout/login on Wayland to
 apply, because GNOME Shell caches an extension's ES module for the life of the
 `gnome-shell` process. For fast iteration use the developer workflow: install
 `mutter-dev-bin` and run `./dev-install.sh` once, then `./dev-run.sh`, which

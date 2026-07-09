@@ -14,35 +14,58 @@ button.
 
 ## What it does
 
-The single "Widgets" page edits `~/.config/gnome-widget-panel/widgets.json`
-directly — the configuration file stays the source of truth, there is no second
-settings model. Actions:
+Everything lives on a **single "Widgets" page**. The widget list edits
+`~/.config/gnome-widget-panel/widgets.json` directly — the configuration file
+stays the source of truth, there is no second settings model. The panel position
+and orientation groups on the same page edit the panel `GSettings`. Actions:
 
 - **Enable / disable** a widget with the per-row switch.
-- **Reorder** widgets with the up/down buttons; array order defines panel order.
+- **Reorder** widgets by **dragging with the mouse**. Each configured-widget
+  `Adw.ActionRow` has a drag-handle prefix (`Gtk.Image`,
+  `list-drag-handle-symbolic`) and mirrors GNOME's search/extension reorderable
+  lists. A `Gtk.DragSource` (`Gdk.DragAction.MOVE`) on the row ships the source
+  index as a boxed `GObject.TYPE_INT` value via
+  `Gdk.ContentProvider.new_for_value`; a `Gtk.DropTarget.new(GObject.TYPE_INT,
+  …)` on each row receives it and, on drop, splices the plugin out of the source
+  index and back in at the target row's index, persists and rebuilds the list.
+  Array order defines panel order. (The old up/down arrow buttons are gone.)
 - **Remove** a configured widget.
-- **Add** a widget from the "Add a widget" group, which lists every known widget
-  not already present.
+- **Add** a widget with the **Add a widget…** `Adw.ButtonRow`
+  (`list-add-symbolic`) in a group **below** the list — no longer a `+` in the
+  group header and no popover. Activating it calls `window.push_subpage(...)` to
+  open an in-window **"Add a widget"** subpage (an `Adw.NavigationPage` with an
+  `Adw.ToolbarView` + `Adw.HeaderBar` and an `Adw.PreferencesPage` of activatable
+  rows) listing only the widgets not already added. The list is rebuilt from the
+  current config every time it opens, so an added widget never reappears; when
+  nothing is left it shows an "All widgets added" empty row. Activating a row
+  appends the widget, saves, and `window.pop_subpage()` back to the list.
 - **Configure** a widget: rows whose widget declares `hasPreferences: true` show
-  a settings button that opens that widget's own settings dialog.
+  a settings button that opens that widget's own settings as an **in-window
+  subpage** (not a dialog) — see below.
 
-Every change is written immediately. Reload GNOME Shell (log out and back in on
-Wayland) to apply changes to the running panel.
+Widget changes are written immediately and applied **live**: the running
+`FloatingMiniPanel` watches `widgets.json` with a `Gio.FileMonitor` and rebuilds
+its widgets (per-widget settings plus add/remove/reorder/enable) after a short
+debounce — no GNOME Shell reload or logout needed. See the `FloatingMiniPanel`
+live-reload note in [`object-model.md`](object-model.md).
 
-## Panel page
+## Panel settings
 
-A second **Panel** page exposes panel-level settings that used to live in the
+Two groups on the same page expose panel-level settings that used to live in the
 control-button context menu (which now only keeps **Settings…**; all other panel
-control is via mouse gestures on the panel handle). It edits the panel
-`GSettings` (`this.getSettings()`), not `widgets.json`, and both settings are
-applied **live** to the running panel — no reload needed.
+control is via mouse gestures on the panel handle). They edit the panel
+`GSettings` (`this.getSettings()`), not `widgets.json`, and are applied **live**
+to the running panel — no reload needed.
 
-- **Auto position** — an `Adw.ComboRow` of the six presets the old menu offered
-  (Top/Bottom × Start/Center/End). Selecting one writes the `aligned` int
-  bitfield (`NONE 0, TOP 1, BOTTOM 2, LEFT 4, RIGHT 8, CENTER 16`). The running
-  `FloatingMiniPanel` listens on `changed::aligned` and calls `_relocate(false)`.
-  Dragging the panel by hand writes a custom `aligned` value that matches no
-  preset; the combo then shows no selection until a preset is picked again.
+- **Auto position** — an `Adw.ComboRow` whose first entry is
+  **Floating (keep position)** (`aligned = 0`), followed by the six snap presets
+  the old menu offered (Top/Bottom × Start/Center/End). Selecting one writes the
+  `aligned` int bitfield (`NONE 0, TOP 1, BOTTOM 2, LEFT 4, RIGHT 8, CENTER 16`).
+  The running `FloatingMiniPanel` listens on `changed::aligned` and calls
+  `_relocate(false)`; `aligned === 0` keeps the exact dragged position with no
+  snapping. `syncSelected` maps `aligned === 0` to the Floating row, so it shows
+  as selected. Any other custom value that matches no preset leaves the combo
+  unselected until a preset is picked again.
 - **Orientation** — an `Adw.SwitchRow` bound to the `vertical` bool via
   `settings.bind('vertical', row, 'active', Gio.SettingsBindFlags.DEFAULT)`. The
   panel listens on `changed::vertical` and re-applies its layout/pseudo-classes
@@ -67,10 +90,21 @@ the Shell-only plugin modules. The pieces:
   — process-independent metadata (label, description, `hasPreferences`) plus a
   lazy `loadPreferences()` importer. It imports no `gi://`/`resource://` module.
 - A widget with settings provides `plugins/<id>/prefs.ts` exporting
-  `fillWidgetPreferences(context)`; it fills an `Adw.PreferencesDialog` and calls
-  `context.save(options)` to persist its `options` object back into
-  `widgets.json`. Widgets with settings today: `ai-agent-usage`,
+  `fillWidgetPreferences(context)`; it calls `context.window.add(page)` with its
+  `Adw.PreferencesPage` and `context.save(options)` to persist its `options`
+  object back into `widgets.json`. Widgets with settings today: `ai-agent-usage`,
   `cpu-load-monitor` and `clock`.
+
+The widget settings now open as an **in-window subpage**, not an
+`Adw.PreferencesDialog`. `_openWidgetPreferences` builds an `Adw.NavigationPage`
+whose child is an `Adw.ToolbarView` + `Adw.HeaderBar` (so it gets the widget
+title and a working back button). The `context.window` handed to the widget is a
+small **shim** object whose `.add(page)` routes the widget's `Adw.PreferencesPage`
+into the toolbar's content (`toolbar.set_content(page)`). After the widget fills
+it, the subpage is pushed with `window.push_subpage(...)`. `context.save` is
+unchanged (persist to `widgets.json`), and the lazy `descriptor.loadPreferences()`
+import stays. This keeps the widget-prefs contract
+(`context.window.add(page)` + `context.save(options)`) intact.
 
 Shell-side instantiation is unchanged: `pluginManager.ts` still maps ids to the
 Shell plugin modules and calls `create(parent, options)`.
@@ -114,6 +148,21 @@ empty. Tokens per widget are listed in each widget's `index.md`
 persists to the widget's `options.template`. Other tooltip toggles still apply at
 render time (cpu "Show tooltip"; ai "Show recent requests" / "Request preview
 length" drive the `{requests}` token).
+
+## Searchable icon picker
+
+The button widgets (`gnome-menu`, `activities`, `favorites`) let you pick their
+icon visually instead of typing a name. Each settings page shows an
+`Adw.ActionRow` whose prefix is the **actual selected icon** (a `Gtk.Image`, not
+just its mnemonic name) and a **Choose…** button. The button opens a searchable
+chooser (an `Adw.Dialog` with a `Gtk.SearchEntry` over a scrolling
+`Gtk.FlowBox`) listing icons from the display icon theme
+(`Gtk.IconTheme.get_for_display`). The theme is huge, so results are bounded:
+the grid stays empty until at least two characters are typed and renders at most
+the first 300 matches. A custom-name entry still lets you type an arbitrary icon
+name (themes differ), applied on activate. Picking updates the row preview,
+persists `options.icon` and closes the dialog. Implemented in the shared
+[`../extension-src/plugins/iconPicker.ts`](../extension-src/plugins/iconPicker.ts).
 
 Back to the [docs index](index.md) and
 [architecture](architecture.md).

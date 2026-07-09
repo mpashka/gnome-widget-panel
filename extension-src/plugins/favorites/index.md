@@ -25,7 +25,9 @@ opens that location in the default file manager via
 ## Options
 
 - `icon` — symbolic icon name shown on the button. Defaults to `folder-symbolic`.
-  Edited in `prefs.ts`.
+  Edited in `prefs.ts` via the shared searchable icon picker
+  ([`../iconPicker.ts`](../iconPicker.ts)), which shows the actual icon and lets
+  you search the theme or type a name.
 - `text` — optional text label shown next to (or instead of) the icon. Defaults
   to `Places`. Clearing both icon and text is not recommended; the button then
   falls back to its default icon.
@@ -34,7 +36,8 @@ opens that location in the default file manager via
 
 - `index.ts` — plugin entrypoint; builds the `St.Button`, its `PopupMenu` and
   the place entries; opens each location on activation.
-- `prefs.ts` — per-widget settings UI: `Adw.EntryRow`s for `icon` and `text`.
+- `prefs.ts` — per-widget settings UI: an icon-picker row for `icon` (see
+  [`../iconPicker.ts`](../iconPicker.ts)) and an `Adw.EntryRow` for `text`.
 - Shared button content is built by
   [`../panelButtonContent.ts`](../panelButtonContent.ts).
 

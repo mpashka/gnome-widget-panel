@@ -12,6 +12,9 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   [`../../docs/preferences.md`](../../docs/preferences.md).
 - `panelButtonContent.ts` — shared helper that builds the icon/label child for
   the clickable panel-button widgets (`gnome-menu`, `activities`, `favorites`).
+- `iconPicker.ts` — shared preferences helper (`@tag:ui`) that builds a
+  searchable icon-chooser row for those same button widgets: it shows the actual
+  selected icon and opens a search dialog over the display icon theme.
 
 ## Widgets
 

@@ -7,6 +7,8 @@
 
 import Adw from 'gi://Adw';
 
+import {iconRow} from '../iconPicker.js';
+
 const DEFAULT_ICON = 'view-app-grid-symbolic';
 
 export function fillWidgetPreferences(context) {
@@ -29,16 +31,14 @@ export function fillWidgetPreferences(context) {
     });
     page.add(group);
 
-    const iconRow = new Adw.EntryRow({
-        title: 'Icon name',
-        text:
-            typeof current.icon === 'string' ? current.icon : DEFAULT_ICON,
-    });
-    iconRow.connect('changed', () => {
-        current.icon = iconRow.get_text();
-        commit();
-    });
-    group.add(iconRow);
+    group.add(iconRow({
+        current,
+        key: 'icon',
+        fallback: DEFAULT_ICON,
+        title: 'Icon',
+        subtitle: 'The selected icon, with a searchable picker.',
+        commit,
+    }));
 
     const textRow = new Adw.EntryRow({
         title: 'Text',

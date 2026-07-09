@@ -2,12 +2,15 @@
 // @tag:ui
 // @tag:mechanism
 //
-// Preferences UI for the widget panel. Lets the user enable, reorder, add,
-// remove and configure widgets. It edits `widgets.json` through `configStore`
-// (the single source of truth) and never keeps a second settings model.
+// Preferences UI for the widget panel. Lets the user enable, reorder (by mouse
+// drag), add, remove and configure widgets. It edits `widgets.json` through
+// `configStore` (the single source of truth) and never keeps a second settings
+// model. Adding a widget and configuring a widget both open in-window subpages
+// (`push_subpage`/`pop_subpage`) rather than dialogs or popovers.
 // See ../docs/preferences.md.
 
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
@@ -27,9 +30,11 @@ const Alignment = {
     CENTER: 16,
 };
 
-// Auto-position presets offered on the Panel page, mirroring the six presets
-// the old control-button menu had. Each value is an `aligned` bitfield.
+// Auto-position presets offered in the position group. The first entry keeps
+// the exact dragged position (no snapping); the rest mirror the six presets the
+// old control-button menu had. Each value is an `aligned` bitfield.
 const ALIGN_PRESETS = [
+    {label: 'Floating (keep position)', value: Alignment.NONE},
     {label: 'Top - Start', value: Alignment.TOP | Alignment.LEFT},
     {label: 'Top - Center', value: Alignment.TOP | Alignment.CENTER},
     {label: 'Top - End', value: Alignment.TOP | Alignment.RIGHT},
@@ -42,6 +47,9 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const state = {config: loadWidgetConfig(this.path)};
 
+        // Everything lives on a single page: the configured widgets, an add
+        // affordance below them, then the panel-level position and orientation
+        // settings.
         const page = new Adw.PreferencesPage({
             title: 'Widgets',
             icon_name: 'view-grid-symbolic',
@@ -51,38 +59,41 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         const configuredGroup = new Adw.PreferencesGroup({
             title: 'Panel widgets',
             description:
-                'Enable, reorder, configure or remove widgets. Changes are saved ' +
-                'to widgets.json; reload GNOME Shell (log out and back in on ' +
-                'Wayland) to apply them.',
+                'Drag the handle to reorder, toggle to enable, configure or ' +
+                'remove widgets. Changes are saved to widgets.json; reload GNOME ' +
+                'Shell (log out and back in on Wayland) to apply them.',
         });
         page.add(configuredGroup);
 
-        const availableGroup = new Adw.PreferencesGroup({
-            title: 'Add a widget',
-            description: 'Widgets that are not in the panel yet.',
+        // The "+" add affordance now lives in its own group *below* the list
+        // (instead of the group header). Activating it pushes an in-window
+        // "Add a widget" subpage rather than opening a menu/popover.
+        const addGroup = new Adw.PreferencesGroup();
+        page.add(addGroup);
+
+        const addRow = new Adw.ButtonRow({
+            title: 'Add a widget…',
+            start_icon_name: 'list-add-symbolic',
         });
-        page.add(availableGroup);
+        addGroup.add(addRow);
 
         const rebuild = () => {
             this._rebuildConfigured(window, state, configuredGroup, rebuild);
-            this._rebuildAvailable(state, availableGroup, rebuild);
         };
+        addRow.connect('activated', () =>
+            this._openAddWidgetSubpage(window, state, rebuild)
+        );
         rebuild();
 
-        this._addPanelPage(window);
+        this._addPanelGroups(page);
     }
 
-    // "Panel" page: panel-level settings that used to live in the control
-    // button context menu (auto-position preset + orientation). They are stored
-    // in the panel GSettings and applied live by FloatingMiniPanel.
-    _addPanelPage(window) {
+    // Panel-level settings that used to live in the control button context menu
+    // (auto-position preset + orientation). They are stored in the panel
+    // GSettings and applied live by FloatingMiniPanel. Folded into the single
+    // preferences page.
+    _addPanelGroups(page) {
         const settings = this.getSettings();
-
-        const page = new Adw.PreferencesPage({
-            title: 'Panel',
-            icon_name: 'view-restore-symbolic',
-        });
-        window.add(page);
 
         const positionGroup = new Adw.PreferencesGroup({
             title: 'Auto position',
@@ -107,8 +118,9 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             const index = ALIGN_PRESETS.findIndex(
                 (preset) => preset.value === current
             );
-            // Gtk.INVALID_LIST_POSITION when the stored value is a custom drag
-            // position that matches no preset; leave the combo unselected.
+            // `aligned === 0` matches the Floating preset (first entry).
+            // Gtk.INVALID_LIST_POSITION when the stored value is some other
+            // custom drag position that matches no preset; leave it unselected.
             alignedRow.selected =
                 index >= 0 ? index : Gtk.INVALID_LIST_POSITION;
         };
@@ -170,21 +182,18 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                     : 'Unknown widget id (kept but not loaded).',
             });
 
-            const moveUp = this._iconButton('go-up-symbolic', 'Move up');
-            moveUp.sensitive = index > 0;
-            moveUp.connect('clicked', () => {
-                this._swap(plugins, index, index - 1);
-                this._persist(state, rebuild);
+            // Drag-to-reorder: a visible handle prefix plus a DragSource that
+            // carries this row's index and a DropTarget that moves the dragged
+            // plugin to this row's position. Mirrors GNOME's search/extension
+            // reorderable lists.
+            const handle = new Gtk.Image({
+                icon_name: 'list-drag-handle-symbolic',
+                valign: Gtk.Align.CENTER,
+                tooltip_text: 'Drag to reorder',
             });
-            row.add_prefix(moveUp);
-
-            const moveDown = this._iconButton('go-down-symbolic', 'Move down');
-            moveDown.sensitive = index < plugins.length - 1;
-            moveDown.connect('clicked', () => {
-                this._swap(plugins, index, index + 1);
-                this._persist(state, rebuild);
-            });
-            row.add_prefix(moveDown);
+            handle.add_css_class('dim-label');
+            row.add_prefix(handle);
+            this._attachRowDnd(row, index, state, rebuild);
 
             if (descriptor?.hasPreferences) {
                 const settings = this._iconButton(
@@ -224,42 +233,112 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         if (plugins.length === 0) {
             const empty = new Adw.ActionRow({
                 title: 'No widgets configured',
-                subtitle: 'Add one from the list below.',
+                subtitle: 'Add one with the button below.',
             });
             group.add(empty);
             group._rows.push(empty);
         }
     }
 
-    _rebuildAvailable(state, group, rebuild) {
-        for (const row of group._rows ?? [])
-            group.remove(row);
-        group._rows = [];
+    // Wire Gtk4 drag-and-drop reordering onto a configured-widget row.
+    // The DragSource ships the source index as a boxed G_TYPE_INT value; the
+    // DropTarget accepts the same type and, on drop, moves the plugin from the
+    // source index to this row's index, persists and rebuilds the list.
+    _attachRowDnd(row, index, state, rebuild) {
+        const dragSource = new Gtk.DragSource({
+            actions: Gdk.DragAction.MOVE,
+        });
+        dragSource.connect('prepare', () => {
+            const value = new GObject.Value();
+            value.init(GObject.TYPE_INT);
+            value.set_int(index);
+            return Gdk.ContentProvider.new_for_value(value);
+        });
+        // Fade the source row while it is being dragged.
+        dragSource.connect('drag-begin', () => row.add_css_class('dnd-source'));
+        dragSource.connect('drag-end', () => row.remove_css_class('dnd-source'));
+        row.add_controller(dragSource);
 
+        const dropTarget = Gtk.DropTarget.new(
+            GObject.TYPE_INT,
+            Gdk.DragAction.MOVE
+        );
+        dropTarget.connect('drop', (_target, sourceIndex) => {
+            if (typeof sourceIndex !== 'number' || sourceIndex === index)
+                return false;
+            const plugins = state.config.plugins;
+            if (sourceIndex < 0 || sourceIndex >= plugins.length)
+                return false;
+            const [moved] = plugins.splice(sourceIndex, 1);
+            plugins.splice(index, 0, moved);
+            this._persist(state, rebuild);
+            return true;
+        });
+        row.add_controller(dropTarget);
+    }
+
+    // Push an in-window "Add a widget" subpage listing the widgets not yet in
+    // the config. Rebuilt from the current config every time it is opened, so an
+    // already-added widget can never appear. Activating a row appends the widget
+    // (persisting + rebuilding the main list) and pops back to it.
+    _openAddWidgetSubpage(window, state, rebuild) {
         const present = new Set(state.config.plugins.map((item) => item.id));
         const available = PLUGIN_DESCRIPTORS.filter(
             (descriptor) => !present.has(descriptor.id)
         );
 
-        group.visible = available.length > 0;
-        for (const descriptor of available) {
-            const row = new Adw.ActionRow({
-                title: descriptor.label,
-                subtitle: descriptor.description,
-            });
-            const add = this._iconButton('list-add-symbolic', 'Add widget');
-            add.add_css_class('flat');
-            add.connect('clicked', () => {
-                state.config.plugins.push({id: descriptor.id, enabled: true});
-                this._persist(state, rebuild);
-            });
-            row.add_suffix(add);
-            row.activatable_widget = add;
-            group.add(row);
-            group._rows.push(row);
+        const content = new Adw.PreferencesPage();
+        const group = new Adw.PreferencesGroup({
+            title: 'Available widgets',
+        });
+        content.add(group);
+
+        if (available.length === 0) {
+            group.add(
+                new Adw.ActionRow({
+                    title: 'All widgets added',
+                    subtitle: 'Every known widget is already in the panel.',
+                })
+            );
+        } else {
+            for (const descriptor of available) {
+                const row = new Adw.ActionRow({
+                    title: descriptor.label,
+                    subtitle: descriptor.description,
+                    activatable: true,
+                });
+                row.add_prefix(
+                    new Gtk.Image({
+                        icon_name: 'list-add-symbolic',
+                        valign: Gtk.Align.CENTER,
+                    })
+                );
+                row.add_suffix(
+                    new Gtk.Image({
+                        icon_name: 'go-next-symbolic',
+                        valign: Gtk.Align.CENTER,
+                    })
+                );
+                row.connect('activated', () => {
+                    state.config.plugins.push({
+                        id: descriptor.id,
+                        enabled: true,
+                    });
+                    this._persist(state, rebuild);
+                    window.pop_subpage();
+                });
+                group.add(row);
+            }
         }
+
+        window.push_subpage(this._subpage('Add a widget', content));
     }
 
+    // Open a widget's own settings as an in-window subpage (no dialog). A shim
+    // object is passed as `context.window`: its `.add(page)` routes the widget's
+    // `Adw.PreferencesPage` into the subpage's content area, keeping the widget
+    // prefs contract (`context.window.add(page)` + `context.save(options)`)
+    // unchanged. The lazy `descriptor.loadPreferences()` import stays.
     _openWidgetPreferences(window, state, item, rebuild) {
         const descriptor = DESCRIPTORS_BY_ID.get(item.id);
         if (!descriptor?.loadPreferences)
@@ -268,22 +347,42 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         descriptor
             .loadPreferences()
             .then((module) => {
-                const dialog = new Adw.PreferencesDialog({
-                    title: descriptor.label,
-                });
+                const toolbar = new Adw.ToolbarView();
+                toolbar.add_top_bar(new Adw.HeaderBar());
+
+                // Shim standing in for the Adw.PreferencesWindow/Dialog the
+                // widget expects: it only needs `.add(page)`.
+                const shim = {
+                    add: (widgetPage) => toolbar.set_content(widgetPage),
+                };
+
                 module.fillWidgetPreferences({
-                    window: dialog,
+                    window: shim,
                     options: {...(item.options ?? {})},
                     save: (options) => {
                         item.options = options;
                         this._persist(state, rebuild);
                     },
                 });
-                dialog.present(window);
+
+                const navPage = new Adw.NavigationPage({
+                    title: descriptor.label,
+                    child: toolbar,
+                });
+                window.push_subpage(navPage);
             })
             .catch((error) => {
                 logError(error, `Cannot open settings for widget ${item.id}`);
             });
+    }
+
+    // Wrap a content widget in an Adw.NavigationPage with a ToolbarView +
+    // HeaderBar so the pushed subpage gets a title and a working back button.
+    _subpage(title, content) {
+        const toolbar = new Adw.ToolbarView();
+        toolbar.add_top_bar(new Adw.HeaderBar());
+        toolbar.set_content(content);
+        return new Adw.NavigationPage({title, child: toolbar});
     }
 
     _iconButton(iconName, tooltip) {
@@ -292,11 +391,5 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             tooltip_text: tooltip,
             valign: Gtk.Align.CENTER,
         });
-    }
-
-    _swap(list, a, b) {
-        if (b < 0 || b >= list.length)
-            return;
-        [list[a], list[b]] = [list[b], list[a]];
     }
 }

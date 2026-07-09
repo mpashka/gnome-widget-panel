@@ -22,6 +22,7 @@
 'use strict';
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 // Issue #10
@@ -36,6 +37,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
+import * as ConfigStore from './configStore.js';
 import * as ControlButton from './controlButton.js';
 import * as PluginManager from './pluginManager.js';
 import * as Utils from './utils.js';
@@ -130,6 +132,45 @@ const FloatingMiniPanel = GObject.registerClass(
             for (const actor of this._plugins.values())
                 this.add_child(actor);
             this._indsDrawer = this._plugins.get('app-notifications');
+
+            // Live-reload widgets when widgets.json changes ------------------
+            // Editing the config (directly or via the settings UI) must apply
+            // per-widget settings and add/remove/reorder/enable changes without
+            // a full GNOME Shell reload. Watch the config directory; a debounced
+            // timer rebuilds the plugin actors. Guarded so a monitor failure can
+            // never throw out of enable() and disable the whole extension.
+            this._configMonitor = null;
+            this._configMonitorId = null;
+            this._reloadTimeoutId = null;
+            this._setupConfigMonitor();
+
+            // Apply the saved alignment on startup ----------------------------
+            // The constructor above only restored the raw pos-x / pos-y. The
+            // stored `aligned` value (edge snapping / centering) used to be
+            // applied only on drag or on live preference changes, so a Position
+            // preset chosen in preferences was ignored after a reload and the
+            // panel stayed where it last was. Relocate now that the orientation
+            // (orientStr) and the child actors are set, so the panel has a real
+            // size and CENTER / edge snapping use the correct axis and geometry.
+            // When `aligned === Alignment.NONE` this leaves the restored
+            // floating position untouched (no alignment bits fire). Guarded so a
+            // geometry failure here can never throw out of enable() and disable
+            // the whole extension.
+            // Defer to the first map: calling _relocate() during construction,
+            // before the actor is on the stage, sets `this.style` and reads the
+            // theme node, which floods St with "get_theme_node ... not in the
+            // stage" warnings. Apply the saved alignment once mapped instead.
+            this._initRelocateId = this.connect('notify::mapped', () => {
+                if (!this.mapped)
+                    return;
+                this.disconnect(this._initRelocateId);
+                this._initRelocateId = 0;
+                try {
+                    this._relocate(false);
+                } catch (e) {
+                    logError(e, 'FloatingMiniPanel: initial _relocate failed');
+                }
+            });
 
             // QuickSettings Toggle --------------------------------------------
             this._fmpQuickToggle = new QuickSettings.QuickMenuToggle({
@@ -531,10 +572,129 @@ const FloatingMiniPanel = GObject.registerClass(
             this._extension.openPreferences();
         }
 
+        // Watch the user config directory for widgets.json changes and arm a
+        // debounced reload. Monitoring the directory (not the file) keeps the
+        // watch valid across the replace/rename writes configStore performs.
+        // Guarded: any failure is logged and leaves the panel working.
+        _setupConfigMonitor() {
+            try {
+                const configPath = ConfigStore.userConfigPath();
+                this._configFileName = GLib.path_get_basename(configPath);
+                const configDir = GLib.path_get_dirname(configPath);
+                // Ensure the directory exists so the monitor is meaningful even
+                // before the user file is first written.
+                GLib.mkdir_with_parents(configDir, 0o755);
+                const dirFile = Gio.File.new_for_path(configDir);
+                this._configMonitor = dirFile.monitor_directory(
+                    Gio.FileMonitorFlags.NONE,
+                    null
+                );
+                this._configMonitorId = this._configMonitor.connect(
+                    'changed',
+                    (_monitor, file, _otherFile, _eventType) => {
+                        try {
+                            if (!file) return;
+                            if (file.get_basename() !== this._configFileName)
+                                return;
+                            // File writes emit several events; debounce them
+                            // into a single reload.
+                            this._scheduleReloadPlugins();
+                        } catch (e) {
+                            logError(
+                                e,
+                                'widget-panel: config monitor callback failed'
+                            );
+                        }
+                    }
+                );
+            } catch (e) {
+                logError(
+                    e,
+                    'widget-panel: failed to watch widgets.json for changes'
+                );
+            }
+        }
+
+        // (Re)arm a single ~300 ms timer so a burst of file events triggers one
+        // reload. The pending timer is removed before re-arming and in destroy().
+        _scheduleReloadPlugins() {
+            if (this._reloadTimeoutId) {
+                GLib.Source.remove(this._reloadTimeoutId);
+                this._reloadTimeoutId = null;
+            }
+            this._reloadTimeoutId = GLib.timeout_add(
+                GLib.PRIORITY_DEFAULT,
+                300,
+                () => {
+                    this._reloadTimeoutId = null;
+                    this._reloadPlugins();
+                    return GLib.SOURCE_REMOVE;
+                }
+            );
+        }
+
+        // Rebuild the configured plugin actors from the (possibly changed)
+        // widgets.json. Build the NEW instances FIRST, so an invalid or
+        // half-written config does not tear down the working panel. Only on
+        // success are the old actors destroyed and replaced. The control button
+        // and every non-plugin child stay in place: they were added first and
+        // are untouched here, so re-adding the new plugin actors in Map
+        // (config) order preserves "control button, then plugins in order".
+        // Never throws out of the timeout callback.
+        _reloadPlugins() {
+            let next;
+            try {
+                next = PluginManager.createConfiguredPlugins(
+                    this,
+                    this._extensionPath
+                );
+            } catch (e) {
+                logError(
+                    e,
+                    'widget-panel: invalid widgets.json, keeping current widgets'
+                );
+                return;
+            }
+
+            try {
+                for (const actor of this._plugins.values())
+                    actor.destroy();
+                this._plugins = next;
+                for (const actor of this._plugins.values())
+                    this.add_child(actor);
+                this._indsDrawer = this._plugins.get('app-notifications');
+
+                // Widget set changed, so the panel size likely changed; keep the
+                // saved alignment applied. Guarded so it can never throw here.
+                try {
+                    this._relocate(false);
+                } catch (e) {
+                    logError(
+                        e,
+                        'widget-panel: relocate after reload failed'
+                    );
+                }
+            } catch (e) {
+                logError(
+                    e,
+                    'widget-panel: failed to swap reloaded widgets'
+                );
+            }
+        }
+
         // START CODE VERTICAL
         // Apply the panel orientation (horizontal/vertical) to the layout and
         // style pseudo-classes. Used at startup and when the `vertical` setting
         // changes live. Does not touch positioning; callers relocate as needed.
+        //
+        // Verified correct for Shell 50: on shell > 47 the St.BoxLayout is
+        // flipped via `this.orientation = Clutter.Orientation.VERTICAL` (the
+        // `vertical` boolean is the pre-48 fallback), and the `:vertical` /
+        // `:horizontal` pseudo-classes it toggles are both defined in
+        // stylesheet.css. It is applied on startup (constructor) and on
+        // `changed::vertical`. A vertical panel only *looks* right once the
+        // saved alignment is re-applied with real geometry, which the startup
+        // `_relocate(false)` above now guarantees.
         _setOrientation(vertical) {
             if (vertical) {
                 if (shellVersion > 47) {
@@ -717,6 +877,20 @@ const FloatingMiniPanel = GObject.registerClass(
                 actor.destroy();
             this._plugins.clear();
 
+            // Release the config watcher and any pending debounced reload.
+            if (this._reloadTimeoutId) {
+                GLib.Source.remove(this._reloadTimeoutId);
+                this._reloadTimeoutId = null;
+            }
+            if (this._configMonitor) {
+                if (this._configMonitorId) {
+                    this._configMonitor.disconnect(this._configMonitorId);
+                    this._configMonitorId = null;
+                }
+                this._configMonitor.cancel();
+                this._configMonitor = null;
+            }
+
             if (this._timeoutId1) {
                 GLib.Source.remove(this._timeoutId1);
                 this._timeoutId1 = null;
@@ -727,6 +901,10 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._timeoutId2 = null;
             }
 
+            if (this._initRelocateId) {
+                this.disconnect(this._initRelocateId);
+                this._initRelocateId = 0;
+            }
             if (this._alignedChangedId) {
                 this._sets.disconnect(this._alignedChangedId);
                 this._alignedChangedId = null;

@@ -25,7 +25,7 @@ grep -rn "@tag:<slug>" extension-src docs
 | Tag | Description |
 | --- | --- |
 | `mechanism` | Plugin host mechanism: registry, config store, ordering, lifecycle and preferences plumbing (`extension.ts`, `pluginManager.ts`, `configStore.ts`, `contracts.ts`, `plugins/registry.ts`, `prefs.ts`, `docs/architecture.md`, `docs/preferences.md`). |
-| `ui` | Panel and preferences UI: floating panel actor, control button, indicator drawer, rendering, the widget-management settings window and the shared templated-tooltip renderer (`extension.ts`, `controlButton.ts`, `indicatorsDrawer.ts`, `prefs.ts`, `tooltipTemplate.ts`, `docs/object-model.md`, `docs/preferences.md`). |
+| `ui` | Panel and preferences UI: floating panel actor, control button, indicator drawer, rendering, the widget-management settings window, the searchable icon picker and the shared templated-tooltip renderer (`extension.ts`, `controlButton.ts`, `indicatorsDrawer.ts`, `prefs.ts`, `tooltipTemplate.ts`, `plugins/iconPicker.ts`, `docs/object-model.md`, `docs/preferences.md`). |
 | `widget-keyboard-layout` | The `keyboard-layout` built-in widget. |
 | `widget-app-notifications` | The `app-notifications` built-in widget. |
 | `widget-cpu-load-monitor` | The `cpu-load-monitor` built-in widget. |

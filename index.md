@@ -15,6 +15,8 @@ generated GJS runtime code.
 - [`docs/`](docs/index.md) — architecture, object model, upstream notes,
   AI-assisted management and the tag registry.
 - [`schema/`](schema/) — JSON schemas for future external widget manifests.
+- [`tests/`](tests/index.md) — Node unit tests for the gi-free pure-logic
+  modules (`npm test`).
 
 ## Main files
 
