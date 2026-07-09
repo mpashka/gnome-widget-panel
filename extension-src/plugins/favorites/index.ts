@@ -15,7 +15,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {buildButtonContent} from '../panelButtonContent.js';
 
-const DEFAULTS = {icon: 'folder-symbolic', text: 'Places'};
+const DEFAULTS = {icon: 'system-file-manager-symbolic', text: ''};
 
 // XDG user directories to list when they exist, in display order.
 const XDG_DIRS = [

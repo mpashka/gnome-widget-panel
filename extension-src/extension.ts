@@ -713,6 +713,7 @@ const FloatingMiniPanel = GObject.registerClass(
                 this.remove_style_pseudo_class('vertical');
                 this.add_style_pseudo_class('horizontal');
             }
+            this.queue_relayout();
         }
         // END CODE VERTICAL
 

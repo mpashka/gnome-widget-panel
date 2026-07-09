@@ -18,7 +18,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {buildButtonContent} from '../panelButtonContent.js';
 
-const DEFAULTS = {icon: 'view-app-grid-symbolic', text: ''};
+// `start-here-symbolic` is the distributor "start menu" icon (the Ubuntu logo on
+// Ubuntu), matching a Windows-Start-style applications button.
+const DEFAULTS = {icon: 'start-here-symbolic', text: ''};
 
 // Freedesktop top-level categories we bucket apps into, in priority order: the
 // first entry whose key is present in an app's `Categories` string wins. Apps

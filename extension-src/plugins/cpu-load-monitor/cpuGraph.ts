@@ -89,7 +89,10 @@ export const CpuGraph = GObject.registerClass(
                 ? options.template
                 : DEFAULT_TOOLTIP_TEMPLATE;
 
-            this._samples = Array(width).fill(0);
+            // Each sample keeps its own load and temperature so the graph can be
+            // coloured per column by the band the temperature was in at the time,
+            // rather than recolouring the whole graph by the current temperature.
+            this._samples = Array.from({length: width}, () => ({load: 0, temp: null}));
             this._previous = null;
             this._temperaturePath = this._findCpuTemperaturePath();
             this._temperature = null;
@@ -179,7 +182,7 @@ export const CpuGraph = GObject.registerClass(
                     ? Math.clamp(1 - idleDelta / totalDelta, 0, 1)
                     : 0;
                 this._lastLoad = load;
-                this._samples.push(load);
+                this._samples.push({load, temp: this._temperature});
                 this._samples.shift();
                 if (this.hover)
                     this._updateTooltip();
@@ -188,12 +191,11 @@ export const CpuGraph = GObject.registerClass(
             this._previous = current;
         }
 
-        // The active band is the highest band whose temp <= current temperature.
+        // The band for a given temperature: the highest band whose temp <= t.
         // Below the lowest band's temp (or unknown temperature) → null (normal:
         // use the theme foreground colour).
-        _activeBand() {
-            const t = this._temperature;
-            if (t === null)
+        _bandForTemp(t) {
+            if (t === null || t === undefined)
                 return null;
             let active = null;
             for (const band of this._bands) {
@@ -203,6 +205,11 @@ export const CpuGraph = GObject.registerClass(
                     break;
             }
             return active;
+        }
+
+        // The band for the current temperature (drives the tooltip).
+        _activeBand() {
+            return this._bandForTemp(this._temperature);
         }
 
         // Build the coloured Pango-markup fragments for the tooltip tokens from
@@ -291,25 +298,25 @@ export const CpuGraph = GObject.registerClass(
             const [width, height] = this.get_surface_size();
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
+            const fg = [color.red / 255, color.green / 255, color.blue / 255];
 
-            const band = this._activeBand();
-            if (band !== null) {
-                context.setSourceRGBA(...hexToRgb(band.color), 0.95);
-            } else {
-                context.setSourceRGBA(
-                    color.red / 255,
-                    color.green / 255,
-                    color.blue / 255,
-                    0.9
-                );
-            }
+            // One column per sample, coloured by the temperature band that
+            // sample was recorded in (not the current temperature).
             context.setLineWidth(1);
-            context.moveTo(0, height);
-            for (let x = 0; x < this._samples.length; x++)
-                context.lineTo(x, height - this._samples[x] * (height - 1));
-            context.lineTo(width, height);
-            context.closePath();
-            context.fill();
+            for (let x = 0; x < this._samples.length; x++) {
+                const sample = this._samples[x];
+                const load = sample.load;
+                if (load <= 0)
+                    continue;
+                const band = this._bandForTemp(sample.temp);
+                if (band !== null)
+                    context.setSourceRGBA(...hexToRgb(band.color), 0.95);
+                else
+                    context.setSourceRGBA(fg[0], fg[1], fg[2], 0.9);
+                const barHeight = load * (height - 1);
+                context.rectangle(x, height - barHeight, 1, barHeight);
+                context.fill();
+            }
             context.$dispose();
         }
 

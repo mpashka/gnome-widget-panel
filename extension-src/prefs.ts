@@ -288,48 +288,68 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         );
 
         const content = new Adw.PreferencesPage();
-        const group = new Adw.PreferencesGroup({
-            title: 'Available widgets',
-        });
-        content.add(group);
 
         if (available.length === 0) {
+            const group = new Adw.PreferencesGroup({title: 'Available widgets'});
             group.add(
                 new Adw.ActionRow({
                     title: 'All widgets added',
                     subtitle: 'Every known widget is already in the panel.',
                 })
             );
-        } else {
-            for (const descriptor of available) {
-                const row = new Adw.ActionRow({
-                    title: descriptor.label,
-                    subtitle: descriptor.description,
-                    activatable: true,
-                });
-                row.add_prefix(
-                    new Gtk.Image({
-                        icon_name: 'list-add-symbolic',
-                        valign: Gtk.Align.CENTER,
-                    })
-                );
-                row.add_suffix(
-                    new Gtk.Image({
-                        icon_name: 'go-next-symbolic',
-                        valign: Gtk.Align.CENTER,
-                    })
-                );
-                row.connect('activated', () => {
-                    state.config.plugins.push({
-                        id: descriptor.id,
-                        enabled: true,
-                    });
-                    this._persist(state, rebuild);
-                    window.pop_subpage();
-                });
-                group.add(row);
-            }
+            content.add(group);
+            window.push_subpage(this._subpage('Add a widget', content));
+            return;
         }
+
+        // Search field filtering the available-widget rows by name/description.
+        const search = new Gtk.SearchEntry({
+            placeholder_text: 'Search widgets',
+            hexpand: true,
+        });
+        const searchGroup = new Adw.PreferencesGroup();
+        searchGroup.add(search);
+        content.add(searchGroup);
+
+        const group = new Adw.PreferencesGroup({title: 'Available widgets'});
+        content.add(group);
+
+        const rows = [];
+        for (const descriptor of available) {
+            const row = new Adw.ActionRow({
+                title: descriptor.label,
+                subtitle: descriptor.description,
+                activatable: true,
+            });
+            row.add_prefix(
+                new Gtk.Image({
+                    icon_name: 'list-add-symbolic',
+                    valign: Gtk.Align.CENTER,
+                })
+            );
+            row.add_suffix(
+                new Gtk.Image({
+                    icon_name: 'go-next-symbolic',
+                    valign: Gtk.Align.CENTER,
+                })
+            );
+            row.connect('activated', () => {
+                state.config.plugins.push({id: descriptor.id, enabled: true});
+                this._persist(state, rebuild);
+                window.pop_subpage();
+            });
+            group.add(row);
+            rows.push({
+                row,
+                haystack: `${descriptor.label} ${descriptor.description} ${descriptor.id}`.toLowerCase(),
+            });
+        }
+
+        search.connect('search-changed', () => {
+            const query = search.get_text().trim().toLowerCase();
+            for (const {row, haystack} of rows)
+                row.visible = query === '' || haystack.includes(query);
+        });
 
         window.push_subpage(this._subpage('Add a widget', content));
     }

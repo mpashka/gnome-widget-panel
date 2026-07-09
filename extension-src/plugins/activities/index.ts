@@ -1,7 +1,9 @@
 // @ts-nocheck
 // @tag:widget-activities
 //
-// Panel button that toggles the GNOME Activities overview.
+// Panel button that opens the GNOME Activities overview (the window picker /
+// "expose" of open windows), like the top-left Activities button. It explicitly
+// shows the window-picker state rather than the app grid.
 
 import St from 'gi://St';
 
@@ -20,7 +22,12 @@ export function create(parent, options) {
         child: buildButtonContent(options ?? {}, DEFAULTS),
     });
     button.connect('clicked', () => {
-        Main.overview.toggle();
+        // Main.overview.show() defaults to the WINDOW_PICKER state (the window
+        // overview in the screenshot), unlike showApps() (the app grid).
+        if (Main.overview.visible)
+            Main.overview.hide();
+        else
+            Main.overview.show();
     });
     return button;
 }
