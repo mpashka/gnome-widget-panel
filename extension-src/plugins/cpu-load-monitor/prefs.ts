@@ -210,7 +210,7 @@ function addTemplateEditor(group, current, commit) {
             : DEFAULT_TOOLTIP_TEMPLATE;
         try {
             const markup = renderTemplate(template, SAMPLE_FRAGMENTS);
-            Pango.parse_markup(markup, -1, 0);
+            Pango.parse_markup(markup, -1, '\0');
             preview.remove_css_class('error');
             preview.set_markup(markup);
         } catch (error) {
