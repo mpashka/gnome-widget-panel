@@ -25,6 +25,15 @@ writes the same profile the dev shell reads. Open Settings from the dev window (
 `./dev-gsettings-diagnose.sh open-prefs`) and changes apply live. (Settings opened
 from your MAIN session still write a different profile and will not apply here.)
 
+> **Historical note (post-fix refactors).** This writeup was authored against an
+> earlier config layout and its key/file names are kept verbatim as a forensic
+> record. Since then: the two panel keys `vertical` + `vertical-rotation` were
+> consolidated into one `orientation` enum (`horizontal` / `left` / `right`), and
+> the widget config moved out of `~/.config/gnome-widget-panel/widgets.json` (with
+> its `Gio.FileMonitor`) into the `widgets` GSettings key, live-reloaded by a
+> `changed::widgets` handler. Read `vertical`/`vertical-rotation`/`widgets.json`
+> below as "the panel-orientation keys" / "the widget config" in today's terms.
+
 ## Resolution (earlier steps — GSettings live-apply is correct code)
 
 `dev-gsettings-diagnose.sh` settled it:
