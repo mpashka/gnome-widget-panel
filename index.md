@@ -16,7 +16,8 @@ generated GJS runtime code.
   AI-assisted management and the tag registry.
 - [`schema/`](schema/) — JSON schemas for future external widget manifests.
 - [`tests/`](tests/index.md) — Node unit tests for the gi-free pure-logic
-  modules (`npm test`).
+  modules (`npm test`) and the headless GNOME Shell UI regression suite
+  (`npm run test:ui`, [`tests/ui/`](tests/ui/index.md)).
 
 ## Main files
 

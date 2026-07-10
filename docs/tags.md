@@ -17,7 +17,7 @@ so one search surfaces every related location. See the "Tags" section in
 Find every location for a tag:
 
 ```bash
-grep -rn "@tag:<slug>" extension-src docs
+grep -rn "@tag:<slug>" extension-src docs tests
 ```
 
 ## Registered tags
@@ -38,6 +38,7 @@ grep -rn "@tag:<slug>" extension-src docs
 | `widget-printscreen` | The `printscreen` built-in widget (opens the interactive screenshot UI). |
 | `widget-launch` | The `launch` built-in widget (multi-instance command launcher). |
 | `dev` | Developer reload-without-logout workflow: symlink install and nested-shell runner (`dev-install.sh`, `dev-run.sh`, `docs/development.md`). |
+| `ui-testing` | Headless UI test harness: isolated headless shell + test-driver extension + regression tests and feature-debug stub (`tests/ui/`, `docs/ui-testing.md`). |
 
 Per-widget tags live on that widget's `index.ts` (code) and `index.md` (docs)
 under `extension-src/plugins/<id>/`.

@@ -5,3 +5,5 @@
 node_modules/
 .dev/
 .idea/
+# throwaway feature-debug UI test scripts (copies of tests/ui/feature-debug.stub.sh)
+tests/ui/local-*

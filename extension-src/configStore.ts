@@ -17,9 +17,10 @@ const CONFIG_FILE_NAME = 'widgets.json';
 /**
  * User-owned, writable configuration path (source of truth once created).
  *
- * `GWP_CONFIG_FILE` overrides it: a dev-only hook so a second panel instance
- * (see `dev-run.sh` parallel mode) can run against its own `widgets.json` — e.g.
- * a different `ai-agent-usage` Claude port — without disturbing dconf.
+ * `GWP_CONFIG_FILE` overrides it: a dev/test-only hook so an isolated panel
+ * instance can run against its own `widgets.json` without disturbing dconf —
+ * used by `dev-run.sh` parallel mode (e.g. a different `ai-agent-usage` Claude
+ * port) and by the UI test harness (`tests/ui/lib.sh`, `docs/ui-testing.md`).
  */
 export function userConfigPath(): string {
     const override = GLib.getenv('GWP_CONFIG_FILE');

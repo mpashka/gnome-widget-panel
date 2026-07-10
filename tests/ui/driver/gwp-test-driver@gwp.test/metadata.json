@@ -1,0 +1,7 @@
+{
+  "uuid": "gwp-test-driver@gwp.test",
+  "name": "GWP Test Driver",
+  "description": "Test-only D-Bus Eval driver for the GNOME Widget Panel UI test harness. Never install into a real session.",
+  "shell-version": ["48", "49", "50", "51"],
+  "url": "https://github.com/mpashka/gnome-widget-panel"
+}

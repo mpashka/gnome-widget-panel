@@ -31,6 +31,7 @@ Never execute unreviewed generated code.
 npm run build       # build.sh: copy assets + tsc extension-src -> extension
 npm run typecheck   # tsc --noEmit
 npm test            # build, then node --test on gi-free pure-logic modules
+npm run test:ui     # headless GNOME Shell UI regression suite (docs/ui-testing.md)
 ./install.sh        # build + compile schemas + copy to extensions dir (needs logout to apply)
 ./dev-install.sh    # one-time: symlink the build tree into the extensions dir
 ./dev-run.sh        # rebuild + run a restartable nested GNOME Shell window (no logout)
@@ -38,6 +39,8 @@ npm test            # build, then node --test on gi-free pure-logic modules
 
 Tests (`npm test`, Node's built-in runner) cover only the **gi-free** pure-logic
 modules (`tooltipTemplate.ts`, `widgetConfig.ts`); see [`tests/`](tests/index.md).
+UI behaviour (panel layout, live-apply settings, clicks) is covered by the
+headless UI suite `npm run test:ui` — see [`docs/ui-testing.md`](docs/ui-testing.md).
 Prefer extracting pure logic into a gi-free module and testing it there over
 loading Shell-only code. Most of the extension is dynamic GJS/Shell code and is
 verified by running it (see below). A plain `./install.sh` needs a logout/login on Wayland to
@@ -175,8 +178,8 @@ tag is a short kebab-case slug written as the token `@tag:<slug>`.
 Quick search — list every code and doc location carrying a tag:
 
 ```bash
-grep -rn "@tag:<slug>" extension-src docs   # one tag
-grep -rn "@tag:" extension-src docs         # all tags
+grep -rn "@tag:<slug>" extension-src docs tests   # one tag
+grep -rn "@tag:" extension-src docs tests         # all tags
 ```
 
 Imperative: when a concept spans both code and docs, create a tag, register it in

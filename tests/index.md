@@ -2,15 +2,18 @@
 
 `@tag:mechanism`
 
-Unit tests for the panel's **gi-free** pure-logic modules, run with Node's built
-in test runner. Most of the extension is dynamic GJS/GNOME Shell code that needs
-a running Shell and is not unit tested here; only modules with no `gi://` import
-are covered.
+Two test layers:
+
+- **Unit tests** (this directory, `*.test.mjs`) — the panel's **gi-free**
+  pure-logic modules, run with Node's built-in test runner.
+- **UI tests** ([`ui/`](ui/index.md)) — headless GNOME Shell regression tests
+  and feature-debug tooling; see [`../docs/ui-testing.md`](../docs/ui-testing.md).
 
 ## Running
 
 ```bash
-npm test          # runs `npm run build` first, then `node --test tests/*.test.mjs`
+npm test          # unit: `npm run build` first, then `node --test tests/*.test.mjs`
+npm run test:ui   # UI regression suite (needs a GNOME 50 host; ~2-3 min)
 ```
 
 Tests import the compiled output from `../extension/` (a build artifact), so the
@@ -24,6 +27,11 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig` from
   [`../extension-src/widgetConfig.ts`](../extension-src/widgetConfig.ts): schema
   validation, `enabled`/`options` normalization, error cases, round-trip.
+
+## Directories
+
+- [`ui/`](ui/index.md) — headless GNOME Shell UI test harness, regression tests
+  (`t-*.sh`) and the feature-debug stub.
 
 ## Adding tests
 
