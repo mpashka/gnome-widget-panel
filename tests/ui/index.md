@@ -20,6 +20,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   broken config is ignored.
 - `t-06-gnome-action-click.sh` — virtual-pointer click opens the overview.
 - `t-07-screenshot-smoke.sh` — stage renders and captures to a non-uniform PNG.
+- `t-08-all-widgets.sh` — every registered widget loads in one panel, no JS errors.
+- `t-09-live-reload-ai-widgets.sh` — a Soup.Server-backed widget keeps a bound
+  server across a live config reload (the port-bind race).
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
