@@ -2,6 +2,8 @@
 # (build.sh rm -rf's and regenerates it from extension-src/). Source of truth is
 # extension-src/. Do not commit generated output.
 /extension/
+# Packed release zips produced by `npm run pack` / the Release workflow.
+/dist/
 node_modules/
 .dev/
 .idea/

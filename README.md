@@ -52,6 +52,17 @@ extensions directory.
 The new extension uses UUID `gnome-widget-panel@mpashka.github.com`; it can be
 tested without overwriting the previously installed Floating Mini Panel.
 
+## Releases
+
+The extension is currently **alpha** (pre-publication / early testing); the menu
+and preferences show the version with an `alpha` badge (e.g. `0.1.0 (alpha)`).
+
+Releases are cut manually from the GitHub **Actions → Release** workflow, which
+bumps the version, packs a `…shell-extension.zip` (build it locally with
+`npm run pack`), publishes a **GitHub Release** with the zip, and best-effort
+submits it to **extensions.gnome.org** for manual review. See
+[`docs/release.md`](docs/release.md) for the versioning scheme and details.
+
 ## Reload without logout (developer install)
 
 `install.sh` needs a logout/login on Wayland to take effect. For fast iteration

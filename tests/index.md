@@ -30,6 +30,10 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `colorUtils.test.mjs` — `hexToRgb`/`toNumber`/`nowSeconds` from
   [`../extension-src/colorUtils.ts`](../extension-src/colorUtils.ts): valid and
   invalid hex colours, numeric coercion/fallback, integer timestamp.
+- `version.test.mjs` — `RELEASE_CHANNEL`/`formatVersionLabel` from
+  [`../extension-src/version.ts`](../extension-src/version.ts): channel badge
+  formatting, stable (empty-channel) case, default channel, empty-version
+  fallback (`@tag:versioning`).
 
 ## Directories
 

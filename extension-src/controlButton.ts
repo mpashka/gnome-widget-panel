@@ -333,15 +333,32 @@ export const ControlButton = GObject.registerClass(
             Main.panel.menuManager.addMenu(this.menu);
             this.menu.actor.hide();
 
+            // Non-reactive header showing the extension name and version +
+            // release channel (e.g. "0.1.0 (alpha)"), read via the process-safe
+            // systemInfo helper. Mirrors the About group's name/version row.
+            this.menu.addMenuItem(
+                new MenuItem(
+                    'GNOME Widget Panel',
+                    SystemInfo.versionDisplay(),
+                    () => {},
+                    {reactive: false, can_focus: false}
+                )
+            );
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
             this.menu.addMenuItem(
                 new MenuItem('Settings…', '', () => {
                     this._parent.openPreferences();
                 })
             );
 
+            // "Release notes" opens this version's GitHub Release page (the
+            // per-version release-notes page, version in its URL). controlButton
+            // runs in the Shell process; systemInfo is process-safe, so call it
+            // directly, like "Report a bug" below.
             this.menu.addMenuItem(
-                new MenuItem('About', '', () => {
-                    this._parent.openAbout();
+                new MenuItem('Release notes', '', () => {
+                    SystemInfo.openUrl(SystemInfo.releaseNotesUrl());
                 })
             );
 

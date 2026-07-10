@@ -1,0 +1,40 @@
+# Continuous integration: build the TypeScript source, type-check and run the
+# gi-free unit test suite on every push and pull request. UI tests (npm run
+# test:ui) need a live GNOME Shell host and are not run here. See
+# ../../docs/release.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # Compiling the bundled GSettings schema during `npm run build` needs
+      # glib-compile-schemas (build.sh skips it when absent, but packing/CI
+      # should exercise the real path).
+      - name: Install glib schema compiler
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-bin
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # `npm test` runs the pretest build (extension-src -> extension) then the
+      # Node unit tests over the gi-free modules.
+      - name: Build + unit tests
+        run: npm test

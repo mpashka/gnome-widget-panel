@@ -31,22 +31,30 @@ that change, not a separate cleanup task.
 
 ## Versioning
 
-Two version fields live in `extension-src/metadata.json`:
+Canonical docs: [`docs/release.md`](docs/release.md). Summary:
 
-- `version` — an **integer**, the extensions.gnome.org (EGO) version *code*. It
-  must stay an integer and increments by one on every EGO upload. It is `1`
-  before the first publication.
-- `version-name` — a human-readable semver **string** (currently `"0.1.0"`).
+- `version` (integer EGO code, +1 per release) and `version-name` (semver
+  `A.B.C`, currently `"0.1.0"`) in `extension-src/metadata.json`; `package.json`
+  kept in sync.
+- The **alpha** status is a release *channel* (`RELEASE_CHANNEL` in
+  `extension-src/version.ts`), shown as a badge next to the version in the menu,
+  the About group and bug reports — not encoded in the semver number.
+- Release policy: **alpha `0.x.y`** now → **beta** once published on
+  extensions.gnome.org → **`1.0.0`** once known-good across a wide range of OSes.
 
-Release policy:
+Done:
 
-- **alpha `0.x.y`** now (pre-publication / early testing).
-- becomes **beta** once published on extensions.gnome.org.
-- becomes **`1.0.0`** once it is known to work across a reasonably wide range of
-  operating systems with no big problems.
-
-The About page prefers `version-name` over the integer `version`
-(`this.metadata['version-name'] ?? this.metadata.version`), so it shows `0.1.0`.
+- [x] Show the version + `alpha` badge in the control-button menu and the
+  preferences About group (`version.ts`, `systemInfo.ts`, `controlButton.ts`,
+  `prefs.ts`).
+- [x] CI + Release GitHub Actions: build/test on push/PR; manual
+  (`workflow_dispatch`) version bump, pack, GitHub Release and best-effort EGO
+  upload (`.github/workflows/`, `.github/scripts/`).
+- [x] Issue-based release notes: milestone (one per release) → grouped GitHub
+  Release body (hand-editable, version in URL), plus a generated `CHANGELOG.md`
+  with a GNOME Shell version → plugin version support matrix
+  (`.github/scripts/release-notes.mjs`, `docs/releases.json`). About links point
+  to the running version's release notes.
 
 ## Panel roadmap
 

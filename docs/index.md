@@ -12,6 +12,13 @@ Start here, then follow the links down to the code under
   per-widget settings mechanism.
 - [`development.md`](development.md) — reload-without-logout developer workflow
   (symlink install + nested GNOME Shell).
+- [`release.md`](release.md) — versioning scheme (integer EGO `version` vs.
+  human-readable `version-name`, the `alpha` release-channel badge), where the
+  version is shown, issue-based release notes (milestones → GitHub Release), the
+  CHANGELOG / GNOME support matrix, and the CI / Release GitHub Actions.
+- `releases.json` — machine-readable release ledger (version, code, date,
+  supported GNOME versions, notes URL, issues) that the Release workflow updates
+  and regenerates `../CHANGELOG.md` from; see [`release.md`](release.md).
 - [`ui-testing.md`](ui-testing.md) — headless UI test harness: approaches
   considered, architecture, regression suite (`npm run test:ui`) and the
   feature-debug stub workflow.

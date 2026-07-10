@@ -21,6 +21,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {loadWidgetConfig, saveWidgetConfig} from './configStore.js';
 import {DESCRIPTORS_BY_ID, PLUGIN_DESCRIPTORS} from './plugins/registry.js';
 import * as SystemInfo from './systemInfo.js';
+import {RELEASE_CHANNEL} from './version.js';
 
 // Panel alignment bitfield, mirrored from controlButton.ts / extension.ts.
 const Alignment = {
@@ -285,15 +286,42 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             subtitle: `Version ${version}`,
             activatable: true,
         });
+        // Pre-release channel badge (e.g. "alpha"). Uses libadwaita's built-in
+        // accent/caption style classes so it renders as a small coloured tag
+        // without needing custom CSS loaded into the prefs process. Absent for a
+        // stable release (RELEASE_CHANNEL === '').
+        if (RELEASE_CHANNEL) {
+            const badge = new Gtk.Label({
+                label: RELEASE_CHANNEL,
+                valign: Gtk.Align.CENTER,
+            });
+            badge.add_css_class('caption-heading');
+            badge.add_css_class('accent');
+            versionRow.add_suffix(badge);
+        }
+        // The version row links to *this version's* release notes page (the
+        // GitHub Release for the running version; the version is in its URL).
         versionRow.add_suffix(
-            this._linkButton('adw-external-link-symbolic', 'Open repository', () =>
-                SystemInfo.openUrl(SystemInfo.repoUrl)
+            this._linkButton(
+                'adw-external-link-symbolic',
+                'Open release notes',
+                () => SystemInfo.openUrl(SystemInfo.releaseNotesUrl())
             )
         );
         versionRow.connect('activated', () =>
-            SystemInfo.openUrl(SystemInfo.repoUrl)
+            SystemInfo.openUrl(SystemInfo.releaseNotesUrl())
         );
         aboutGroup.add(versionRow);
+
+        // All releases + the GNOME Shell support matrix (which plugin version to
+        // install for a given GNOME version).
+        aboutGroup.add(
+            this._aboutLinkRow(
+                'All releases & GNOME support',
+                'Every release, with a GNOME Shell version → plugin version table.',
+                () => SystemInfo.openUrl(SystemInfo.changelogUrl)
+            )
+        );
 
         // Report a bug (prefilled with system info).
         aboutGroup.add(

@@ -26,6 +26,7 @@ grep -rn "@tag:<slug>" extension-src docs tests
 | --- | --- |
 | `mechanism` | Plugin host mechanism: registry, config store, ordering, lifecycle, preferences plumbing and the About/GitHub-issue helper (`extension.ts`, `pluginManager.ts`, `configStore.ts`, `contracts.ts`, `plugins/registry.ts`, `prefs.ts`, `systemInfo.ts`, `docs/architecture.md`, `docs/preferences.md`). |
 | `ui` | Panel and preferences UI: floating panel actor, control button, indicator drawer, rendering, the widget-management settings window, the searchable icon picker and the shared templated-tooltip renderer (`extension.ts`, `controlButton.ts`, `indicatorsDrawer.ts`, `prefs.ts`, `tooltipTemplate.ts`, `plugins/iconPicker.ts`, `docs/object-model.md`, `docs/preferences.md`). |
+| `versioning` | Version fields, the `alpha` release-channel badge, where the version is shown, issue-based release notes (milestones → GitHub Release), the CHANGELOG / GNOME support matrix, and the CI / Release automation (`extension-src/version.ts`, `systemInfo.ts` version + release-notes helpers, `controlButton.ts` menu, `prefs.ts` About group, `metadata.json`, `.github/workflows/`, `.github/scripts/` incl. `release-notes.mjs`, `docs/releases.json`, `CHANGELOG.md`, `tests/version.test.mjs`, `docs/release.md`). |
 | `widget-keyboard-layout` | The `keyboard-layout` built-in widget. |
 | `widget-app-notifications` | The `app-notifications` built-in widget. |
 | `widget-cpu-load-monitor` | The `cpu-load-monitor` built-in widget. |

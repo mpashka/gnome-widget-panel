@@ -637,10 +637,6 @@ const FloatingMiniPanel = GObject.registerClass(
             this._extension.openPreferences();
         }
 
-        openAbout() {
-            this._extension.openAbout?.();
-        }
-
         // (Re)arm a single ~300 ms timer so a burst of `widgets` key writes
         // triggers one reload. The pending timer is removed before re-arming
         // and in destroy().
@@ -1117,13 +1113,5 @@ export default class FloatingMiniPanelExtension extends Extension {
     disable() {
         this._floatingMiniPanel.destroy();
         this._floatingMiniPanel = null;
-    }
-
-    // Open the preferences window; the "About" preferences group lives at the
-    // bottom of the single preferences page (see prefs.ts). Jumping straight to
-    // an About subpage from the Shell process is not reliably supported, so we
-    // simply open preferences and rely on the always-present About group there.
-    openAbout() {
-        this.openPreferences();
     }
 }

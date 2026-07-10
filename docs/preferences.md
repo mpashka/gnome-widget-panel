@@ -60,8 +60,11 @@ note in [`object-model.md`](object-model.md).
 
 A single **Panel layout** `Adw.PreferencesGroup` on the same page exposes the
 panel-level settings that used to live in the control-button context menu (which
-now keeps **Settings…**, **About** and **Report a bug**; all other panel control
-is via mouse gestures on the panel handle). It edits the panel `GSettings`
+now keeps a non-reactive **version header** (`GNOME Widget Panel` + the version
+and release channel, e.g. `0.1.0 (alpha)`, from `systemInfo.versionDisplay()` —
+see [`release.md`](release.md)), then **Settings…**, **Release notes** (this
+version's GitHub Release page) and **Report a bug**; all other panel control is
+via mouse gestures on the panel handle). It edits the panel `GSettings`
 (`this.getSettings()`) directly, using its own keys (not the `widgets` key), and
 is applied **live** to the running panel — no reload needed. It has these rows:
 
@@ -133,15 +136,20 @@ directories (`_hideTopBarStatus`):
 ## About and GitHub issue integration
 
 An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added by
-`_addAboutGroup`). It is also the target of the control-button **About** menu
-item: `openAbout()` on the `Extension` simply calls `openPreferences()` (jumping
-straight to an About subpage from the Shell process is not reliably supported),
-so the About group is always reachable there. Rows:
+`_addAboutGroup`). Rows:
 
 - **Name + version** (`this.metadata.name` / the human-readable
   `this.metadata['version-name'] ?? this.metadata.version`, so it shows `0.1.0`
-  rather than the integer EGO version code — see [Versioning](../TODO.md#versioning))
-  with an external-link button opening `systemInfo.repoUrl` (the GitHub repository).
+  rather than the integer EGO version code — see [`release.md`](release.md)),
+  with an `alpha` accent-pill badge suffix when `RELEASE_CHANNEL` is set
+  (`extension-src/version.ts`) and an external-link button opening
+  `systemInfo.releaseNotesUrl()` — the GitHub Release notes for the running
+  version (`…/releases/tag/vA.B.C`). The control-button context menu has the
+  matching **Release notes** item calling the same URL directly from the Shell
+  process (`controlButton.ts`).
+- **All releases & GNOME support** → `systemInfo.changelogUrl`
+  (`…/blob/main/CHANGELOG.md`) — every release plus the GNOME Shell version →
+  plugin version support matrix.
 - **Report a bug** → `systemInfo.openUrl(systemInfo.bugReportUrl())` — opens the
   `bug_report.yml` issue form prefilled with `collectSystemInfo()` in the
   form's `system` field. The control-button context menu also has a **Report a
