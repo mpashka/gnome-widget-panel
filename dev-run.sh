@@ -31,6 +31,51 @@
 # to both). Example:  GWP_CLAUDE_PORT=17862 ./dev-run.sh
 set -euo pipefail
 
+usage() {
+    cat <<'EOF'
+Usage: ./dev-run.sh [OPTIONS]
+
+Rebuild the extension and run it in a throwaway nested GNOME Shell
+(gnome-shell --devkit window), fully isolated from your main session
+(own D-Bus bus, extensions dir and dconf profile). Ctrl+C (or closing
+the window) stops it; rerun to reload changed code.
+
+Options:
+  --theme light|dark   Switch the dev shell's colour scheme (sets
+                       org.gnome.desktop.interface color-scheme in the dev
+                       dconf profile: light = 'default', dark = 'prefer-dark').
+                       Persists in the dev profile until changed again.
+  -h, --help           Show this help and exit.
+
+Environment knobs:
+  GWP_HEADLESS=1       Headless + log only (no window).
+  GWP_MONITOR_SPEC=WxH Headless virtual monitor size (default 1600x900).
+  GWP_LOG=PATH         Full shell log path (default /tmp/gnome-widget-panel-dev.log).
+  GWP_CLAUDE_PORT=N    Run the dev ai-agent-usage widget on Claude port N via an
+                       isolated widgets.json (parallel to a main-session install).
+
+Panel settings (orientation, content padding, position) apply live only from a
+preferences window on the dev shell's bus: use the panel's own Settings... item
+inside the dev window, or ./dev-gsettings-diagnose.sh open-prefs.
+See docs/development.md and docs/ui-testing.md.
+EOF
+}
+
+theme=""
+while (($# > 0)); do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --theme) shift; theme="${1:-}" ;;
+        --theme=*) theme="${1#*=}" ;;
+        *) printf 'Unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+case "$theme" in
+    ''|light|dark) ;;
+    *) printf -- '--theme must be "light" or "dark", got: %s\n' "$theme" >&2; exit 2 ;;
+esac
+
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 uuid="gnome-widget-panel@mpashka.github.com"
 spec="${GWP_MONITOR_SPEC:-1600x900}"
@@ -118,6 +163,17 @@ PY
     cfg_export="export GWP_CONFIG_FILE=\"$devcfg\""
 fi
 
+# Optional --theme: write the colour scheme into the dev dconf profile (the
+# inner script exports DCONF_PROFILE, so this only affects the dev shell).
+theme_cmd=""
+if [[ "$theme" == "dark" ]]; then
+    theme_cmd="gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true"
+    printf 'Dev shell theme: dark (prefer-dark)\n'
+elif [[ "$theme" == "light" ]]; then
+    theme_cmd="gsettings set org.gnome.desktop.interface color-scheme 'default' 2>/dev/null || true"
+    printf 'Dev shell theme: light (default)\n'
+fi
+
 cat >"$inner" <<INNER
 #!/usr/bin/env bash
 set -u
@@ -147,6 +203,7 @@ rm -f "$runtime/gnome-shell-disable-extensions"
 # Enable only this extension in the isolated profile.
 gsettings set org.gnome.shell disable-user-extensions false 2>/dev/null || true
 gsettings set org.gnome.shell enabled-extensions "['$uuid']" 2>/dev/null || true
+${theme_cmd}
 
 ${shell_cmd[*]} >>"$logfile" 2>&1 &
 shell_pid=\$!

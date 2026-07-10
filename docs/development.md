@@ -31,6 +31,9 @@ run, so running `dev-install.sh` first is optional.)
 
 ```bash
 ./dev-run.sh              # or: npm run dev
+./dev-run.sh --help       # all options and env knobs
+./dev-run.sh --theme dark # switch the dev shell light/dark (color-scheme in
+                          # the dev dconf profile; persists until changed)
 ```
 
 Each run `dev-run.sh`:
