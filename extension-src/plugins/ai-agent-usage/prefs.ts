@@ -7,13 +7,12 @@
 // the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
-import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
-import Pango from 'gi://Pango';
 
 import * as ClaudeHook from './claudeHook.js';
-import {renderTemplate} from '../../tooltipTemplate.js';
+import {colorButton} from '../../prefsColor.js';
+import {addTemplateEditor} from '../../prefsTemplate.js';
 
 const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
 const DEFAULT_CLAUDE_PORT = 17861;
@@ -34,34 +33,6 @@ const DEFAULT_COLORS = {
     usageColor: '#ffb82e',
     windowColor: '#4ca6ff',
 };
-
-function hexToRgba(hex) {
-    const rgba = new Gdk.RGBA();
-    rgba.parse(hex || '#000000');
-    return rgba;
-}
-
-function rgbaToHex(rgba) {
-    const channel = value =>
-        Math.round(Math.max(0, Math.min(1, value)) * 255)
-            .toString(16)
-            .padStart(2, '0');
-    return `#${channel(rgba.red)}${channel(rgba.green)}${channel(rgba.blue)}`;
-}
-
-function colorButton(current, key, fallback, commit) {
-    const button = new Gtk.ColorDialogButton({
-        dialog: new Gtk.ColorDialog({with_alpha: false}),
-        rgba: hexToRgba(current[key] || fallback),
-        valign: Gtk.Align.CENTER,
-        tooltip_text: 'Graph colour',
-    });
-    button.connect('notify::rgba', () => {
-        current[key] = rgbaToHex(button.get_rgba());
-        commit();
-    });
-    return button;
-}
 
 function statusImage() {
     return new Gtk.Image({valign: Gtk.Align.CENTER});
@@ -139,7 +110,7 @@ export function fillWidgetPreferences(context) {
     });
     const claudeStatus = statusImage();
     claudeRow.add_prefix(claudeStatus);
-    claudeRow.add_suffix(colorButton(current, 'claudeColor', DEFAULT_COLORS.claudeColor, commit));
+    claudeRow.add_suffix(colorButton(current, 'claudeColor', DEFAULT_COLORS.claudeColor, commit, 'Graph colour'));
     const configure = new Gtk.Button({
         label: 'Configure',
         valign: Gtk.Align.CENTER,
@@ -174,7 +145,7 @@ export function fillWidgetPreferences(context) {
     const codexStatus = statusImage();
     setStatus(codexStatus, codexInstalled() ? 'ok' : 'not-installed');
     codexRow.add_prefix(codexStatus);
-    codexRow.add_suffix(colorButton(current, 'codexColor', DEFAULT_COLORS.codexColor, commit));
+    codexRow.add_suffix(colorButton(current, 'codexColor', DEFAULT_COLORS.codexColor, commit, 'Graph colour'));
     codexRow.add_suffix(enableSwitch(current, 'enableCodex', commit));
     providers.add(codexRow);
 
@@ -186,7 +157,7 @@ export function fillWidgetPreferences(context) {
     const geminiStatus = statusImage();
     setStatus(geminiStatus, geminiInstalled() ? 'ok' : 'not-installed');
     geminiRow.add_prefix(geminiStatus);
-    geminiRow.add_suffix(colorButton(current, 'geminiColor', DEFAULT_COLORS.geminiColor, commit));
+    geminiRow.add_suffix(colorButton(current, 'geminiColor', DEFAULT_COLORS.geminiColor, commit, 'Graph colour'));
     geminiRow.add_suffix(enableSwitch(current, 'enableGemini', commit));
     providers.add(geminiRow);
 
@@ -199,11 +170,11 @@ export function fillWidgetPreferences(context) {
     page.add(indicators);
     const usageRow = new Adw.ActionRow({title: 'Token usage (rate limit)'});
     usageRow.add_suffix(enableSwitch(current, 'showUsageBar', commit));
-    usageRow.add_suffix(colorButton(current, 'usageColor', DEFAULT_COLORS.usageColor, commit));
+    usageRow.add_suffix(colorButton(current, 'usageColor', DEFAULT_COLORS.usageColor, commit, 'Graph colour'));
     indicators.add(usageRow);
     const windowRow = new Adw.ActionRow({title: 'Window (time left)'});
     windowRow.add_suffix(enableSwitch(current, 'showWindowBar', commit));
-    windowRow.add_suffix(colorButton(current, 'windowColor', DEFAULT_COLORS.windowColor, commit));
+    windowRow.add_suffix(colorButton(current, 'windowColor', DEFAULT_COLORS.windowColor, commit, 'Graph colour'));
     indicators.add(windowRow);
 
     // --- Widget -----------------------------------------------------------
@@ -281,7 +252,13 @@ export function fillWidgetPreferences(context) {
     });
     tooltip.add(preview);
 
-    addTemplateEditor(tooltip, current, commit);
+    addTemplateEditor(tooltip, current, commit, {
+        hint: 'Tokens: {agent}, {usage}, {reset}, {requests}. Use \\n for a '
+            + 'line break.',
+        sampleFragments: SAMPLE_FRAGMENTS,
+        defaultTemplate: DEFAULT_TOOLTIP_TEMPLATE,
+        trim: true,
+    });
 
     // --- Advanced ---------------------------------------------------------
     const advanced = new Adw.PreferencesGroup({title: 'Advanced'});
@@ -318,80 +295,4 @@ export function fillWidgetPreferences(context) {
         commit();
     });
     advanced.add(port);
-}
-
-// Multi-line template editor plus a live tooltip preview. Persists the template
-// to `options.template` on every change and re-renders SAMPLE_FRAGMENTS through
-// the shared renderer, showing an error hint if the markup is invalid.
-function addTemplateEditor(group, current, commit) {
-    const initial = typeof current.template === 'string'
-        ? current.template
-        : DEFAULT_TOOLTIP_TEMPLATE;
-
-    const frame = new Gtk.Frame({margin_top: 6});
-    const scrolled = new Gtk.ScrolledWindow({
-        min_content_height: 72,
-        vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
-        hscrollbar_policy: Gtk.PolicyType.NEVER,
-    });
-    const textView = new Gtk.TextView({
-        monospace: true,
-        top_margin: 6,
-        bottom_margin: 6,
-        left_margin: 6,
-        right_margin: 6,
-        wrap_mode: Gtk.WrapMode.WORD_CHAR,
-    });
-    const buffer = textView.get_buffer();
-    buffer.set_text(initial, -1);
-    scrolled.set_child(textView);
-    frame.set_child(scrolled);
-    group.add(frame);
-
-    const hint = new Gtk.Label({
-        label: 'Tokens: {agent}, {usage}, {reset}, {requests}. Use \\n for a '
-            + 'line break.',
-        xalign: 0,
-        wrap: true,
-        margin_top: 4,
-    });
-    hint.add_css_class('dim-label');
-    group.add(hint);
-
-    const preview = new Gtk.Label({
-        use_markup: true,
-        xalign: 0,
-        wrap: true,
-        selectable: true,
-        margin_top: 6,
-        margin_bottom: 6,
-        margin_start: 8,
-        margin_end: 8,
-    });
-    preview.add_css_class('card');
-    group.add(preview);
-
-    const updatePreview = () => {
-        const template = typeof current.template === 'string'
-            ? current.template
-            : DEFAULT_TOOLTIP_TEMPLATE;
-        try {
-            const markup = renderTemplate(template, SAMPLE_FRAGMENTS)
-                .replace(/\n+$/, '');
-            Pango.parse_markup(markup, -1, '\0');
-            preview.remove_css_class('error');
-            preview.set_markup(markup);
-        } catch (error) {
-            preview.add_css_class('error');
-            preview.set_text(`Invalid template: ${error?.message ?? error}`);
-        }
-    };
-
-    buffer.connect('changed', () => {
-        const [start, end] = [buffer.get_start_iter(), buffer.get_end_iter()];
-        current.template = buffer.get_text(start, end, false);
-        commit();
-        updatePreview();
-    });
-    updatePreview();
 }

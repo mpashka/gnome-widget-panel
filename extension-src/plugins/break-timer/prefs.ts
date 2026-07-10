@@ -6,11 +6,10 @@
 // the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
-import Gdk from 'gi://Gdk';
 import Gtk from 'gi://Gtk';
-import Pango from 'gi://Pango';
 
-import {renderTemplate} from '../../tooltipTemplate.js';
+import {colorButton} from '../../prefsColor.js';
+import {addTemplateEditor} from '../../prefsTemplate.js';
 
 const DEFAULT_TIMERS = [
     {
@@ -55,20 +54,6 @@ const SAMPLE_FRAGMENTS = {
     daily: '<span foreground="#f03333">daily: 6:00:00/6:00:00 — break!</span>',
 };
 
-function hexToRgba(hex) {
-    const rgba = new Gdk.RGBA();
-    rgba.parse(hex || '#000000');
-    return rgba;
-}
-
-function rgbaToHex(rgba) {
-    const channel = value =>
-        Math.round(Math.max(0, Math.min(1, value)) * 255)
-            .toString(16)
-            .padStart(2, '0');
-    return `#${channel(rgba.red)}${channel(rgba.green)}${channel(rgba.blue)}`;
-}
-
 // Read the configured timers, falling back to defaults. Names, count and
 // order are fixed in the UI; only enabled/intervals/colors are edited.
 function currentTimers(options) {
@@ -79,20 +64,6 @@ function currentTimers(options) {
         const match = timers.find(t => t && t.name === def.name);
         return match ? {...def, ...match} : {...def};
     });
-}
-
-function colorButton(target, key, commit, tooltip) {
-    const button = new Gtk.ColorDialogButton({
-        dialog: new Gtk.ColorDialog({with_alpha: false}),
-        rgba: hexToRgba(target[key]),
-        valign: Gtk.Align.CENTER,
-        tooltip_text: tooltip,
-    });
-    button.connect('notify::rgba', () => {
-        target[key] = rgbaToHex(button.get_rgba());
-        commit();
-    });
-    return button;
 }
 
 export function fillWidgetPreferences(context) {
@@ -177,11 +148,11 @@ export function fillWidgetPreferences(context) {
         }
 
         const colorRow = new Adw.ActionRow({title: 'Colour'});
-        colorRow.add_suffix(colorButton(timer, 'color', commit, 'Progress colour'));
+        colorRow.add_suffix(colorButton(timer, 'color', undefined, commit, 'Progress colour'));
         row.add_row(colorRow);
 
         const overdueRow = new Adw.ActionRow({title: 'Overdue colour'});
-        overdueRow.add_suffix(colorButton(timer, 'overdueColor', commit, 'Colour once due for a break'));
+        overdueRow.add_suffix(colorButton(timer, 'overdueColor', undefined, commit, 'Colour once due for a break'));
         row.add_row(overdueRow);
     });
 
@@ -218,80 +189,10 @@ export function fillWidgetPreferences(context) {
     });
     tooltip.add(show);
 
-    addTemplateEditor(tooltip, current, commit);
-}
-
-// Multi-line template editor plus a live tooltip preview. Persists the template
-// to `options.template` on every change and re-renders SAMPLE_FRAGMENTS through
-// the shared renderer, showing an error hint if the markup is invalid.
-function addTemplateEditor(group, current, commit) {
-    const initial = typeof current.template === 'string'
-        ? current.template
-        : DEFAULT_TOOLTIP_TEMPLATE;
-
-    const frame = new Gtk.Frame({margin_top: 6});
-    const scrolled = new Gtk.ScrolledWindow({
-        min_content_height: 72,
-        vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
-        hscrollbar_policy: Gtk.PolicyType.NEVER,
-    });
-    const textView = new Gtk.TextView({
-        monospace: true,
-        top_margin: 6,
-        bottom_margin: 6,
-        left_margin: 6,
-        right_margin: 6,
-        wrap_mode: Gtk.WrapMode.WORD_CHAR,
-    });
-    const buffer = textView.get_buffer();
-    buffer.set_text(initial, -1);
-    scrolled.set_child(textView);
-    frame.set_child(scrolled);
-    group.add(frame);
-
-    const hint = new Gtk.Label({
-        label: 'Tokens: {micro}, {rest}, {daily}. Use \\n for a line break. '
+    addTemplateEditor(tooltip, current, commit, {
+        hint: 'Tokens: {micro}, {rest}, {daily}. Use \\n for a line break. '
             + 'A disabled timer renders as an empty fragment.',
-        xalign: 0,
-        wrap: true,
-        margin_top: 4,
+        sampleFragments: SAMPLE_FRAGMENTS,
+        defaultTemplate: DEFAULT_TOOLTIP_TEMPLATE,
     });
-    hint.add_css_class('dim-label');
-    group.add(hint);
-
-    const preview = new Gtk.Label({
-        use_markup: true,
-        xalign: 0,
-        wrap: true,
-        selectable: true,
-        margin_top: 6,
-        margin_bottom: 6,
-        margin_start: 8,
-        margin_end: 8,
-    });
-    preview.add_css_class('card');
-    group.add(preview);
-
-    const updatePreview = () => {
-        const template = typeof current.template === 'string'
-            ? current.template
-            : DEFAULT_TOOLTIP_TEMPLATE;
-        try {
-            const markup = renderTemplate(template, SAMPLE_FRAGMENTS);
-            Pango.parse_markup(markup, -1, '\0');
-            preview.remove_css_class('error');
-            preview.set_markup(markup);
-        } catch (error) {
-            preview.add_css_class('error');
-            preview.set_text(`Invalid template: ${error?.message ?? error}`);
-        }
-    };
-
-    buffer.connect('changed', () => {
-        const [start, end] = [buffer.get_start_iter(), buffer.get_end_iter()];
-        current.template = buffer.get_text(start, end, false);
-        commit();
-        updatePreview();
-    });
-    updatePreview();
 }

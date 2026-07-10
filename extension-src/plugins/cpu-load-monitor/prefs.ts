@@ -6,11 +6,10 @@
 // the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
-import Gdk from 'gi://Gdk';
 import Gtk from 'gi://Gtk';
-import Pango from 'gi://Pango';
 
-import {renderTemplate} from '../../tooltipTemplate.js';
+import {colorButton} from '../../prefsColor.js';
+import {addTemplateEditor} from '../../prefsTemplate.js';
 
 const DEFAULT_BANDS = [
     {name: 'green', temp: 50, color: '#3dc752'},
@@ -29,20 +28,6 @@ const SAMPLE_FRAGMENTS = {
         + '<span foreground="#ffc729"><b>65..80</b></span>, '
         + '<span foreground="#f03333">&gt;80</span>',
 };
-
-function hexToRgba(hex) {
-    const rgba = new Gdk.RGBA();
-    rgba.parse(hex || '#000000');
-    return rgba;
-}
-
-function rgbaToHex(rgba) {
-    const channel = value =>
-        Math.round(Math.max(0, Math.min(1, value)) * 255)
-            .toString(16)
-            .padStart(2, '0');
-    return `#${channel(rgba.red)}${channel(rgba.green)}${channel(rgba.blue)}`;
-}
 
 // Read the configured bands, falling back to defaults. Names and count are fixed
 // in the UI; they live in the configuration and are edited (temp/color) below.
@@ -90,16 +75,7 @@ export function fillWidgetPreferences(context) {
             commit();
         });
         row.add_suffix(spin);
-        const color = new Gtk.ColorDialogButton({
-            dialog: new Gtk.ColorDialog({with_alpha: false}),
-            rgba: hexToRgba(band.color),
-            valign: Gtk.Align.CENTER,
-        });
-        color.connect('notify::rgba', () => {
-            band.color = rgbaToHex(color.get_rgba());
-            commit();
-        });
-        row.add_suffix(color);
+        row.add_suffix(colorButton(band, 'color', undefined, commit));
         bandsGroup.add(row);
     });
 
@@ -151,79 +127,9 @@ export function fillWidgetPreferences(context) {
     });
     tooltip.add(show);
 
-    addTemplateEditor(tooltip, current, commit);
-}
-
-// Multi-line template editor plus a live tooltip preview. Persists the template
-// to `options.template` on every change and re-renders SAMPLE_FRAGMENTS through
-// the shared renderer, showing an error hint if the markup is invalid.
-function addTemplateEditor(group, current, commit) {
-    const initial = typeof current.template === 'string'
-        ? current.template
-        : DEFAULT_TOOLTIP_TEMPLATE;
-
-    const frame = new Gtk.Frame({margin_top: 6});
-    const scrolled = new Gtk.ScrolledWindow({
-        min_content_height: 72,
-        vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
-        hscrollbar_policy: Gtk.PolicyType.NEVER,
+    addTemplateEditor(tooltip, current, commit, {
+        hint: 'Tokens: {load}, {temp}, {legend}. Use \\n for a line break.',
+        sampleFragments: SAMPLE_FRAGMENTS,
+        defaultTemplate: DEFAULT_TOOLTIP_TEMPLATE,
     });
-    const textView = new Gtk.TextView({
-        monospace: true,
-        top_margin: 6,
-        bottom_margin: 6,
-        left_margin: 6,
-        right_margin: 6,
-        wrap_mode: Gtk.WrapMode.WORD_CHAR,
-    });
-    const buffer = textView.get_buffer();
-    buffer.set_text(initial, -1);
-    scrolled.set_child(textView);
-    frame.set_child(scrolled);
-    group.add(frame);
-
-    const hint = new Gtk.Label({
-        label: 'Tokens: {load}, {temp}, {legend}. Use \\n for a line break.',
-        xalign: 0,
-        wrap: true,
-        margin_top: 4,
-    });
-    hint.add_css_class('dim-label');
-    group.add(hint);
-
-    const preview = new Gtk.Label({
-        use_markup: true,
-        xalign: 0,
-        wrap: true,
-        selectable: true,
-        margin_top: 6,
-        margin_bottom: 6,
-        margin_start: 8,
-        margin_end: 8,
-    });
-    preview.add_css_class('card');
-    group.add(preview);
-
-    const updatePreview = () => {
-        const template = typeof current.template === 'string'
-            ? current.template
-            : DEFAULT_TOOLTIP_TEMPLATE;
-        try {
-            const markup = renderTemplate(template, SAMPLE_FRAGMENTS);
-            Pango.parse_markup(markup, -1, '\0');
-            preview.remove_css_class('error');
-            preview.set_markup(markup);
-        } catch (error) {
-            preview.add_css_class('error');
-            preview.set_text(`Invalid template: ${error?.message ?? error}`);
-        }
-    };
-
-    buffer.connect('changed', () => {
-        const [start, end] = [buffer.get_start_iter(), buffer.get_end_iter()];
-        current.template = buffer.get_text(start, end, false);
-        commit();
-        updatePreview();
-    });
-    updatePreview();
 }
