@@ -167,7 +167,7 @@ function atomicWrite(path, contents, mode) {
     try {
         GLib.chmod(path, mode);
     } catch (error) {
-        console.error(`GNOME Widget Panel AI usage chmod failed: ${error}`);
+        logError(error, 'GNOME Widget Panel AI usage chmod failed');
     }
 }
 

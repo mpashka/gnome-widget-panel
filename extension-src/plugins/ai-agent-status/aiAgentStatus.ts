@@ -12,6 +12,8 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import * as ClaudeHook from '../ai-agent-usage/claudeHook.js';
+import {hexToRgb, nowSeconds, toNumber} from '../../colorUtils.js';
+import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
 
 const DEFAULT_PORT = 17871;
@@ -25,8 +27,6 @@ const BUSY_STALE_SECONDS = 10 * 60;
 const TICK_INTERVAL_SECONDS = 5;
 const PULSE_INTERVAL_MS = 600;
 const PULSE_LOW_OPACITY = 120;
-const TOOLTIP_OFFSET = 6;
-const TOOLTIP_ANIMATION_TIME = 150;
 // State colours (options with these defaults).
 const DEFAULT_COLORS = {
     needsInputColor: '#f03333',
@@ -40,27 +40,6 @@ const STATE_ORDER = ['needs-input', 'ready', 'busy', 'idle'];
 // `1 waiting · 2 busy · 1 idle`) and {sessions} (one monospace line per
 // session). Literal text is Pango-escaped; `\n` is a line break.
 const DEFAULT_TOOLTIP_TEMPLATE = '{counts}\n{sessions}';
-
-function toNumber(value, fallback) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
-
-function nowSeconds() {
-    return Math.floor(Date.now() / 1000);
-}
-
-function hexToRgb(hex) {
-    const raw = String(hex).replace('#', '');
-    const full = raw.length === 3
-        ? raw.split('').map(c => c + c).join('')
-        : raw;
-    const channel = start => {
-        const value = parseInt(full.slice(start, start + 2), 16) / 255;
-        return Number.isFinite(value) ? value : 0;
-    };
-    return [channel(0), channel(2), channel(4)];
-}
 
 function escapeMarkup(text) {
     return String(text)
@@ -204,7 +183,7 @@ export const AiAgentStatus = GObject.registerClass(
                 ClaudeHook.registerPort(this._port, this._secret);
                 this._registered = true;
             } catch (error) {
-                console.error(`GNOME Widget Panel agent-status server failed: ${error}`);
+                logError(error, 'GNOME Widget Panel agent-status server failed');
                 this._stopServer();
             }
         }
@@ -214,7 +193,7 @@ export const AiAgentStatus = GObject.registerClass(
                 try {
                     ClaudeHook.deregisterPort(this._port);
                 } catch (error) {
-                    console.error(`GNOME Widget Panel agent-status deregister failed: ${error}`);
+                    logError(error, 'GNOME Widget Panel agent-status deregister failed');
                 }
                 this._registered = false;
             }
@@ -248,7 +227,7 @@ export const AiAgentStatus = GObject.registerClass(
                     this._applyEvent(String(payload?.hook_event_name ?? ''), id, cwd);
                 msg.set_status(Soup.Status.OK, null);
             } catch (error) {
-                console.error(`GNOME Widget Panel agent-event failed: ${error}`);
+                logError(error, 'GNOME Widget Panel agent-event failed');
                 msg.set_status(Soup.Status.BAD_REQUEST, null);
             }
         }
@@ -268,7 +247,7 @@ export const AiAgentStatus = GObject.registerClass(
                     this._applyEvent('statusline-activity', id, cwd);
                 msg.set_status(Soup.Status.NO_CONTENT, null);
             } catch (error) {
-                console.error(`GNOME Widget Panel agent-status statusline failed: ${error}`);
+                logError(error, 'GNOME Widget Panel agent-status statusline failed');
                 msg.set_status(Soup.Status.BAD_REQUEST, null);
             }
         }
@@ -414,7 +393,7 @@ export const AiAgentStatus = GObject.registerClass(
                 try {
                     this._drawDot(dot, state);
                 } catch (error) {
-                    console.error(`GNOME Widget Panel agent-status draw failed: ${error}`);
+                    logError(error, 'GNOME Widget Panel agent-status draw failed');
                 }
             });
             this._dots.push(dot);
@@ -526,23 +505,9 @@ export const AiAgentStatus = GObject.registerClass(
                 return;
             if (this.hover) {
                 this._updateTooltip();
-                this._tooltip.opacity = 0;
-                this._tooltip.visible = true;
-                this._tooltip.ease({
-                    opacity: 255,
-                    duration: TOOLTIP_ANIMATION_TIME,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                });
+                animateTooltipVisibility(this, true);
             } else {
-                this._tooltip.ease({
-                    opacity: 0,
-                    duration: TOOLTIP_ANIMATION_TIME,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onComplete: () => {
-                        if (this._tooltip)
-                            this._tooltip.visible = false;
-                    },
-                });
+                animateTooltipVisibility(this, false);
             }
         }
 
@@ -552,48 +517,7 @@ export const AiAgentStatus = GObject.registerClass(
             if (!this._tooltip)
                 return;
             this._tooltip.clutter_text.set_markup(this._tooltipMarkup());
-            this._positionTooltip();
-        }
-
-        _positionTooltip() {
-            const [stageX, stageY] = this.get_transformed_position();
-            const [actorWidth, actorHeight] = this.allocation.get_size();
-            const [tipWidth, tipHeight] = this._tooltip.get_size();
-            const monitor = Main.layoutManager.findMonitorForActor(this);
-            if (this._rotated) {
-                // Vertical panel: the strip hugs a screen edge, so an above/below
-                // tooltip would overlap the strip and its neighbours. Place the
-                // tooltip beside the widget, on whichever side has more room
-                // (widget in the right half of the monitor → left, else right),
-                // vertically centred on the widget and clamped to the monitor.
-                const widgetCenterX = stageX + actorWidth / 2;
-                const placeLeft =
-                    widgetCenterX > monitor.x + monitor.width / 2;
-                const x = placeLeft
-                    ? stageX - tipWidth - TOOLTIP_OFFSET
-                    : stageX + actorWidth + TOOLTIP_OFFSET;
-                const clampedX = Math.clamp(
-                    x,
-                    monitor.x,
-                    monitor.x + monitor.width - tipWidth
-                );
-                const y = Math.clamp(
-                    stageY + Math.floor((actorHeight - tipHeight) / 2),
-                    monitor.y,
-                    monitor.y + monitor.height - tipHeight
-                );
-                this._tooltip.set_position(clampedX, y);
-                return;
-            }
-            const x = Math.clamp(
-                stageX + Math.floor((actorWidth - tipWidth) / 2),
-                monitor.x,
-                monitor.x + monitor.width - tipWidth
-            );
-            const y = stageY - monitor.y > actorHeight + TOOLTIP_OFFSET
-                ? stageY - tipHeight - TOOLTIP_OFFSET
-                : stageY + actorHeight + TOOLTIP_OFFSET;
-            this._tooltip.set_position(x, y);
+            positionTooltip(this);
         }
 
         // Called by the panel host on orientation/rotation changes. A dot row is

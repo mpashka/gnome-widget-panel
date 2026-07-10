@@ -1,4 +1,5 @@
 // @ts-nocheck
+// @tag:widget-ai-agent-usage
 'use strict';
 
 import Clutter from 'gi://Clutter';
@@ -12,6 +13,8 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import * as ClaudeHook from './claudeHook.js';
+import {hexToRgb, nowSeconds} from '../../colorUtils.js';
+import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
 
 const WIDTH = 54;
@@ -25,8 +28,6 @@ const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
 const SAMPLE_INTERVAL_SECONDS = 5;
 const STALE_AFTER_SECONDS = 120;
 const DEFAULT_CLAUDE_PORT = 17861;
-const TOOLTIP_OFFSET = 6;
-const TOOLTIP_ANIMATION_TIME = 150;
 const REQUEST_TEXT_PREVIEW = 30;
 const REQUEST_COLOR = [0.90, 0.15, 0.15, 0.9];
 // Indicator colours, shared by the vertical bars and the matching tooltip
@@ -47,22 +48,6 @@ const WINDOW_GLYPH = '⧗';
 // {requests} (the monospace request table, empty when none/disabled). Literal
 // text is Pango-escaped; `\n` is a line break. See ../../tooltipTemplate.ts.
 const DEFAULT_TOOLTIP_TEMPLATE = '{agent}: {usage}{reset}\n{requests}';
-
-function hexToRgb(hex) {
-    const raw = String(hex).replace('#', '');
-    const full = raw.length === 3
-        ? raw.split('').map(c => c + c).join('')
-        : raw;
-    const channel = start => {
-        const value = parseInt(full.slice(start, start + 2), 16) / 255;
-        return Number.isFinite(value) ? value : 0;
-    };
-    return [channel(0), channel(2), channel(4)];
-}
-
-function nowSeconds() {
-    return Math.floor(Date.now() / 1000);
-}
 
 function formatClock(tsSeconds) {
     const date = new Date(tsSeconds * 1000);
@@ -358,7 +343,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 ClaudeHook.registerPort(this._claudePort, this._claudeSecret);
                 this._claudeRegistered = true;
             } catch (error) {
-                console.error(`GNOME Widget Panel Claude hook failed: ${error}`);
+                logError(error, 'GNOME Widget Panel Claude hook failed');
                 this._stopClaudeHttpHook();
             }
         }
@@ -389,7 +374,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     new TextEncoder().encode(formatStatusLine(value))
                 );
             } catch (error) {
-                console.error(`GNOME Widget Panel Claude request failed: ${error}`);
+                logError(error, 'GNOME Widget Panel Claude request failed');
                 msg.set_status(Soup.Status.BAD_REQUEST, null);
             }
         }
@@ -400,7 +385,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 try {
                     ClaudeHook.deregisterPort(this._claudePort);
                 } catch (error) {
-                    console.error(`GNOME Widget Panel Claude deregister failed: ${error}`);
+                    logError(error, 'GNOME Widget Panel Claude deregister failed');
                 }
                 this._claudeRegistered = false;
             }
@@ -431,7 +416,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 });
                 this._readCodexLine();
             } catch (error) {
-                console.error(`GNOME Widget Panel Codex helper failed: ${error}`);
+                logError(error, 'GNOME Widget Panel Codex helper failed');
                 this._stopCodexHelper();
             }
         }
@@ -457,7 +442,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                         }
                     } catch (error) {
                         if (!this._codexReadCancellable?.is_cancelled())
-                            console.error(`GNOME Widget Panel Codex read failed: ${error}`);
+                            logError(error, 'GNOME Widget Panel Codex read failed');
                     }
                 }
             );
@@ -496,7 +481,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 });
                 this._readGeminiLine();
             } catch (error) {
-                console.error(`GNOME Widget Panel Gemini helper failed: ${error}`);
+                logError(error, 'GNOME Widget Panel Gemini helper failed');
                 this._stopGeminiHelper();
             }
         }
@@ -522,7 +507,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                         }
                     } catch (error) {
                         if (!this._geminiReadCancellable?.is_cancelled())
-                            console.error(`GNOME Widget Panel Gemini read failed: ${error}`);
+                            logError(error, 'GNOME Widget Panel Gemini read failed');
                     }
                 }
             );
@@ -724,23 +709,9 @@ export const AiAgentUsageGraph = GObject.registerClass(
         _onHoverChanged() {
             if (this._showTooltip && this.hover) {
                 this._updateTooltip();
-                this._tooltip.opacity = 0;
-                this._tooltip.visible = true;
-                this._tooltip.ease({
-                    opacity: 255,
-                    duration: TOOLTIP_ANIMATION_TIME,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                });
+                animateTooltipVisibility(this, true);
             } else {
-                this._tooltip.ease({
-                    opacity: 0,
-                    duration: TOOLTIP_ANIMATION_TIME,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onComplete: () => {
-                        if (this._tooltip)
-                            this._tooltip.visible = false;
-                    },
-                });
+                animateTooltipVisibility(this, false);
             }
         }
 
@@ -748,48 +719,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
         // updates while hovering do not make the tooltip blink.
         _updateTooltip() {
             this._tooltip.clutter_text.set_markup(this._tooltipMarkup());
-            this._positionTooltip();
-        }
-
-        _positionTooltip() {
-            const [stageX, stageY] = this.get_transformed_position();
-            const [actorWidth, actorHeight] = this.allocation.get_size();
-            const [tipWidth, tipHeight] = this._tooltip.get_size();
-            const monitor = Main.layoutManager.findMonitorForActor(this);
-            if (this._rotated) {
-                // Vertical panel: the strip hugs a screen edge, so an above/below
-                // tooltip would overlap the strip and its neighbours. Place the
-                // tooltip beside the widget, on whichever side has more room
-                // (widget in the right half of the monitor → left, else right),
-                // vertically centred on the widget and clamped to the monitor.
-                const widgetCenterX = stageX + actorWidth / 2;
-                const placeLeft =
-                    widgetCenterX > monitor.x + monitor.width / 2;
-                const x = placeLeft
-                    ? stageX - tipWidth - TOOLTIP_OFFSET
-                    : stageX + actorWidth + TOOLTIP_OFFSET;
-                const clampedX = Math.clamp(
-                    x,
-                    monitor.x,
-                    monitor.x + monitor.width - tipWidth
-                );
-                const y = Math.clamp(
-                    stageY + Math.floor((actorHeight - tipHeight) / 2),
-                    monitor.y,
-                    monitor.y + monitor.height - tipHeight
-                );
-                this._tooltip.set_position(clampedX, y);
-                return;
-            }
-            const x = Math.clamp(
-                stageX + Math.floor((actorWidth - tipWidth) / 2),
-                monitor.x,
-                monitor.x + monitor.width - tipWidth
-            );
-            const y = stageY - monitor.y > actorHeight + TOOLTIP_OFFSET
-                ? stageY - tipHeight - TOOLTIP_OFFSET
-                : stageY + actorHeight + TOOLTIP_OFFSET;
-            this._tooltip.set_position(x, y);
+            positionTooltip(this);
         }
 
         // Rotate for a vertical panel: when rotated the actor/surface is swapped

@@ -13,6 +13,8 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {hexToRgb, toNumber} from '../../colorUtils.js';
+import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
 
 const WIDTH = 32;
@@ -22,8 +24,6 @@ const TICK_INTERVAL_SECONDS = 1;
 // elapsed activity time; idle at/above a timer's own breakSeconds resets that
 // timer (taking the break resets it).
 const ACTIVE_IDLE_THRESHOLD_MS = 5000;
-const TOOLTIP_OFFSET = 6;
-const TOOLTIP_ANIMATION_TIME = 150;
 const BAR_GAP = 1;
 
 // Default hover-tooltip template. Tokens: {micro}, {rest}, {daily}, each a
@@ -58,11 +58,6 @@ const DEFAULT_TIMERS = [
     },
 ];
 
-function toNumber(value, fallback) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
-
 // Normalize the configured timers: fixed name/count/order (micro, rest,
 // daily); enabled/workMinutes/breakSeconds/colors are taken from the matching
 // input entry when valid, defaulted otherwise. Mirrors cpuGraph's
@@ -86,18 +81,6 @@ function normalizeTimers(timers) {
                 ? match.overdueColor : def.overdueColor,
         };
     });
-}
-
-function hexToRgb(hex) {
-    const raw = String(hex).replace('#', '');
-    const full = raw.length === 3
-        ? raw.split('').map(c => c + c).join('')
-        : raw;
-    const channel = start => {
-        const value = parseInt(full.slice(start, start + 2), 16) / 255;
-        return Number.isFinite(value) ? value : 0;
-    };
-    return [channel(0), channel(2), channel(4)];
 }
 
 // Adaptive `H:MM:SS` (once an hour is reached) / `M:SS` duration formatter,
@@ -258,23 +241,9 @@ export const BreakTimerGraph = GObject.registerClass(
         _onHoverChanged() {
             if (this._showTooltip && this.hover) {
                 this._updateTooltip();
-                this._tooltip.opacity = 0;
-                this._tooltip.visible = true;
-                this._tooltip.ease({
-                    opacity: 255,
-                    duration: TOOLTIP_ANIMATION_TIME,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                });
+                animateTooltipVisibility(this, true);
             } else {
-                this._tooltip.ease({
-                    opacity: 0,
-                    duration: TOOLTIP_ANIMATION_TIME,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onComplete: () => {
-                        if (this._tooltip)
-                            this._tooltip.visible = false;
-                    },
-                });
+                animateTooltipVisibility(this, false);
             }
         }
 
@@ -282,48 +251,7 @@ export const BreakTimerGraph = GObject.registerClass(
         // updates while hovering do not make the tooltip blink.
         _updateTooltip() {
             this._tooltip.clutter_text.set_markup(this._tooltipMarkup());
-            this._positionTooltip();
-        }
-
-        _positionTooltip() {
-            const [stageX, stageY] = this.get_transformed_position();
-            const [actorWidth, actorHeight] = this.allocation.get_size();
-            const [tipWidth, tipHeight] = this._tooltip.get_size();
-            const monitor = Main.layoutManager.findMonitorForActor(this);
-            if (this._rotated) {
-                // Vertical panel: the strip hugs a screen edge, so an above/below
-                // tooltip would overlap the strip and its neighbours. Place the
-                // tooltip beside the widget, on whichever side has more room
-                // (widget in the right half of the monitor → left, else right),
-                // vertically centred on the widget and clamped to the monitor.
-                const widgetCenterX = stageX + actorWidth / 2;
-                const placeLeft =
-                    widgetCenterX > monitor.x + monitor.width / 2;
-                const x = placeLeft
-                    ? stageX - tipWidth - TOOLTIP_OFFSET
-                    : stageX + actorWidth + TOOLTIP_OFFSET;
-                const clampedX = Math.clamp(
-                    x,
-                    monitor.x,
-                    monitor.x + monitor.width - tipWidth
-                );
-                const y = Math.clamp(
-                    stageY + Math.floor((actorHeight - tipHeight) / 2),
-                    monitor.y,
-                    monitor.y + monitor.height - tipHeight
-                );
-                this._tooltip.set_position(clampedX, y);
-                return;
-            }
-            const x = Math.clamp(
-                stageX + Math.floor((actorWidth - tipWidth) / 2),
-                monitor.x,
-                monitor.x + monitor.width - tipWidth
-            );
-            const y = stageY - monitor.y > actorHeight + TOOLTIP_OFFSET
-                ? stageY - tipHeight - TOOLTIP_OFFSET
-                : stageY + actorHeight + TOOLTIP_OFFSET;
-            this._tooltip.set_position(x, y);
+            positionTooltip(this);
         }
 
         // Rotate the vertical panel: when rotated the actor/surface is swapped

@@ -27,6 +27,9 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig` from
   [`../extension-src/widgetConfig.ts`](../extension-src/widgetConfig.ts): schema
   validation, `enabled`/`options` normalization, error cases, round-trip.
+- `colorUtils.test.mjs` — `hexToRgb`/`toNumber`/`nowSeconds` from
+  [`../extension-src/colorUtils.ts`](../extension-src/colorUtils.ts): valid and
+  invalid hex colours, numeric coercion/fallback, integer timestamp.
 
 ## Directories
 
