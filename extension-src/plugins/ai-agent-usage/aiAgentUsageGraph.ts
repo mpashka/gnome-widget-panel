@@ -285,6 +285,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 ? Number(options.requestPreview)
                 : REQUEST_TEXT_PREVIEW;
             this._showRequests = options.showRequests !== false;
+            this._showTooltip = options.showTooltip !== false;
             this._template = typeof options.template === 'string'
                 ? options.template
                 : DEFAULT_TOOLTIP_TEMPLATE;
@@ -302,6 +303,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             // Prefer a persisted secret (written by the Configure button in
             // preferences) so the hook and this server agree after a reload.
             this._claudeSecret = options.claudeSecret || GLib.uuid_string_random();
+            this._destroyed = false;
             this._server = null;
             this._codexProcess = null;
             this._codexStdout = null;
@@ -441,6 +443,8 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 GLib.PRIORITY_DEFAULT,
                 this._codexReadCancellable,
                 (stream, result) => {
+                    if (this._destroyed)
+                        return;
                     try {
                         const [line] = stream.read_line_finish_utf8(result);
                         if (line !== null) {
@@ -504,6 +508,8 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 GLib.PRIORITY_DEFAULT,
                 this._geminiReadCancellable,
                 (stream, result) => {
+                    if (this._destroyed)
+                        return;
                     try {
                         const [line] = stream.read_line_finish_utf8(result);
                         if (line !== null) {
@@ -716,7 +722,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
         }
 
         _onHoverChanged() {
-            if (this.hover) {
+            if (this._showTooltip && this.hover) {
                 this._updateTooltip();
                 this._tooltip.opacity = 0;
                 this._tooltip.visible = true;
@@ -889,6 +895,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
         }
 
         destroy() {
+            this._destroyed = true;
             if (this._sampleTimeoutId) {
                 GLib.Source.remove(this._sampleTimeoutId);
                 this._sampleTimeoutId = null;

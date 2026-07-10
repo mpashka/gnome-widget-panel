@@ -245,6 +245,16 @@ export function fillWidgetPreferences(context) {
     // --- Tooltip ----------------------------------------------------------
     const tooltip = new Adw.PreferencesGroup({title: 'Tooltip'});
     page.add(tooltip);
+    const showTooltip = new Adw.SwitchRow({
+        title: 'Show tooltip',
+        subtitle: 'Agent, usage, reset time and recent requests on hover',
+        active: current.showTooltip !== false,
+    });
+    showTooltip.connect('notify::active', () => {
+        current.showTooltip = showTooltip.active;
+        commit();
+    });
+    tooltip.add(showTooltip);
     const showRequests = new Adw.SwitchRow({
         title: 'Show recent requests',
         subtitle: 'List prompts visible on the graph',
