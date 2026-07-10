@@ -1,4 +1,20 @@
 {
   "schema": 1,
-  "releases": []
+  "releases": [
+    {
+      "version": "0.1.0",
+      "code": 1,
+      "date": "2026-07-10",
+      "shellVersions": [
+        "46",
+        "47",
+        "48",
+        "49",
+        "50"
+      ],
+      "url": "https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0",
+      "milestone": "v0.1.0",
+      "issues": []
+    }
+  ]
 }
