@@ -639,13 +639,19 @@ const FloatingMiniPanel = GObject.registerClass(
         }
 
         // Rebuild the configured plugin actors from the (possibly changed)
-        // `widgets` GSettings key. Build the NEW instances FIRST, so an invalid
-        // config does not tear down the working panel. Only on success are the
-        // old actors destroyed and replaced. The control button and every
-        // non-plugin child stay in place: they were added first and are
-        // untouched here, so re-adding the new plugin actors in array (config)
-        // order preserves "control button, then plugins in order". Never throws
-        // out of the timeout callback.
+        // `widgets` GSettings key. Destroy the OLD actors FIRST, then build the
+        // new ones. Fixed-port plugins (ai-agent-usage / ai-agent-status) bind a
+        // Soup.Server on construction; building the replacements before the old
+        // instances released their ports made the rebind race and fail on every
+        // settings change, leaving the surviving widget with a dead server. This
+        // "destroy old, then build new" order is safe because the pre-validation
+        // below already guarantees a broken/half-edited config bails out before
+        // anything is torn down — that guarantee, not "build new before destroy
+        // old", is what protects the working panel from an invalid config now.
+        // The control button and every non-plugin child stay in place: they were
+        // added first and are untouched here, so re-adding the new plugin actors
+        // in array (config) order preserves "control button, then plugins in
+        // order". Never throws out of the timeout callback.
         _reloadPlugins() {
             // A broken/half-edited `widgets` value must keep the CURRENT
             // widgets (loadWidgetConfig would gracefully fall back to the
@@ -663,9 +669,16 @@ const FloatingMiniPanel = GObject.registerClass(
                 return;
             }
 
-            let next;
+            // Validation passed: it is now safe to tear down the current plugin
+            // actors — releasing any fixed ports/signals/cookies they hold —
+            // before building the replacements that may need those same
+            // resources (e.g. rebinding the same Soup.Server port).
+            for (const {actor} of this._plugins)
+                actor.destroy();
+            this._plugins = [];
+
             try {
-                next = PluginManager.createConfiguredPlugins(
+                this._plugins = PluginManager.createConfiguredPlugins(
                     this,
                     this._extensionPath,
                     this._sets
@@ -673,36 +686,26 @@ const FloatingMiniPanel = GObject.registerClass(
             } catch (e) {
                 logError(
                     e,
-                    'widget-panel: invalid widgets config, keeping current widgets'
+                    'widget-panel: failed to build reloaded widgets, panel continues with control button only'
                 );
-                return;
+                this._plugins = [];
             }
 
-            try {
-                for (const {actor} of this._plugins)
-                    actor.destroy();
-                this._plugins = next;
-                for (const {actor} of this._plugins)
-                    this.add_child(actor);
-                this._indsDrawer =
-                    this._plugins.find(p => p.id === 'app-notifications')
-                        ?.actor ?? null;
-                this._applyPanelLayoutToPlugins();
+            for (const {actor} of this._plugins)
+                this.add_child(actor);
+            this._indsDrawer =
+                this._plugins.find(p => p.id === 'app-notifications')
+                    ?.actor ?? null;
+            this._applyPanelLayoutToPlugins();
 
-                // Widget set changed, so the panel size likely changed; keep the
-                // saved alignment applied. Guarded so it can never throw here.
-                try {
-                    this._relocate(false);
-                } catch (e) {
-                    logError(
-                        e,
-                        'widget-panel: relocate after reload failed'
-                    );
-                }
+            // Widget set changed, so the panel size likely changed; keep the
+            // saved alignment applied. Guarded so it can never throw here.
+            try {
+                this._relocate(false);
             } catch (e) {
                 logError(
                     e,
-                    'widget-panel: failed to swap reloaded widgets'
+                    'widget-panel: relocate after reload failed'
                 );
             }
         }

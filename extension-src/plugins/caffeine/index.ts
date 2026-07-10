@@ -42,6 +42,8 @@ const CaffeineButton = GObject.registerClass(
             this._options = options;
             this._cookie = null;
             this._pending = false;
+            this._destroyed = false;
+            this._cancellable = new Gio.Cancellable();
 
             super._init({
                 style_class: 'button ctlBtn',
@@ -92,6 +94,11 @@ const CaffeineButton = GObject.registerClass(
 
         // Async Inhibit() call. The button only shows "active" once a cookie is
         // returned; a failure reverts (stays/returns to inactive) visually.
+        // Passes `this._cancellable` so destroy() can cancel the in-flight call;
+        // the reply callback still fires after cancellation/destroy (GDBus
+        // guarantees the callback runs), so it must not touch `this` state or
+        // the (possibly freed) actor once destroyed — see the `_destroyed`
+        // guard below, which instead releases the just-acquired cookie.
         _inhibit() {
             this._pending = true;
             try {
@@ -104,16 +111,27 @@ const CaffeineButton = GObject.registerClass(
                     new GLib.VariantType('(u)'),
                     Gio.DBusCallFlags.NONE,
                     -1,
-                    null,
+                    this._cancellable,
                     (connection, result) => {
                         this._pending = false;
                         try {
                             const reply = connection.call_finish(result);
                             const [cookie] = reply.deep_unpack();
+                            if (this._destroyed || this._cancellable.is_cancelled()) {
+                                // The widget is gone (or being torn down): do not
+                                // touch `this._cookie`/the actor. The reply still
+                                // holds a live inhibit cookie the session manager
+                                // will never see released otherwise, so release it
+                                // directly, fire-and-forget.
+                                this._releaseCookie(cookie);
+                                return;
+                            }
                             this._cookie = cookie;
                             this._applyVisualState(true);
                         } catch (error) {
                             logError(error, 'caffeine: Inhibit call failed');
+                            if (this._destroyed)
+                                return;
                             this._cookie = null;
                             this._applyVisualState(false);
                         }
@@ -124,6 +142,35 @@ const CaffeineButton = GObject.registerClass(
                 this._pending = false;
                 this._cookie = null;
                 this._applyVisualState(false);
+            }
+        }
+
+        // Fire-and-forget Uninhibit(cookie) for a cookie that arrived after the
+        // widget was already destroyed (see _inhibit above). Independent of
+        // `this._cookie`/`this._cancellable` since the widget's own state has
+        // already been torn down by the time this runs.
+        _releaseCookie(cookie) {
+            try {
+                Gio.DBus.session.call(
+                    BUS_NAME,
+                    OBJECT_PATH,
+                    IFACE_NAME,
+                    'Uninhibit',
+                    new GLib.Variant('(u)', [cookie]),
+                    null,
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    null,
+                    (connection, result) => {
+                        try {
+                            connection.call_finish(result);
+                        } catch (error) {
+                            logError(error, 'caffeine: late Uninhibit call failed');
+                        }
+                    }
+                );
+            } catch (error) {
+                logError(error, 'caffeine: failed to call late Uninhibit');
             }
         }
 
@@ -146,7 +193,7 @@ const CaffeineButton = GObject.registerClass(
                     null,
                     Gio.DBusCallFlags.NONE,
                     -1,
-                    null,
+                    this._cancellable,
                     (connection, result) => {
                         try {
                             connection.call_finish(result);
@@ -161,10 +208,32 @@ const CaffeineButton = GObject.registerClass(
         }
 
         destroy() {
+            // Mark destroyed FIRST so any in-flight Inhibit reply callback (see
+            // _inhibit) knows not to touch `this._cookie` or call
+            // _applyVisualState() on this (about to be freed) actor.
+            this._destroyed = true;
             try {
+                // Release an already-acquired cookie (the common case: the
+                // widget had successfully inhibited before being destroyed).
+                // Issue this call BEFORE cancelling `this._cancellable` below —
+                // it is passed the same cancellable, and an ALREADY-cancelled
+                // GCancellable makes GDBus short-circuit a brand-new async call
+                // before it is even sent, which would leak this cookie instead
+                // of releasing it.
                 this._uninhibit(true);
             } catch (error) {
                 logError(error, 'caffeine: failed to release inhibit on destroy');
+            }
+            try {
+                // Cancel a still-pending Inhibit call, if any (the race this fix
+                // targets: destroyed before the Inhibit reply arrived). GDBus
+                // still invokes the reply callback after cancellation, so this
+                // only short-circuits the wait; the `_destroyed` guard in the
+                // callback is what actually prevents touching freed state, and
+                // releases the cookie if the call had in fact already succeeded.
+                this._cancellable.cancel();
+            } catch (error) {
+                logError(error, 'caffeine: failed to cancel pending D-Bus call');
             }
             super.destroy();
         }

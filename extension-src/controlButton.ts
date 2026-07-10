@@ -386,7 +386,11 @@ export const ControlButton = GObject.registerClass(
             );
 
             // Handling for GNOME 46, 47, 48, 49
-            this.add_action(new CtlActions(this));
+            // Keep a reference so destroy() can release CtlActions' own
+            // long-press GLib timer; add_action() does not hand back (or
+            // itself release) the action instance.
+            this._ctlActions = new CtlActions(this);
+            this.add_action(this._ctlActions);
 
             this.connect('scroll-event', (obj, event) => {
                 Main.wm.handleWorkspaceScroll(event);
@@ -413,9 +417,9 @@ export const ControlButton = GObject.registerClass(
         }
 
         destroy() {
-            if (this._timeoutId) {
-                GLib.Source.remove(this._timeoutId);
-                this._timeoutId = null;
+            if (this._ctlActions) {
+                this._ctlActions.destroy();
+                this._ctlActions = null;
             }
             super.destroy();
         }
