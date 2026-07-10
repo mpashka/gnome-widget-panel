@@ -38,7 +38,10 @@ Main panel actor. It owns:
   `aligned === NONE` the panel keeps its exact stored (floating) position across
   restarts; only out-of-bounds positions are clamped back on screen;
 - auto/permanent/off state;
-- top-panel hiding integration;
+- top-panel hiding integration (legacy Permanent-mode `panelBox` hiding, now
+  gated by `_topBarManagedExternally()` — see `MainPanelController`);
+- the GNOME top-bar behaviour controller (`MainPanelController`), driven by the
+  `main-panel` GSettings enum;
 - GNOME Shell quick settings toggle;
 - control button;
 - configured plugin actors returned by `PluginManager`.
@@ -59,6 +62,31 @@ recovers. The signal handler and the debounce timer are released in
 
 Every timer, signal, child actor and compositor override must be released in
 `destroy()`.
+
+### `MainPanelController`
+
+Owns the GNOME Shell top bar (`Main.layoutManager.panelBox`, the "main panel")
+independently of the floating mini panel. Lives in
+[`../extension-src/mainPanel.ts`](../extension-src/mainPanel.ts) and is driven by
+the `main-panel` GSettings enum via `FloatingMiniPanel`
+(`_getMainPanelMode()` + `changed::main-panel`). Three modes:
+
+- `visible` — leave the bar untouched (`ownsTopBar()` is false);
+- `hide` — keep it hidden (slid up, no strut, hidden even in the overview);
+- `autohide` — hidden, but slid back in by a `Layout.PressureBarrier` on the top
+  monitor edge and while the overview is open, then hidden again on pointer
+  leave (a `PointerWatcher` + `Main.panel` `leave-event`, deferred while a
+  top-bar menu is open).
+
+It reimplements the proven core of the standalone **Hide Top Bar** extension
+(pressure barrier + `panelBox.y` slide + `affectsStruts:false` chrome + overview
+search-entry padding) minus intellihide, the keyboard shortcut and desktop-icons
+integration. While it owns the bar (`ownsTopBar()`), `FloatingMiniPanel`
+suppresses its legacy Permanent-mode `panelBox` manipulation
+(`_topBarManagedExternally()` gates `_showFloatingMiniPanel`,
+`_hideFloatingMiniPanel` and `_preparePermanentMode`) so the two never fight over
+the same actor. Every barrier, pointer watch, signal and timer is released in
+`destroy()`, which restores the bar and its strut reservation.
 
 ### `PluginManager`
 

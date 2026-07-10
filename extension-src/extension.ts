@@ -38,6 +38,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
 import * as ControlButton from './controlButton.js';
+import * as MainPanel from './mainPanel.js';
 import * as PluginManager from './pluginManager.js';
 import * as Utils from './utils.js';
 import {parseWidgetConfig} from './widgetConfig.js';
@@ -136,6 +137,22 @@ const FloatingMiniPanel = GObject.registerClass(
             );
 
             this._panelHidingExts = [];
+
+            // Main panel (GNOME top bar) behaviour -----------------------------
+            // A dedicated controller owns the top bar for the non-'visible'
+            // modes ('autohide' slides it in on a top-edge pressure barrier,
+            // 'hide' keeps it down). While it owns the bar, the legacy
+            // Permanent-mode top-bar hiding further down is suppressed (see
+            // `_topBarManagedExternally`) so two controllers never fight over
+            // `panelBox`. Guarded so a stale schema without the key cannot throw
+            // out of the constructor and disable the whole extension.
+            this._mainPanel = new MainPanel.MainPanelController(
+                this._getMainPanelMode()
+            );
+            this._mainPanelChangedId = this._sets.connect(
+                'changed::main-panel',
+                () => this._mainPanel.setMode(this._getMainPanelMode())
+            );
 
             // Control Button --------------------------------------------------
             this._ctlBtn = new ControlButton.ControlButton(this);
@@ -548,6 +565,11 @@ const FloatingMiniPanel = GObject.registerClass(
         // It has to be done before Overview is toggled, to take effect.
         // Therefore it can't be done in the show / hide functions.
         _preparePermanentMode(on) {
+            // The main-panel controller owns the top bar in autohide/hide mode;
+            // do not also track/untrack its chrome or pad the overview search
+            // entry here, or the two would fight over `panelBox`.
+            if (this._topBarManagedExternally())
+                return;
             if (on) {
                 LAYOUTMANAGER.untrackChrome(PANELBOX);
                 OVERVIEW._overview._controls._searchEntryBin.set_style(
@@ -772,6 +794,23 @@ const FloatingMiniPanel = GObject.registerClass(
             return {orientation: value, vertical, rotation};
         }
 
+        // Read the `main-panel` enum ('visible' | 'autohide' | 'hide'),
+        // tolerating a stale/mismatched schema that lacks the key.
+        _getMainPanelMode() {
+            try {
+                return this._sets.get_string('main-panel');
+            } catch (e) {
+                return 'visible';
+            }
+        }
+
+        // True while the MainPanelController owns the GNOME top bar (any mode
+        // other than 'visible'). The legacy Permanent-mode top-bar hiding must
+        // stand down then, so the controller is the single authority.
+        _topBarManagedExternally() {
+            return this._mainPanel?.ownsTopBar?.() === true;
+        }
+
         _applyPanelLayoutToPlugins() {
             if (!this._plugins)
                 return;
@@ -812,8 +851,9 @@ const FloatingMiniPanel = GObject.registerClass(
         }
 
         _showFloatingMiniPanel() {
-            // If in Permanent Mode hide the Main Panel
-            if (this._state !== State.AUTO) {
+            // If in Permanent Mode hide the Main Panel — unless the main-panel
+            // controller already owns the top bar (autohide/hide mode).
+            if (this._state !== State.AUTO && !this._topBarManagedExternally()) {
                 let priMonGeo = Utils.priMonitorGeometry();
                 PANELBOX.set_position(
                     priMonGeo.x,
@@ -837,8 +877,9 @@ const FloatingMiniPanel = GObject.registerClass(
             // Hide this w/o animation
             this.visible = false;
 
-            // If in Permanent Mode show the Main Panel
-            if (this._state !== State.AUTO) {
+            // If in Permanent Mode show the Main Panel — unless the main-panel
+            // controller owns the top bar (autohide/hide mode).
+            if (this._state !== State.AUTO && !this._topBarManagedExternally()) {
                 let priMonGeo = Utils.priMonitorGeometry();
                 PANELBOX.set_position(priMonGeo.x, priMonGeo.y);
             }
@@ -1038,6 +1079,18 @@ const FloatingMiniPanel = GObject.registerClass(
                     Meta.enable_unredirect_for_display(global.display);
                 }
                 this._enaUnredirectFunc = null;
+            }
+
+            // Release the main-panel controller (restores the top bar and its
+            // strut reservation) BEFORE the legacy restore below, which is a
+            // no-op while the controller still owns the bar.
+            if (this._mainPanelChangedId) {
+                this._sets.disconnect(this._mainPanelChangedId);
+                this._mainPanelChangedId = null;
+            }
+            if (this._mainPanel) {
+                this._mainPanel.destroy();
+                this._mainPanel = null;
             }
 
             this._preparePermanentMode(false);

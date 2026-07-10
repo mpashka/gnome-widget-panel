@@ -11,6 +11,8 @@
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
@@ -29,6 +31,31 @@ const Alignment = {
     RIGHT: 8,
     CENTER: 16,
 };
+
+// UUID of the standalone "Hide Top Bar" extension. Our built-in main-panel
+// control reimplements it, so the two must not run at once (see
+// _addMainPanelGroup / mainPanel.ts).
+const HIDE_TOP_BAR_UUID = 'hidetopbar@mathieu.bidon.ca';
+
+// The `main-panel` enum, in nick order (index == enum value). Short labels show
+// in the collapsed combo row; the long descriptions only in the open dropdown.
+const MAIN_PANEL_MODES = [
+    {
+        nick: 'visible',
+        label: 'Visible',
+        long: 'Always show the GNOME top bar (do not touch it).',
+    },
+    {
+        nick: 'autohide',
+        label: 'Auto hide',
+        long: 'Hide the top bar; slide it in when the pointer reaches the top edge or in the overview.',
+    },
+    {
+        nick: 'hide',
+        label: 'Hidden',
+        long: 'Keep the top bar hidden.',
+    },
+];
 
 // Auto-position presets offered in the position group. The first entry keeps
 // the exact dragged position (no snapping); the rest mirror the six presets the
@@ -92,7 +119,144 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         rebuild();
 
         this._addPanelGroups(page);
+        this._addMainPanelGroup(page);
         this._addAboutGroup(page);
+    }
+
+    // Detect the standalone "Hide Top Bar" extension. `enabled` means it is
+    // actively controlling the top bar right now (real conflict); `installed`
+    // means it is still present on disk (user should remove it). Read from the
+    // shell's own GSettings + the extension directories, since the preferences
+    // process has no ExtensionManager.
+    _hideTopBarStatus() {
+        let enabledList = [];
+        let disabledList = [];
+        let masterOff = false;
+        try {
+            const shell = new Gio.Settings({schema_id: 'org.gnome.shell'});
+            enabledList = shell.get_strv('enabled-extensions');
+            disabledList = shell.get_strv('disabled-extensions');
+            masterOff = shell.get_boolean('disable-user-extensions');
+        } catch (e) {
+            // org.gnome.shell schema unavailable; treat as not present.
+        }
+        const onDisk = [
+            GLib.build_filenamev([
+                GLib.get_home_dir(),
+                '.local/share/gnome-shell/extensions',
+                HIDE_TOP_BAR_UUID,
+            ]),
+            `/usr/share/gnome-shell/extensions/${HIDE_TOP_BAR_UUID}`,
+        ].some((p) => Gio.File.new_for_path(p).query_exists(null));
+
+        const enabled =
+            !masterOff &&
+            enabledList.includes(HIDE_TOP_BAR_UUID) &&
+            !disabledList.includes(HIDE_TOP_BAR_UUID);
+        const installed =
+            onDisk ||
+            enabledList.includes(HIDE_TOP_BAR_UUID) ||
+            disabledList.includes(HIDE_TOP_BAR_UUID);
+        return {enabled, installed};
+    }
+
+    // "Main panel" group: a three-way combo (Visible / Auto hide / Hidden) for
+    // the GNOME top bar, backed by the `main-panel` GSettings enum and applied
+    // live by the MainPanelController. When the standalone "Hide Top Bar"
+    // extension is present it shows a banner (and disables the row while that
+    // extension is actively controlling the bar, to avoid two controllers
+    // fighting over it).
+    _addMainPanelGroup(page) {
+        const settings = this.getSettings();
+        const group = new Adw.PreferencesGroup({
+            title: 'Main panel (top bar)',
+            description:
+                'Hide or auto-hide the GNOME Shell top bar. Built-in ' +
+                'replacement for the “Hide Top Bar” extension; applies ' +
+                'immediately to the running shell.',
+        });
+        page.add(group);
+
+        const {enabled: htbEnabled, installed: htbInstalled} =
+            this._hideTopBarStatus();
+
+        if (htbInstalled) {
+            const warn = new Adw.ActionRow({
+                title: htbEnabled
+                    ? 'Hide Top Bar is enabled'
+                    : 'Hide Top Bar is still installed',
+                subtitle: htbEnabled
+                    ? 'It already controls the top bar. Disable or remove it ' +
+                      'to use this setting — otherwise the two conflict.'
+                    : 'This widget now provides the same feature. You can ' +
+                      'remove the “Hide Top Bar” extension.',
+            });
+            warn.add_prefix(
+                new Gtk.Image({
+                    icon_name: 'dialog-warning-symbolic',
+                    valign: Gtk.Align.CENTER,
+                })
+            );
+            warn.add_css_class(htbEnabled ? 'error' : 'warning');
+            group.add(warn);
+        }
+
+        const shortLabels = MAIN_PANEL_MODES.map((m) => m.label);
+        const model = Gtk.StringList.new(shortLabels);
+        const row = new Adw.ComboRow({
+            title: 'Top-bar behaviour',
+            model,
+        });
+
+        // Dropdown-only factory showing the long descriptions (the collapsed row
+        // keeps the short StringList label). Mirrors the orientation row.
+        const listFactory = new Gtk.SignalListItemFactory();
+        listFactory.connect('setup', (_f, item) => {
+            item.set_child(new Gtk.Label({xalign: 0}));
+        });
+        listFactory.connect('bind', (_f, item) => {
+            const pos = item.get_position();
+            item.get_child().set_label(MAIN_PANEL_MODES[pos]?.long ?? '');
+        });
+        row.list_factory = listFactory;
+
+        // While Hide Top Bar is actively controlling the bar, our setting is
+        // meaningless (the controller stands down), so disable the row.
+        row.sensitive = !htbEnabled;
+
+        const readIndex = () => {
+            const nick = settings.get_string('main-panel');
+            const index = MAIN_PANEL_MODES.findIndex((m) => m.nick === nick);
+            return index >= 0 ? index : 0;
+        };
+        // Programmatic `selected` writes re-fire `notify::selected`; guard so
+        // only a genuine user selection writes the setting.
+        let syncing = false;
+        const sync = () => {
+            syncing = true;
+            try {
+                row.selected = readIndex();
+            } finally {
+                syncing = false;
+            }
+        };
+        sync();
+
+        row.connect('notify::selected', () => {
+            if (syncing)
+                return;
+            const index = row.selected;
+            if (index < 0 || index >= MAIN_PANEL_MODES.length)
+                return;
+            const nick = MAIN_PANEL_MODES[index].nick;
+            if (settings.get_string('main-panel') !== nick) {
+                logPanelSettingWrite('main-panel', nick);
+                settings.set_string('main-panel', nick);
+            }
+        });
+        const changedId = settings.connect('changed::main-panel', sync);
+        row.connect('destroy', () => settings.disconnect(changedId));
+        group.add(row);
     }
 
     // "About" group at the bottom of the main page: extension name + version

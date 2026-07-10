@@ -102,6 +102,34 @@ exactly as before (left = app grid, middle = drawer toggle, right = menu;
 Shift/Ctrl click variants snap alignment; long-press moves / toggles orientation
 / hides for 5 s).
 
+## Main panel (top bar)
+
+A separate **Main panel (top bar)** `Adw.PreferencesGroup` (added by
+`_addMainPanelGroup`) controls the GNOME Shell top bar independently of the
+floating mini panel. One `Adw.ComboRow` (short labels in the row, long
+descriptions in the open dropdown via a `Gtk.SignalListItemFactory`, exactly like
+Orientation) is bound to the `main-panel` GSettings **enum** (index == nick):
+
+- **Visible** → `main-panel = 'visible'` — leave the top bar untouched.
+- **Auto hide** → `main-panel = 'autohide'` — hide it, slide it in on a top-edge
+  pressure barrier and while the overview is open.
+- **Hidden** → `main-panel = 'hide'` — keep it hidden.
+
+It is applied **live** by the `MainPanelController` (the panel listens on
+`changed::main-panel`), which reimplements the core of the standalone **Hide Top
+Bar** extension (see [`object-model.md`](object-model.md)). Because both would
+fight over `panelBox`, the group also detects Hide Top Bar
+(`hidetopbar@mathieu.bidon.ca`) from the preferences process — which has no
+`ExtensionManager` — by reading `org.gnome.shell`'s `enabled-extensions` /
+`disabled-extensions` / `disable-user-extensions` keys plus the extension
+directories (`_hideTopBarStatus`):
+
+- **enabled** (actively controlling the bar): shows an `error`-styled warning row
+  and **disables** the combo (our controller stands down while it runs, so the
+  setting is meaningless);
+- **installed but disabled**: shows a softer `warning` row noting it can be
+  removed, and leaves the combo usable.
+
 ## About and GitHub issue integration
 
 An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added by

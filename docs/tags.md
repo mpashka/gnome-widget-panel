@@ -40,6 +40,7 @@ grep -rn "@tag:<slug>" extension-src docs tests
 | `widget-launch` | The `launch` built-in widget (multi-instance command launcher). |
 | `widget-caffeine` | The `caffeine` built-in widget (manual screensaver/suspend inhibitor toggle). |
 | `widget-break-timer` | The `break-timer` built-in widget (Workrave-style micro/rest/daily activity-based rest reminders). |
+| `main-panel` | GNOME top-bar (main panel) behaviour control: hide / auto-hide / visible, the built-in Hide Top Bar replacement (`extension-src/mainPanel.ts`, `extension.ts` gating, `prefs.ts` group + conflict detection, the `main-panel` schema key, `docs/object-model.md`, `docs/preferences.md`). |
 | `dev` | Developer reload-without-logout workflow: symlink install and nested-shell runner (`dev-install.sh`, `dev-run.sh`, `docs/development.md`). |
 | `ui-testing` | Headless UI test harness: isolated headless shell + test-driver extension + regression tests and feature-debug stub (`tests/ui/`, `docs/ui-testing.md`). |
 

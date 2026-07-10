@@ -5,6 +5,11 @@
     <value nick="left" value="1"/>
     <value nick="right" value="2"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.floating-mini-panel.main-panel-mode">
+    <value nick="visible" value="0"/>
+    <value nick="autohide" value="1"/>
+    <value nick="hide" value="2"/>
+  </enum>
   <schema path="/org/gnome/shell/extensions/floating-mini-panel/" id="org.gnome.shell.extensions.floating-mini-panel">
     <key name="state" type="i">
       <default>1</default>
@@ -51,6 +56,18 @@
         Panel layout: 'horizontal', or a vertical strip with the graphs rotated
         'left' (counter-clockwise, time bottom-to-top) or 'right' (clockwise,
         time top-to-bottom).
+      </description>
+    </key>
+    <key name="main-panel" enum="org.gnome.shell.extensions.floating-mini-panel.main-panel-mode">
+      <default>'visible'</default>
+      <summary>GNOME top-bar (main panel) behaviour</summary>
+      <description>
+        How this extension treats the GNOME Shell top bar (the "main panel"):
+        'visible' leaves it untouched; 'hide' keeps it permanently hidden;
+        'autohide' hides it but slides it in when the pointer reaches the top
+        screen edge and while the Activities overview is open. Built-in
+        replacement for the "Hide Top Bar" extension; enabling both at once is
+        unsupported (see the warning in preferences).
       </description>
     </key>
     <key name="content-padding" type="i">
