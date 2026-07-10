@@ -11,7 +11,6 @@
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
-import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
@@ -43,6 +42,10 @@ const ALIGN_PRESETS = [
     {label: 'Bottom - Center', value: Alignment.BOTTOM | Alignment.CENTER},
     {label: 'Bottom - End', value: Alignment.BOTTOM | Alignment.RIGHT},
 ];
+
+function logPanelSettingWrite(key, value) {
+    log(`widget-panel prefs: setting ${key} -> ${value}`);
+}
 
 export default class WidgetPanelPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
@@ -225,8 +228,10 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             if (index < 0 || index >= ALIGN_PRESETS.length)
                 return;
             const value = ALIGN_PRESETS[index].value;
-            if (settings.get_int('aligned') !== value)
+            if (settings.get_int('aligned') !== value) {
+                logPanelSettingWrite('aligned', value);
                 settings.set_int('aligned', value);
+            }
         });
         // Reflect external changes (e.g. dragging the panel) back into the row.
         const alignedChangedId = settings.connect(
@@ -238,16 +243,12 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         );
         layoutGroup.add(alignedRow);
 
-        // A single orientation row replaces the old separate `vertical` switch
-        // and `vertical-rotation` combo. Its three values map onto the two
-        // underlying GSettings keys:
-        //   0 Horizontal → vertical=false
-        //   1 Left       → vertical=true,  vertical-rotation=0
-        //   2 Right      → vertical=true,  vertical-rotation=1
-        // "Left"/"Right" describe which way graphs rotate (their time axis) when
-        // the panel is a vertical strip.
-        // Short labels for the collapsed row (so the value is not ellipsized in
-        // the main window); long, descriptive labels only in the open dropdown.
+        // A single `orientation` enum setting with three values (index == nick):
+        //   0 horizontal, 1 left, 2 right  ('left'/'right' = which way the graphs
+        // rotate when the panel is a vertical strip). Short labels for the
+        // collapsed row (so the value is not ellipsized); long, descriptive
+        // labels only in the open dropdown.
+        const ORIENTATION_NICKS = ['horizontal', 'left', 'right'];
         const orientationShort = ['Horizontal', 'Vertical left', 'Vertical right'];
         const orientationLong = [
             'Horizontal strip',
@@ -271,22 +272,15 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         });
         orientationRow.list_factory = orientationListFactory;
 
-        const orientationSelected = () => {
-            if (!settings.get_boolean('vertical'))
-                return 0;
-            return settings.get_int('vertical-rotation') === 1 ? 2 : 1;
-        };
-        // Programmatic `orientationRow.selected` writes (syncOrientation) re-fire
-        // `notify::selected`, re-entering the write path below. Because this row
-        // maps one selection onto two GSettings keys (`vertical` +
-        // `vertical-rotation`), a re-entrant write could persist a stale
-        // intermediate `vertical-rotation`. Guard programmatic syncs so only a
-        // genuine user selection drives the write path.
+        const readOrientationIndex = () =>
+            Math.max(0, ORIENTATION_NICKS.indexOf(settings.get_string('orientation')));
+        // Programmatic `selected` writes re-fire `notify::selected`; guard so only
+        // a genuine user selection writes the setting.
         this._syncingOrientation = false;
         const syncOrientation = () => {
             this._syncingOrientation = true;
             try {
-                orientationRow.selected = orientationSelected();
+                orientationRow.selected = readOrientationIndex();
             } finally {
                 this._syncingOrientation = false;
             }
@@ -299,27 +293,18 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             const index = orientationRow.selected;
             if (index < 0 || index > 2)
                 return;
-            const vertical = index !== 0;
-            const rotation = index === 2 ? 1 : 0;
-            if (settings.get_boolean('vertical') !== vertical)
-                settings.set_boolean('vertical', vertical);
-            // Only meaningful when vertical; keep it stored so the panel and the
-            // row agree when switching back to a vertical mode.
-            if (vertical && settings.get_int('vertical-rotation') !== rotation)
-                settings.set_int('vertical-rotation', rotation);
+            const nick = ORIENTATION_NICKS[index];
+            if (settings.get_string('orientation') !== nick) {
+                logPanelSettingWrite('orientation', nick);
+                settings.set_string('orientation', nick);
+            }
         });
-        // Reflect external changes to either key back into the single row.
-        const verticalChangedId = settings.connect(
-            'changed::vertical',
-            syncOrientation
-        );
-        const rotationChangedId = settings.connect(
-            'changed::vertical-rotation',
+        const orientationChangedId = settings.connect(
+            'changed::orientation',
             syncOrientation
         );
         orientationRow.connect('destroy', () => {
-            settings.disconnect(verticalChangedId);
-            settings.disconnect(rotationChangedId);
+            settings.disconnect(orientationChangedId);
         });
         layoutGroup.add(orientationRow);
 
@@ -334,11 +319,30 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                 value: settings.get_int('content-padding'),
             }),
         });
-        settings.bind(
-            'content-padding',
-            paddingRow,
-            'value',
-            Gio.SettingsBindFlags.DEFAULT
+        let syncingPadding = false;
+        const syncPadding = () => {
+            syncingPadding = true;
+            try {
+                paddingRow.value = settings.get_int('content-padding');
+            } finally {
+                syncingPadding = false;
+            }
+        };
+        const paddingChangedId = settings.connect(
+            'changed::content-padding',
+            syncPadding
+        );
+        paddingRow.connect('notify::value', () => {
+            if (syncingPadding)
+                return;
+            const value = Math.round(paddingRow.value);
+            if (settings.get_int('content-padding') !== value) {
+                logPanelSettingWrite('content-padding', value);
+                settings.set_int('content-padding', value);
+            }
+        });
+        paddingRow.connect('destroy', () =>
+            settings.disconnect(paddingChangedId)
         );
         layoutGroup.add(paddingRow);
     }

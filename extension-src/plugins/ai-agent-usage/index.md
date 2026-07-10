@@ -48,7 +48,7 @@ and Gemini CLI.
 
 The graph implements `setPanelLayout({vertical, rotation})`, called by the panel
 host. When the panel is vertical it swaps its actor size and rotates the drawing
-90° (direction from the panel `vertical-rotation` setting) so the token history,
+90° (direction from the panel `orientation` setting) so the token history,
 request markers and indicator bars run along the vertical strip. See
 [preferences](../../../docs/preferences.md).
 

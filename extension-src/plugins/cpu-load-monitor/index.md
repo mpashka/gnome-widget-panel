@@ -59,7 +59,7 @@ The widget reads per-widget `options` from `widgets.json`:
 The graph implements `setPanelLayout({vertical, rotation})`, called by the panel
 host. When the panel is vertical it swaps its actor size (tall/narrow) and rotates
 the Cairo drawing 90° so the time axis runs along the strip; `rotation` (`left` /
-`right`, from the panel `vertical-rotation` setting) picks the direction. See
+`right`, from the panel `orientation` setting) picks the direction. See
 [preferences](../../../docs/preferences.md).
 
 In a vertical panel the hover tooltip is placed to the side of the widget (left

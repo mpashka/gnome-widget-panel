@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
+  <enum id="org.gnome.shell.extensions.floating-mini-panel.orientation">
+    <value nick="horizontal" value="0"/>
+    <value nick="left" value="1"/>
+    <value nick="right" value="2"/>
+  </enum>
   <schema path="/org/gnome/shell/extensions/floating-mini-panel/" id="org.gnome.shell.extensions.floating-mini-panel">
     <key name="state" type="i">
       <default>1</default>
@@ -29,11 +34,13 @@
         Is floating-mini-panel is aligned to a default position (NONE: 0, TOP: 1, BOTTOM: 2, LEFT: 4, RIGHT: 8, CENTER: 16).
       </description>
     </key>
-    <key name="vertical" type="b">
-      <default>false</default>
-      <summary>Vertical Orientation</summary>
+    <key name="orientation" enum="org.gnome.shell.extensions.floating-mini-panel.orientation">
+      <default>'horizontal'</default>
+      <summary>Panel orientation</summary>
       <description>
-        Is floating-mini-panel vertical oriented.
+        Panel layout: 'horizontal', or a vertical strip with the graphs rotated
+        'left' (counter-clockwise, time bottom-to-top) or 'right' (clockwise,
+        time top-to-bottom).
       </description>
     </key>
     <key name="content-padding" type="i">
@@ -42,15 +49,6 @@
       <description>
         Padding in pixels around the widgets' working body (the space between the
         panel edge and its contents).
-      </description>
-    </key>
-    <key name="vertical-rotation" type="i">
-      <default>1</default>
-      <summary>Vertical graph rotation</summary>
-      <description>
-        Direction graph widgets rotate when the panel is vertical: 0 = left
-        (counter-clockwise, time bottom-to-top), 1 = right (clockwise, time
-        top-to-bottom).
       </description>
     </key>
     <key name="open" type="b">

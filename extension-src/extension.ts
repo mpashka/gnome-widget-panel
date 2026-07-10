@@ -106,7 +106,7 @@ const FloatingMiniPanel = GObject.registerClass(
 
             // START CODE VERTICAL
             this.orientStr = (shellVersion > 47) ? 'orientation' : 'vertical';
-            this._setOrientation(this._sets.get_boolean('vertical'));
+            this._setOrientation(this._orientationState().vertical);
             // END CODE VERTICAL
 
             // Live-apply panel-level preferences (see the "Panel" page in
@@ -116,17 +116,13 @@ const FloatingMiniPanel = GObject.registerClass(
                 'changed::aligned',
                 () => this._relocate(false)
             );
-            this._verticalChangedId = this._sets.connect(
-                'changed::vertical',
+            // One setting drives orientation: `orientation` ∈ {horizontal, left,
+            // right}. `horizontal` lays out horizontally; `left`/`right` make a
+            // vertical strip and rotate the graphs that way.
+            this._orientationChangedId = this._sets.connect(
+                'changed::orientation',
                 () => {
-                    this._setOrientation(this._sets.get_boolean('vertical'));
-                    this._applyPanelLayoutToPlugins();
-                    this._relocate(false);
-                }
-            );
-            this._verticalRotationChangedId = this._sets.connect(
-                'changed::vertical-rotation',
-                () => {
+                    this._setOrientation(this._orientationState().vertical);
                     this._applyPanelLayoutToPlugins();
                     this._relocate(false);
                 }
@@ -774,12 +770,24 @@ const FloatingMiniPanel = GObject.registerClass(
             }
         }
 
+        // Read the single `orientation` enum setting and derive the {vertical,
+        // rotation} the layout code uses. Tolerates a stale/mismatched schema.
+        _orientationState() {
+            let value = 'horizontal';
+            try {
+                value = this._sets.get_string('orientation');
+            } catch (e) {
+                value = 'horizontal';
+            }
+            const vertical = value === 'left' || value === 'right';
+            const rotation = value === 'left' ? 'left' : 'right';
+            return {orientation: value, vertical, rotation};
+        }
+
         _applyPanelLayoutToPlugins() {
             if (!this._plugins)
                 return;
-            const vertical = this._sets.get_boolean('vertical');
-            const rotation =
-                this._getSettingInt('vertical-rotation', 1) === 0 ? 'left' : 'right';
+            const {vertical, rotation} = this._orientationState();
             for (const {actor} of this._plugins) {
                 if (typeof actor?.setPanelLayout !== 'function')
                     continue;
@@ -996,13 +1004,9 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._sets.disconnect(this._alignedChangedId);
                 this._alignedChangedId = null;
             }
-            if (this._verticalChangedId) {
-                this._sets.disconnect(this._verticalChangedId);
-                this._verticalChangedId = null;
-            }
-            if (this._verticalRotationChangedId) {
-                this._sets.disconnect(this._verticalRotationChangedId);
-                this._verticalRotationChangedId = null;
+            if (this._orientationChangedId) {
+                this._sets.disconnect(this._orientationChangedId);
+                this._orientationChangedId = null;
             }
             if (this._contentPaddingChangedId) {
                 this._sets.disconnect(this._contentPaddingChangedId);

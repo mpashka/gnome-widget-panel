@@ -399,28 +399,17 @@ export const ControlButton = GObject.registerClass(
         }
 
         // START CODE VERTICAL
+        // Toggle horizontal <-> vertical by writing the single `orientation`
+        // enum; the panel's `changed::orientation` handler applies the layout,
+        // rotates the graph widgets and relocates. (Going vertical uses the
+        // `right` rotation; pick `left`/`right` explicitly in preferences.)
         _changeOrientation() {
             this._doAlign(Alignment.NONE);
-
-            if (this._parent.width > this._parent.height) {
-                this._parent._sets.set_boolean('vertical', true);
-                if (shellVersion > 47) {
-                    this._parent.orientation = Clutter.Orientation.VERTICAL;
-                } else {
-                    this._parent.vertical = true;
-                }
-                this._parent.remove_style_pseudo_class('horizontal');
-                this._parent.add_style_pseudo_class('vertical');
-            } else {
-                this._parent._sets.set_boolean('vertical', false);
-                if (shellVersion > 47) {
-                    this._parent.orientation = Clutter.Orientation.HORIZONTAL;
-                } else {
-                    this._parent.vertical = false;
-                }
-                this._parent.remove_style_pseudo_class('vertical');
-                this._parent.add_style_pseudo_class('horizontal');
-            }
+            const goVertical = this._parent.width > this._parent.height;
+            this._parent._sets.set_string(
+                'orientation',
+                goVertical ? 'right' : 'horizontal'
+            );
         }
 
         destroy() {

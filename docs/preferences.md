@@ -63,7 +63,7 @@ panel-level settings that used to live in the control-button context menu (which
 now keeps **Settings…**, **About** and **Report a bug**; all other panel control
 is via mouse gestures on the panel handle). It edits the panel `GSettings`
 (`this.getSettings()`), not `widgets.json`, and is applied **live** to the
-running panel — no reload needed. It has exactly two rows:
+running panel — no reload needed. It has these rows:
 
 - **Position** — an `Adw.ComboRow` whose first entry is
   **Floating (keep position)** (`aligned = 0`), followed by the six snap presets
@@ -74,26 +74,28 @@ running panel — no reload needed. It has exactly two rows:
   snapping. `syncSelected` maps `aligned === 0` to the Floating row, so it shows
   as selected. Any other custom value that matches no preset leaves the combo
   unselected until a preset is picked again.
-- **Orientation** — a single `Adw.ComboRow` with **three** values that together
-  drive the **two** underlying GSettings keys `vertical` (bool) and
-  `vertical-rotation` (int, 0 = left/CCW time bottom→top, 1 = right/CW time
-  top→bottom):
-    - **Horizontal** → `vertical = false`.
-    - **Vertical — rotate left** → `vertical = true`, `vertical-rotation = 0`.
-    - **Vertical — rotate right** → `vertical = true`, `vertical-rotation = 1`.
+- **Orientation** — a single `Adw.ComboRow` bound to the single `orientation`
+  GSettings **enum** key (`horizontal` / `left` / `right`, index == nick):
+    - **Horizontal** → `orientation = 'horizontal'`.
+    - **Vertical left** → `orientation = 'left'` (graphs rotate CCW, time
+      bottom→top).
+    - **Vertical right** → `orientation = 'right'` (graphs rotate CW, time
+      top→bottom).
 
-  On `notify::selected` it writes `vertical` always and `vertical-rotation` only
-  when vertical (so the stored rotation survives a round-trip through Horizontal).
-  It connects `changed::vertical` and `changed::vertical-rotation` to recompute
-  the row's `selected`, so external changes reflect, and disconnects both on row
-  destroy. The panel listens on `changed::vertical` (re-applies its
-  layout/pseudo-classes via `FloatingMiniPanel._setOrientation`, then relocates)
-  and, when vertical, rotates graph widgets 90° so their time axis runs along the
-  strip: it pushes `{vertical, rotation}` to every plugin that implements
-  `setPanelLayout(...)` (the cpu and ai graphs) on startup and on
-  `changed::vertical` / `changed::vertical-rotation`; those widgets swap their
-  actor size and rotate the Cairo drawing. (This single row replaces the former
-  separate `vertical` switch and `vertical-rotation` combo.)
+  The row shows short labels; the open dropdown shows long descriptions via a
+  `Gtk.SignalListItemFactory`. On `notify::selected` it writes the matching nick
+  (guarded so programmatic syncs don't re-write), and `changed::orientation`
+  syncs the row back. The panel listens on `changed::orientation`: it derives
+  `{vertical, rotation}` from the enum (`_orientationState()`), re-applies its
+  layout/pseudo-classes (`FloatingMiniPanel._setOrientation`), rotates the graph
+  widgets 90° by pushing `{vertical, rotation}` to every plugin that implements
+  `setPanelLayout(...)` (the cpu and ai graphs) — on startup and on the change —
+  then relocates. (This single enum replaces the former separate `vertical` bool
+  and `vertical-rotation` int; the control-button orientation gesture also just
+  writes this one key.)
+- **Content padding** — an `Adw.SpinRow` for `content-padding`. User changes are
+  written explicitly on `notify::value`, rounded to whole pixels, and external
+  `changed::content-padding` updates sync the row back to the stored value.
 
 Gestures on the panel handle stay the primary interaction and keep working
 exactly as before (left = app grid, middle = drawer toggle, right = menu;
