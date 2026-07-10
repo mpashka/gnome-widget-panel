@@ -15,7 +15,6 @@ Start here, then follow the links down to the code under
 - [`ui-testing.md`](ui-testing.md) — headless UI test harness: approaches
   considered, architecture, regression suite (`npm run test:ui`) and the
   feature-debug stub workflow.
-- [`bug.md`](bug.md) — analysis of the dev-shell panel settings live-apply issue.
 - [`object-model.md`](object-model.md) — runtime object map.
 - [`ai-management.md`](ai-management.md) — AI-assisted panel management concept.
 - [`upstream.md`](upstream.md) — Floating Mini Panel origin and license notes.
