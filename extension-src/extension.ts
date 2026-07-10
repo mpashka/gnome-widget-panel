@@ -474,6 +474,15 @@ const FloatingMiniPanel = GObject.registerClass(
 	            }
             }
 
+            // The Shell may have finished starting up BEFORE this extension was
+            // enabled: a runtime enable (installing/enabling from the Extensions
+            // app) or simply losing the startup race in a fast session. Then the
+            // 'startup-complete' signal has already fired and the handler below
+            // would never run, leaving `startupComplete` false and the panel
+            // invisible forever. Treat startup as complete in that case.
+            if (!startupComplete && LAYOUTMANAGER._startingUp === false)
+                startupComplete = true;
+
             // If this is in 'permanent mode' and disabled/enabled during
             // runtime (not accross sessions!) or screen is unlocked.
             if (startupComplete && this._state === State.ON) {
