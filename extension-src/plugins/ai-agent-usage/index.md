@@ -19,6 +19,12 @@ and Gemini CLI.
   [`../../../docs/preferences.md`](../../../docs/preferences.md).
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
   `isClaudeInstalled`), usable from both the shell and preferences processes.
+  It also owns the lifecycle **event** hooks (`installEventHooks`,
+  `eventHooksStatus`, `eventHookScript`) used by the
+  [`ai-agent-status`](../ai-agent-status/index.md) widget: a silent
+  port-independent script POSTing Claude's UserPromptSubmit/Stop/Notification/
+  SessionEnd payloads to `/agent-event` on every endpoint in the same shared
+  ports registry.
 - `aiAgentUsageGraph.ts` — in-memory provider state, Claude HTTP hook server,
   Codex helper process management and graph rendering.
 - `helpers/codex-usage-helper.ts` — out-of-process GJS helper that scans Codex

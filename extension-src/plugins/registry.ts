@@ -47,6 +47,14 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
             import('./ai-agent-usage/prefs.js') as Promise<PluginPreferencesModule>,
     },
     {
+        id: 'ai-agent-status',
+        label: 'AI agent status',
+        description: 'Per-session Claude status dots: waiting for you, busy, idle.',
+        hasPreferences: true,
+        loadPreferences: () =>
+            import('./ai-agent-status/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
         id: 'clock',
         label: 'Clock',
         description: 'GNOME clock/date button and calendar menu.',
@@ -110,6 +118,25 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
         multiInstance: true,
         loadPreferences: () =>
             import('./launch/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
+        id: 'caffeine',
+        label: 'Caffeine',
+        description:
+            'Keep the screen awake (inhibit screensaver/suspend), e.g. during '
+            + 'calls.',
+        hasPreferences: true,
+        loadPreferences: () =>
+            import('./caffeine/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
+        id: 'break-timer',
+        label: 'Break timer',
+        description: 'Workrave-style rest reminders: micro/rest/daily activity '
+            + 'timers with progress bars.',
+        hasPreferences: true,
+        loadPreferences: () =>
+            import('./break-timer/prefs.js') as Promise<PluginPreferencesModule>,
     },
 ];
 

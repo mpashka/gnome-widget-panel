@@ -30,6 +30,7 @@ grep -rn "@tag:<slug>" extension-src docs tests
 | `widget-app-notifications` | The `app-notifications` built-in widget. |
 | `widget-cpu-load-monitor` | The `cpu-load-monitor` built-in widget. |
 | `widget-ai-agent-usage` | The `ai-agent-usage` built-in widget and its out-of-process collectors. |
+| `widget-ai-agent-status` | The `ai-agent-status` built-in widget (per-session Claude status dots fed by lifecycle event hooks). |
 | `widget-clock` | The `clock` built-in widget. |
 | `widget-ubuntu-system-status` | The `ubuntu-system-status` built-in widget. |
 | `widget-gnome-menu` | The `gnome-menu` built-in widget (opens the application grid). |
@@ -37,6 +38,8 @@ grep -rn "@tag:<slug>" extension-src docs tests
 | `widget-favorites` | The `favorites` built-in widget (Places menu). |
 | `widget-printscreen` | The `printscreen` built-in widget (opens the interactive screenshot UI). |
 | `widget-launch` | The `launch` built-in widget (multi-instance command launcher). |
+| `widget-caffeine` | The `caffeine` built-in widget (manual screensaver/suspend inhibitor toggle). |
+| `widget-break-timer` | The `break-timer` built-in widget (Workrave-style micro/rest/daily activity-based rest reminders). |
 | `dev` | Developer reload-without-logout workflow: symlink install and nested-shell runner (`dev-install.sh`, `dev-run.sh`, `docs/development.md`). |
 | `ui-testing` | Headless UI test harness: isolated headless shell + test-driver extension + regression tests and feature-debug stub (`tests/ui/`, `docs/ui-testing.md`). |
 

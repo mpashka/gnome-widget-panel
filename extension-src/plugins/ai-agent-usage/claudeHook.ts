@@ -9,7 +9,17 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 export const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
+export const EVENT_HOOK_NAME = 'gnome-widget-panel-agent-event-hook.js';
 export const PORTS_NAME = 'gnome-widget-panel-ports.json';
+
+// Claude Code lifecycle events forwarded by the event hook (used by the
+// ai-agent-status widget's per-session state machine).
+export const EVENT_HOOK_EVENTS = [
+    'UserPromptSubmit',
+    'Stop',
+    'Notification',
+    'SessionEnd',
+];
 
 export function claudeDir() {
     return GLib.build_filenamev([GLib.get_home_dir(), '.claude']);
@@ -17,6 +27,10 @@ export function claudeDir() {
 
 export function hookPath() {
     return GLib.build_filenamev([claudeDir(), HOOK_NAME]);
+}
+
+export function eventHookPath() {
+    return GLib.build_filenamev([claudeDir(), EVENT_HOOK_NAME]);
 }
 
 export function settingsPath() {
@@ -89,6 +103,58 @@ if (output !== null)
 `;
 }
 
+// Port-independent lifecycle-event hook (UserPromptSubmit / Stop / Notification
+// / SessionEnd). Mirrors hookScript(): it reads the shared ports registry at
+// run time and POSTs the raw Claude stdin payload to `/agent-event` on every
+// registered endpoint. Unlike the status-line hook it must print NOTHING —
+// Claude interprets a Stop hook's stdout — and always exit 0, quickly, so it
+// never disturbs or blocks the Claude session it observes.
+export function eventHookScript() {
+    return `#!/usr/bin/env gjs
+import GLib from 'gi://GLib';
+import Soup from 'gi://Soup?version=3.0';
+
+const REGISTRY = ${JSON.stringify(portsRegistryPath())};
+
+function readStdin() {
+    try {
+        const [ok, contents] = GLib.file_get_contents('/dev/stdin');
+        return ok ? contents : new Uint8Array();
+    } catch (error) {
+        return new Uint8Array();
+    }
+}
+
+function readEndpoints() {
+    try {
+        const [ok, contents] = GLib.file_get_contents(REGISTRY);
+        if (!ok)
+            return [];
+        const data = JSON.parse(new TextDecoder().decode(contents));
+        return Array.isArray(data) ? data : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+const stdin = readStdin();
+const session = new Soup.Session({timeout: 3});
+for (const endpoint of readEndpoints()) {
+    const port = Number(endpoint && endpoint.port);
+    if (!Number.isFinite(port) || port <= 0)
+        continue;
+    try {
+        const message = Soup.Message.new('POST', \`http://127.0.0.1:\${port}/agent-event\`);
+        message.request_headers.append('X-Gnome-Widget-Panel-Token', String(endpoint.secret ?? ''));
+        message.set_request_body_from_bytes('application/json', GLib.Bytes.new(stdin));
+        session.send_and_read(message, null);
+    } catch (error) {
+        // Skip an unreachable endpoint (stale registry entry); stay silent.
+    }
+}
+`;
+}
+
 function atomicWrite(path, contents, mode) {
     const file = Gio.File.new_for_path(path);
     file.replace_contents(
@@ -127,6 +193,79 @@ export function installHook() {
     settings.statusLine = {type: 'command', command: hookPath()};
     atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
     return true;
+}
+
+// True when this settings.json hooks entry already runs our event hook.
+function entryRunsEventHook(entry) {
+    return Array.isArray(entry?.hooks) && entry.hooks.some(
+        (hook) => hook?.type === 'command' && hook?.command === eventHookPath()
+    );
+}
+
+// Write the (port-independent) event hook script and idempotently merge it into
+// Claude's settings.json `hooks` for every EVENT_HOOK_EVENTS event. Existing
+// user-defined hooks are preserved: for each event we only append one entry
+// `{hooks: [{type:'command', command: eventHookPath()}]}` (no matcher — these
+// events do not use matchers) when no entry already references our script.
+// Returns true on success. Throws on unexpected I/O errors so callers can report.
+export function installEventHooks() {
+    GLib.mkdir_with_parents(claudeDir(), 0o700);
+    atomicWrite(eventHookPath(), eventHookScript(), 0o700);
+
+    let settings = {};
+    const path = settingsPath();
+    if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+        const [ok, contents] = GLib.file_get_contents(path);
+        if (ok) {
+            try {
+                settings = JSON.parse(new TextDecoder().decode(contents));
+            } catch (error) {
+                settings = {};
+            }
+        }
+    }
+    if (typeof settings !== 'object' || settings === null || Array.isArray(settings))
+        settings = {};
+    if (typeof settings.hooks !== 'object' || settings.hooks === null || Array.isArray(settings.hooks))
+        settings.hooks = {};
+    for (const event of EVENT_HOOK_EVENTS) {
+        const entries = Array.isArray(settings.hooks[event])
+            ? settings.hooks[event]
+            : [];
+        if (!entries.some(entryRunsEventHook))
+            entries.push({hooks: [{type: 'command', command: eventHookPath()}]});
+        settings.hooks[event] = entries;
+    }
+    atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
+    return true;
+}
+
+// 'not-installed' | 'unconfigured' | 'ok' — like configStatus(), but for the
+// lifecycle-event hooks used by the ai-agent-status widget.
+export function eventHooksStatus() {
+    if (!isClaudeInstalled())
+        return 'not-installed';
+    if (!GLib.file_test(eventHookPath(), GLib.FileTest.EXISTS))
+        return 'unconfigured';
+    const path = settingsPath();
+    if (!GLib.file_test(path, GLib.FileTest.EXISTS))
+        return 'unconfigured';
+    const [ok, contents] = GLib.file_get_contents(path);
+    if (!ok)
+        return 'unconfigured';
+    try {
+        const settings = JSON.parse(new TextDecoder().decode(contents));
+        const hooks = settings?.hooks;
+        const configured = EVENT_HOOK_EVENTS.every(
+            (event) => Array.isArray(hooks?.[event])
+                && hooks[event].some(entryRunsEventHook)
+        );
+        if (configured)
+            return 'ok';
+    } catch (error) {
+        // fall through
+    }
+    return 'unconfigured';
 }
 
 function readRegistry() {

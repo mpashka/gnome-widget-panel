@@ -107,3 +107,7 @@
 #FloatingMiniPanel .cpu-graph {
   margin: 2px 4px;
 }
+
+#FloatingMiniPanel .break-timer-graph {
+  margin: 2px 4px;
+}

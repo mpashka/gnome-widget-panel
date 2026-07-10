@@ -27,6 +27,9 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   temperature-aware color.
 - [`ai-agent-usage`](ai-agent-usage/index.md) — Codex/Claude Code token usage
   graph and context/limit indicators.
+- [`ai-agent-status`](ai-agent-status/index.md) — per-session Claude Code
+  status dots (waiting for you / busy / idle) fed by lifecycle hooks (not in
+  the default config).
 - [`clock`](clock/index.md) — GNOME date menu button adapted to the floating
   panel.
 - [`ubuntu-system-status`](ubuntu-system-status/index.md) — Ubuntu quick
@@ -43,6 +46,11 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   interactive screenshot UI (disabled by default).
 - [`launch`](launch/index.md) — button that launches a configured command
   (multi-instance; not in the default config).
+- [`caffeine`](caffeine/index.md) — toggle button that manually inhibits the
+  screensaver/suspend via `org.gnome.SessionManager` (not in the default
+  config).
+- [`break-timer`](break-timer/index.md) — Workrave-style micro/rest/daily
+  activity-based rest-reminder progress bars (not in the default config).
 
 Further per-widget settings work is tracked in
 [`../../TODO.md`](../../TODO.md).

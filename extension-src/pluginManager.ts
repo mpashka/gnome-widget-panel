@@ -3,8 +3,11 @@
 import {loadWidgetConfig} from './configStore.js';
 
 import * as GnomeAction from './plugins/gnome-action/index.js';
+import * as AiAgentStatus from './plugins/ai-agent-status/index.js';
 import * as AiAgentUsage from './plugins/ai-agent-usage/index.js';
 import * as AppNotifications from './plugins/app-notifications/index.js';
+import * as BreakTimer from './plugins/break-timer/index.js';
+import * as Caffeine from './plugins/caffeine/index.js';
 import * as Clock from './plugins/clock/index.js';
 import * as CpuLoadMonitor from './plugins/cpu-load-monitor/index.js';
 import * as Favorites from './plugins/favorites/index.js';
@@ -19,6 +22,7 @@ const REGISTRY = new Map([
     ['app-notifications', AppNotifications],
     ['cpu-load-monitor', CpuLoadMonitor],
     ['ai-agent-usage', AiAgentUsage],
+    ['ai-agent-status', AiAgentStatus],
     ['clock', Clock],
     ['ubuntu-system-status', UbuntuSystemStatus],
     ['gnome-menu', GnomeMenu],
@@ -28,6 +32,8 @@ const REGISTRY = new Map([
     ['favorites', Favorites],
     ['printscreen', PrintScreen],
     ['launch', Launch],
+    ['caffeine', Caffeine],
+    ['break-timer', BreakTimer],
 ]);
 
 // Build the enabled plugin actors in config order. Returns an ARRAY of
