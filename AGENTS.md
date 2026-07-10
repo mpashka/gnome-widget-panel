@@ -57,6 +57,12 @@ running commands and running tests — through the IntelliJ **IDEA MCP** tools
 go through the project's IDE. Use the IDEA MCP run/build/terminal tools for the
 commands above.
 
+Do **not** start `codex-mcp-client` from the IDEA MCP integrated terminal. That
+process steals focus back to the terminal window repeatedly and disrupts the
+user's IDE workflow. If Codex/IDE MCP connectivity needs investigation, inspect
+the existing MCP state/logs or ask before starting any long-running MCP client
+process in the IDE terminal.
+
 ## Architecture
 
 A GNOME Shell 50 floating panel host (derived from Floating Mini Panel v8) that

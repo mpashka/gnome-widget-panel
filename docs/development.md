@@ -69,6 +69,14 @@ you can then drag the panel to a convenient corner of the smaller window.
 The full log is at `/tmp/gnome-widget-panel-dev.log` (override with `GWP_LOG`);
 the terminal shows only extension/error lines.
 
+While running, `dev-run.sh` also writes `.dev/session-env` with the nested
+shell's `DBUS_SESSION_BUS_ADDRESS`, `DCONF_PROFILE`, `GSETTINGS_SCHEMA_DIR` and
+`XDG_DATA_HOME`. Use
+[`../dev-gsettings-diagnose.sh`](../dev-gsettings-diagnose.sh) to inspect or poke
+panel GSettings on that same dev session bus; writing the dev dconf profile from
+the main GNOME session does not reliably deliver live GSettings notifications to
+the nested shell.
+
 ### Parallel run (dev shell alongside a separate main-session install)
 
 The dev shell is isolated from your main session (separate extensions dir + dconf

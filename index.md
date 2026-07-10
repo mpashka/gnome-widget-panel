@@ -36,6 +36,8 @@ generated GJS runtime code.
   without logout.
 - [`dev-run.sh`](dev-run.sh) — rebuild and run a restartable nested GNOME Shell
   window (`gnome-shell --devkit`), tailing the extension log.
+- [`dev-gsettings-diagnose.sh`](dev-gsettings-diagnose.sh) — inspect and poke
+  the dev-shell GSettings/dconf profile used by `dev-run.sh`.
 - [`docs/object-model.md`](docs/object-model.md) — runtime object map.
 - [`docs/architecture.md`](docs/architecture.md) — architecture and roadmap.
 - [`docs/development.md`](docs/development.md) — reload-without-logout workflow.

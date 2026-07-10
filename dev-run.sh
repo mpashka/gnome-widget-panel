@@ -43,6 +43,7 @@ devkit_bin="/usr/libexec/mutter-devkit"
 devdir="$root/.dev"
 profile="$devdir/dconf-profile"
 statusfile="$devdir/status"
+sessionenv="$devdir/session-env"
 inner="$devdir/inner.sh"
 # Isolated extensions dir: the dev shell loads extensions from here via
 # XDG_DATA_HOME, so the widget stays entirely out of your main GNOME session's
@@ -54,7 +55,7 @@ cleanup() {
     trap - INT TERM EXIT
     [[ -n "$shell_pid" ]] && kill "$shell_pid" 2>/dev/null || true
     [[ -n "$shell_pid" ]] && wait "$shell_pid" 2>/dev/null || true
-    rm -f "$runtime/gnome-shell-disable-extensions"
+    rm -f "$runtime/gnome-shell-disable-extensions" "$sessionenv"
     printf '\nDev shell stopped. Rerun ./dev-run.sh to reload.\n'
 }
 trap cleanup INT TERM EXIT
@@ -124,6 +125,23 @@ ${cfg_export}
 # Isolated extensions dir so the dev shell never touches the main session's.
 export XDG_DATA_HOME="$datahome"
 export DCONF_PROFILE="$profile"
+export GSETTINGS_SCHEMA_DIR="$root/extension/schemas"
+
+# Propagate the dev environment to D-Bus-activated services. The extension
+# preferences app (org.gnome.Shell.Extensions) is D-Bus-activated with a FRESH
+# environment, so without this it runs with no DCONF_PROFILE and writes the
+# DEFAULT dconf profile while the dev shell reads the isolated one — the reason
+# preference changes never reach the running panel. This makes the prefs inherit
+# DCONF_PROFILE/XDG_DATA_HOME/GSETTINGS_SCHEMA_DIR, so its writes reach this shell.
+dbus-update-activation-environment --all 2>/dev/null || true
+
+umask 077
+cat >"$sessionenv" <<SESSION_ENV
+export DBUS_SESSION_BUS_ADDRESS="\$DBUS_SESSION_BUS_ADDRESS"
+export DCONF_PROFILE="$profile"
+export GSETTINGS_SCHEMA_DIR="$root/extension/schemas"
+export XDG_DATA_HOME="$datahome"
+SESSION_ENV
 rm -f "$runtime/gnome-shell-disable-extensions"
 
 # Enable only this extension in the isolated profile.
@@ -173,13 +191,12 @@ if [[ "$headless" != "1" ]]; then
     printf 'To shrink/resize it: window menu (menu) -> Monitors -> Emulate monitor\n'
     printf 'modes, then drag the window edge (the shell reflows to the new size).\n'
 fi
-printf '\n*** IMPORTANT: this dev shell uses an ISOLATED dconf profile (%s). ***\n' "$profile"
-printf 'Panel settings (orientation, content padding, position) are read from that\n'
-printf 'profile. Open Settings FROM THIS DEV WINDOW (right-click the panel handle ->\n'
-printf 'Settings...) so your changes reach this shell. Settings opened from your MAIN\n'
-printf 'session write a DIFFERENT dconf and will NOT apply here (this is the usual\n'
-printf 'reason "orientation shows Horizontal but the panel is Vertical" and changes\n'
-printf 'seem to do nothing). To test the real install instead: ./install.sh + logout/login.\n'
+printf '\nSettings: open the panel'"'"'s own **Settings...** item (right-click the panel\n'
+printf 'handle) INSIDE this window, or run  ./dev-gsettings-diagnose.sh open-prefs.\n'
+printf 'Those run on this dev shell (its D-Bus activation env carries DCONF_PROFILE),\n'
+printf 'so orientation/content-padding/position now apply live. Preferences opened\n'
+printf 'from your MAIN session write a different dconf and still will NOT apply here.\n'
+printf 'For a real install use ./install.sh + logout/login.\n'
 
 printf '\nTailing extension/error log lines; Ctrl+C to stop.\n\n'
 tail -n +1 -f --pid="$shell_pid" "$logfile" 2>/dev/null \

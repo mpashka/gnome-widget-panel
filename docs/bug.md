@@ -2,6 +2,57 @@
 
 Back to the [docs index](index.md).
 
+## Root cause + fix (CONFIRMED)
+
+The remaining failure — the preferences window logs its write but the dev panel
+never updates — was traced to the **environment of the preferences process**:
+
+- The extension prefs run in `/usr/bin/gjs -m
+  /usr/share/gnome-shell/org.gnome.Shell.Extensions`, which GNOME starts via
+  **D-Bus activation with a fresh environment**. Reading `/proc/<pid>/environ`
+  showed `DCONF_PROFILE` **unset** there, even though the dev `gnome-shell` was
+  launched with `DCONF_PROFILE=<repo>/.dev/dconf-profile`.
+- So the prefs wrote the **default** dconf profile while the dev shell read the
+  isolated `gwpdev` profile. The write happened (hence the log line) but the dev
+  panel, listening on a different profile, never saw the `changed::*` signal.
+  `poke` worked because it writes with `DCONF_PROFILE` explicitly set.
+
+**Fix:** `dev-run.sh` now runs `dbus-update-activation-environment --all` inside
+the dev D-Bus session, so D-Bus-activated services (the prefs) inherit
+`DCONF_PROFILE` / `XDG_DATA_HOME` / `GSETTINGS_SCHEMA_DIR`. Verified via
+`/proc/<pid>/environ`: the prefs process now carries `DCONF_PROFILE=.dev/…`, so it
+writes the same profile the dev shell reads. Open Settings from the dev window (or
+`./dev-gsettings-diagnose.sh open-prefs`) and changes apply live. (Settings opened
+from your MAIN session still write a different profile and will not apply here.)
+
+## Resolution (earlier steps — GSettings live-apply is correct code)
+
+`dev-gsettings-diagnose.sh` settled it:
+
+- `snapshot`: the main-session profile and the dev profile hold **different**
+  values (`vertical=false` vs `vertical=true`) — the dconf isolation is real.
+- `poke` (writes on the **dev shell's** session bus + profile) → the running dev
+  panel changes orientation/padding and reverts. **GSettings live-apply works.**
+- `open-prefs` (launches preferences on the **dev shell's** session bus) →
+  changing Orientation/Content padding in that window **does** apply live.
+- The same preferences window launched the ordinary way (main session bus /
+  default profile) does **not** apply and `monitor` stays silent.
+
+So the Shell-side live handlers in `FloatingMiniPanel` are correct. The failure is
+purely that **`changed::*` notifications are delivered per session bus**, and the
+dev shell runs on its own `dbus-run-session` bus with its own dconf profile. A
+preferences window opened on any *other* bus writes a different dconf and its
+change signal never reaches the nested panel. This is a dev-workflow artifact, not
+a bug in the extension.
+
+**Use in the dev workflow:** open preferences on the dev shell's bus —
+`./dev-gsettings-diagnose.sh open-prefs`, or the panel's own **Settings…** item
+(right-click the panel handle) inside the dev window, which the dev shell spawns
+on its own bus. **For real testing** use `./install.sh` + logout/login, where the
+preferences process and the shell share the one real session bus.
+
+The original investigation notes follow.
+
 ## Symptom
 
 When the working development copy is started with `./dev-run.sh`, changing widget
@@ -18,8 +69,8 @@ These rows are panel-level GSettings, not widget options in `widgets.json`.
 `extension-src/prefs.ts` writes both values through `this.getSettings()`:
 
 - `Orientation` writes `vertical` and, for vertical modes, `vertical-rotation`.
-- `Content padding` is bound to `content-padding` with
-  `Gio.SettingsBindFlags.DEFAULT`.
+- `Content padding` writes `content-padding` explicitly on `notify::value` and
+  mirrors external `changed::content-padding` updates back into the row.
 
 `extension-src/extension.ts` constructs `FloatingMiniPanel` with the same
 GSettings object and installs live listeners:
@@ -133,6 +184,33 @@ actually using.
   runtime application path.
 - If the monitor is silent while the UI changes, the preferences process is
   writing to the wrong profile.
+
+The helper [`../dev-gsettings-diagnose.sh`](../dev-gsettings-diagnose.sh)
+wraps the same checks. `./dev-run.sh` writes the nested shell's
+`DBUS_SESSION_BUS_ADDRESS` to `.dev/session-env`; keep `./dev-run.sh` running so
+the helper can use the same session bus as the dev shell:
+
+```bash
+./dev-gsettings-diagnose.sh snapshot    # compare main-session vs dev values
+./dev-gsettings-diagnose.sh monitor     # watch writes on the dev shell bus
+./dev-gsettings-diagnose.sh poke        # write on the dev shell bus, then restore
+./dev-gsettings-diagnose.sh open-prefs  # launch prefs on the dev shell bus
+```
+
+Interpretation:
+
+- If `poke` changes the running panel, GSettings delivery to the dev shell works;
+  the remaining problem is how the preferences window is launched or which
+  profile it writes.
+- If `poke` prints writes on `monitor` but does not change the running panel, the
+  bug is in the Shell-side live-apply path.
+- If `monitor` stays silent for a preferences window opened from the main
+  session but prints changes for `open-prefs`, the cause is the profile used to
+  launch preferences.
+- If `monitor` and `poke` are run from outside the dev shell without the dev
+  `DBUS_SESSION_BUS_ADDRESS`, they may read/write the same dconf profile without
+  delivering live `changed::*` notifications to the nested shell. This is a dev
+  subshell/session-bus artifact, not proof that the Shell handlers are broken.
 
 ## Practical workaround for the profile-mismatch case
 
