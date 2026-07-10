@@ -16,6 +16,9 @@ ui_wait_js "plugin('cpu-load-monitor').width < plugin('cpu-load-monitor').height
     || fail "cpu graph did not swap size when vertical"
 _ui_log "ok - cpu graph rotated (tall/narrow) when vertical"
 assert_true 'panel.width < panel.height' "panel strip is tall/narrow"
+# Guard against unconstrained icon widths blowing the strip up (was 52px when
+# St.Icon kept its natural 48px width; ~28px with the 24px CSS cap + padding).
+assert_true 'panel.width <= 40' "vertical strip stays about one icon wide"
 
 ui_set orientation left
 # The panel was already vertical, so assert the *direction* actually reached

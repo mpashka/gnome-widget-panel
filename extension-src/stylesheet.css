@@ -20,6 +20,10 @@
 }
 
 #FloatingMiniPanel:vertical .system-status-icon {
+  /* Constrain the width too: without it St.Icon keeps its natural 48px width
+     (the default icon size), which made the vertical strip ~52px wide with
+     huge side margins around the 16-24px glyphs. Mirrors the horizontal rule. */
+  width: 24px;
   height: 24px;
   padding: 2px 2px;
   -st-icon-style: symbolic !important;
@@ -34,6 +38,7 @@
 }
 
 #FloatingMiniPanel:vertical .system-status-icon-2 {
+  width: 24px; /* see .system-status-icon: cap St.Icon's natural 48px width */
   height: 24px;
   padding-left: 2px;
   padding-right: 2px;
