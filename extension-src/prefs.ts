@@ -3,9 +3,9 @@
 // @tag:mechanism
 //
 // Preferences UI for the widget panel. Lets the user enable, reorder (by mouse
-// drag), add, remove and configure widgets. It edits `widgets.json` through
-// `configStore` (the single source of truth) and never keeps a second settings
-// model. Adding a widget and configuring a widget both open in-window subpages
+// drag), add, remove and configure widgets. It edits the `widgets` GSettings
+// key (a JSON document) through `configStore` (the single source of truth) and
+// never keeps a second settings model. Adding a widget and configuring a widget both open in-window subpages
 // (`push_subpage`/`pop_subpage`) rather than dialogs or popovers.
 // See ../docs/preferences.md.
 
@@ -49,7 +49,10 @@ function logPanelSettingWrite(key, value) {
 
 export default class WidgetPanelPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
-        const state = {config: loadWidgetConfig(this.path)};
+        // All configuration lives in GSettings: the widget list/options in the
+        // `widgets` JSON key (via configStore) and panel-level keys alongside.
+        const settings = this.getSettings();
+        const state = {settings, config: loadWidgetConfig(settings)};
 
         // Everything lives on a single page: the configured widgets, an add
         // affordance below them, then the panel-level position and orientation
@@ -64,8 +67,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             title: 'Panel widgets',
             description:
                 'Drag the handle to reorder, toggle to enable, configure or ' +
-                'remove widgets. Changes are saved to widgets.json; reload GNOME ' +
-                'Shell (log out and back in on Wayland) to apply them.',
+                'remove widgets. Changes apply to the running panel immediately.',
         });
         page.add(configuredGroup);
 
@@ -348,7 +350,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     }
 
     _persist(state, rebuild) {
-        saveWidgetConfig(state.config);
+        saveWidgetConfig(state.settings, state.config);
         rebuild();
     }
 
@@ -615,7 +617,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                         // and rebuilding resets the main page's scroll position
                         // (which then shows at the top when the subpage is
                         // popped). The running panel live-reloads from the file.
-                        saveWidgetConfig(state.config);
+                        saveWidgetConfig(state.settings, state.config);
                     },
                 });
 

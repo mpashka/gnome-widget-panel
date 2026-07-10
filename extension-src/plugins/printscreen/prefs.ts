@@ -2,8 +2,8 @@
 // @tag:widget-printscreen
 //
 // Per-widget settings UI for the printscreen widget. Loaded lazily by the panel
-// preferences UI (see ../../prefs.ts). Edits the widget `options` in
-// widgets.json; the widget reads them on the next GNOME Shell reload.
+// preferences UI (see ../../prefs.ts). Edits the widget `options` inside
+// the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
 

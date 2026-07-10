@@ -16,8 +16,8 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate.
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
 - `t-04-position-preset.sh` — `aligned` presets snap the panel.
-- `t-05-config-live-reload.sh` — widgets.json edits live-reload; broken config
-  is ignored.
+- `t-05-config-live-reload.sh` — `widgets` GSettings key edits live-reload;
+  broken config is ignored.
 - `t-06-gnome-action-click.sh` — virtual-pointer click opens the overview.
 - `t-07-screenshot-smoke.sh` — stage renders and captures to a non-uniform PNG.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for

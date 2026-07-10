@@ -43,26 +43,29 @@ Main panel actor. It owns:
 - control button;
 - configured plugin actors returned by `PluginManager`.
 
-It also **live-reloads its widgets** when `widgets.json` changes (edited directly
-or through the settings UI), so per-widget settings and add/remove/reorder/enable
-changes apply without a full GNOME Shell reload. A `Gio.FileMonitor` on the
-config directory (`~/.config/gnome-widget-panel/`) feeds a ~300 ms debounced
-timer that calls `_reloadPlugins()`. `_reloadPlugins()` builds the new plugin
-instances first and only swaps them in on success, so an invalid or half-written
-config keeps the current widgets. Because new actors are constructed before the
-old ones are destroyed, a widget owning an exclusive resource (e.g.
-`ai-agent-usage`'s localhost `Soup.Server`) briefly overlaps with its old
-instance; the handled bind error is non-fatal and the next sample recovers. The
-monitor, its signal and the debounce timer are released in `destroy()`.
+It also **live-reloads its widgets** when the `widgets` GSettings key changes
+(edited directly with `gsettings`/`dconf` or through the settings UI), so
+per-widget settings and add/remove/reorder/enable changes apply without a full
+GNOME Shell reload. A `changed::widgets` signal on the panel's `Gio.Settings`
+feeds a ~300 ms debounced timer that calls `_reloadPlugins()`. `_reloadPlugins()`
+pre-validates the new value with `parseWidgetConfig()`, builds the new plugin
+instances first and only swaps them in on success, so an invalid or
+half-written value keeps the current widgets. Because new actors are
+constructed before the old ones are destroyed, a widget owning an exclusive
+resource (e.g. `ai-agent-usage`'s localhost `Soup.Server`) briefly overlaps
+with its old instance; the handled bind error is non-fatal and the next sample
+recovers. The signal handler and the debounce timer are released in
+`destroy()`.
 
 Every timer, signal, child actor and compositor override must be released in
 `destroy()`.
 
 ### `PluginManager`
 
-Reads `~/.config/gnome-widget-panel/widgets.json`, falling back to bundled
-`extension/config/widgets.json`. The registry maps plugin IDs to
-`extension-src/plugins/<plugin-id>/index.ts`.
+Reads the `widgets` GSettings key via `configStore.ts`'s `loadWidgetConfig`,
+falling back to the built-in default configuration (via legacy-file migration
+first, see [`architecture.md`](architecture.md)). The registry maps plugin IDs
+to `extension-src/plugins/<plugin-id>/index.ts`.
 
 Plugin `create(parent, options)` returns a GNOME Shell actor. Plugin order is
 the order in the config file.

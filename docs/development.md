@@ -91,11 +91,11 @@ dev widget a different Claude port so they don't clash on the localhost port:
 GWP_CLAUDE_PORT=17862 ./dev-run.sh
 ```
 
-- `GWP_CLAUDE_PORT=N` generates an isolated `.dev/widgets.json` (copied from your
-  config) with `ai-agent-usage`'s `claudePort` set to `N`, and points the dev
-  shell at it via `GWP_CONFIG_FILE` (a config-path override honored by
-  `configStore.ts`). Pick a port different from your main session (default
-  `17861`).
+- `GWP_CLAUDE_PORT=N` patches `ai-agent-usage`'s `claudePort` straight into the
+  dev shell's own `widgets` GSettings key, in the isolated `gwpdev` dconf
+  profile — via a generated GJS helper (`.dev/patch-claude-port.js`) that reads,
+  modifies and writes the key with `Gio.Settings`. Pick a port different from
+  your main session (default `17861`).
 
 Because the Claude hook registry lives under `~/.claude` (shared), both instances
 register their `{port, secret}` and Claude's status line fans out to both (see
@@ -110,7 +110,9 @@ and fails with `EBUSY` trying to take the seat. The supported replacement is the
 mutter development kit: `gnome-shell --devkit` hosts a nested shell in a GTK
 window, provided by `/usr/libexec/mutter-devkit` (package `mutter-dev-bin`).
 `enabled-extensions` is one per-user setting, so the dev shell runs under its own
-`DCONF_PROFILE` to be enabled only there while `widgets.json` stays shared.
+`DCONF_PROFILE` (`gwpdev`) to be enabled only there. That profile also gives the
+dev shell its own `widgets` GSettings key, fully isolated from your main
+session's configuration (previously `widgets.json` was shared between them).
 
 ## Alternatives
 

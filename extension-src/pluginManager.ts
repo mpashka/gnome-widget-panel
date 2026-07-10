@@ -37,8 +37,12 @@ const REGISTRY = new Map([
 // Robust by design: an unknown widget id or a widget whose `create` throws is
 // skipped (and logged) rather than aborting the whole panel, so an incompatible
 // or partially-broken config can never disable the extension.
-export function createConfiguredPlugins(parent, extensionPath) {
-    const config = loadWidgetConfig(extensionPath);
+//
+// `settings` is the panel's Gio.Settings; the configuration lives in its
+// `widgets` key (see configStore.ts). `extensionPath` is still passed to
+// widgets that need bundled assets/helpers (e.g. ai-agent-usage).
+export function createConfiguredPlugins(parent, extensionPath, settings) {
+    const config = loadWidgetConfig(settings);
 
     const instances = [];
     for (const item of config.plugins) {

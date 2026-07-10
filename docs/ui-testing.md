@@ -20,7 +20,7 @@ UI tests serve two distinct purposes with different lifecycles:
 | --- | --- | --- |
 | `org.gnome.Shell.Eval` D-Bus (+ `--unsafe-mode`) | ✗ unavailable | GNOME Shell 50 removed the `--unsafe-mode` switch; `Eval` returns `(false, '')` and `org.gnome.Mutter.DebugControl` exposes no unsafe-mode toggle (verified empirically). |
 | **Test-driver extension** (own `Eval` via D-Bus) | ✓ **chosen** | 90-line test-only extension ([`../tests/ui/driver/`](../tests/ui/driver/)) exports `org.gwp.TestDriver.Eval(script)`; runs only inside the isolated test session; version-proof; awaits Promise results so async shell APIs work. |
-| **Headless shell** (`gnome-shell --headless --virtual-monitor`) | ✓ **chosen** | Real compositor + real rendering (llvmpipe) with no window; the same mechanism `dev-run.sh` uses. Each test boots a throwaway, fully isolated session (own bus / extensions dir / dconf profile / widgets.json). |
+| **Headless shell** (`gnome-shell --headless --virtual-monitor`) | ✓ **chosen** | Real compositor + real rendering (llvmpipe) with no window; the same mechanism `dev-run.sh` uses. Each test boots a throwaway, fully isolated session (own bus / extensions dir / dconf profile, so its own `widgets` GSettings key). |
 | **Virtual pointer** (`Clutter.VirtualInputDevice`) | ✓ **chosen** | Real input events through the whole picking/reactive path — clicks verified to open the overview headless. Preferred over `actor.emit('clicked')`, which bypasses picking (emit also works and is fine for quick debug). |
 | **Actor introspection asserts** | ✓ **chosen** | Most assertions read actor state via `Eval` (position, size, orientation, style, children) — robust, fast, precise failure messages. The primary assertion style. |
 | Screenshots — smoke test | ✓ chosen (t-07) | `Shell.Screenshot.screenshot_stage_to_content` + `composite_to_stream` writes a stage PNG headless; the committed test only asserts a non-uniform render. |
@@ -40,10 +40,9 @@ tests/ui/run.sh                 runner: build once, run each t-*.sh
                       └── org.gwp.TestDriver.Eval(js) ← gdbus (ui_eval)
 ```
 
-Isolation per test: own D-Bus session bus, `XDG_DATA_HOME` (extensions dir),
-dconf profile (`user-db:gwpuitest` — one throwaway db file), and
-`GWP_CONFIG_FILE` widgets.json in a temp dir (the panel's live-reload monitor
-watches the basename of `GWP_CONFIG_FILE`, whatever it is). Apart from that one
+Isolation per test: own D-Bus session bus, `XDG_DATA_HOME` (extensions dir) and
+dconf profile (`user-db:gwpuitest` — one throwaway db file), so the widget
+configuration (the `widgets` GSettings key) is isolated too. Apart from that one
 throwaway dconf db file, nothing touches the real session. One shell
 boot per test file (~15–25 s each) keeps tests independent; a crashed shell
 fails only its own test.

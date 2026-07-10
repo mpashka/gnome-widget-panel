@@ -21,8 +21,11 @@ Installed widgets live below
 `extension-src/` is based on Floating Mini Panel v8, already patched for GNOME
 Shell 50, compact 20 px layout, free positioning, normal-weight labels and the
 local CPU monitor. `npm run build` generates installable GJS modules under
-`extension/`. The host reads `~/.config/gnome-widget-panel/widgets.json`,
-falling back to `extension/config/widgets.json`.
+`extension/`. The host reads the `widgets` GSettings key via
+`configStore.ts`'s `loadWidgetConfig(settings)`, falling back to the built-in
+default configuration (`defaultWidgetConfig()` in `widgetConfig.ts`) when the
+key is empty or invalid. A legacy `~/.config/gnome-widget-panel/widgets.json`
+is migrated into the key once on first load.
 
 The configuration is an ordered list. `enabled: false` disables a plugin; array
 order defines panel order. Unknown enabled plugin IDs fail explicitly instead of

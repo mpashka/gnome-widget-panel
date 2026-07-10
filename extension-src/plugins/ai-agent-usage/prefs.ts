@@ -3,8 +3,8 @@
 //
 // Per-widget settings UI for the ai-agent-usage widget. Loaded lazily by the
 // panel preferences UI (see ../../prefs.ts) only when the user opens this
-// widget's settings. It edits the same `options` object stored per widget in
-// widgets.json; the widget reads these on the next GNOME Shell reload.
+// widget's settings. It edits the same `options` object stored per widget inside
+// the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';

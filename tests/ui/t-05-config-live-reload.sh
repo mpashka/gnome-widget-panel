@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # @tag:ui-testing
-# Regression: editing widgets.json live-reloads the widget set (the panel's
-# Gio.FileMonitor + debounce path), without crashing the panel; and a broken
-# config is ignored (the panel keeps its current widgets).
+# Regression: editing the `widgets` GSettings key live-reloads the widget set
+# (the panel's changed::widgets + debounce path), without crashing the panel;
+# and a broken config is ignored (the panel keeps its current widgets).
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 ui_start
 
@@ -28,8 +28,10 @@ ui_config_write '{"schema":1,"plugins":[
 ui_wait_js "plugin('favorites') !== null" 15 || fail "favorites did not appear after config edit"
 _ui_log "ok - adding a widget live-reloads"
 
-# Broken JSON must not tear the panel down.
+# Broken JSON must not tear the panel down — and must keep the CURRENT widget
+# set, not fall back to the defaults (the default set contains the clock, so a
+# reappearing clock would betray a fallback-to-default).
 ui_config_write '{"schema":1,"plugins":[{BROKEN'
 sleep 2
-assert_true "panel.mapped && plugin('favorites') !== null" \
+assert_true "panel.mapped && plugin('favorites') !== null && plugin('clock') === null" \
     "broken config ignored, panel keeps current widgets"

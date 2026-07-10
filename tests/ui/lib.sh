@@ -6,7 +6,8 @@
 # A test sources this file and calls `ui_start`; the harness then re-executes
 # the test inside its own `dbus-run-session`, boots a fully isolated headless
 # GNOME Shell (own D-Bus bus, own XDG_DATA_HOME extensions dir, own dconf
-# profile, own widgets.json via GWP_CONFIG_FILE) with the panel extension and
+# profile carrying the whole configuration incl. the `widgets` key) with the
+# panel extension and
 # the test-driver extension (tests/ui/driver) enabled, and gives the test:
 #
 #   ui_eval 'JS'          run JS inside the shell (driver Eval; `find`, `panel`
@@ -18,7 +19,7 @@
 #   ui_get KEY            gsettings get on the panel schema
 #   ui_click 'ACTOR_JS'   click the actor's center with a virtual pointer
 #   ui_screenshot FILE    write a PNG of the whole stage
-#   ui_config_write JSON  overwrite widgets.json (live-reload path)
+#   ui_config_write JSON  overwrite the `widgets` GSettings key (live-reload)
 #   assert_eq GOT WANT LABEL / assert_contains HAY NEEDLE LABEL /
 #   assert_true 'EXPR' LABEL / fail MSG
 #
@@ -93,12 +94,9 @@ ui_start() {
     export DCONF_PROFILE="$GWP_UI_TMP/dconf-profile"
     export GSETTINGS_SCHEMA_DIR="$GWP_UI_ROOT/extension/schemas"
 
-    # Isolated widget config. The panel's live-reload monitor watches the
-    # directory of GWP_CONFIG_FILE and filters on that file's own basename, so
-    # any name works; widgets.json is used for realism.
-    mkdir -p "$GWP_UI_TMP/config"
-    printf '%s\n' "$config_json" > "$GWP_UI_TMP/config/widgets.json"
-    export GWP_CONFIG_FILE="$GWP_UI_TMP/config/widgets.json"
+    # Widget config lives in the `widgets` GSettings key of the isolated dconf
+    # profile (single storage for ALL settings); the panel live-reloads on the
+    # changed::widgets signal.
 
     [[ -d "$GWP_UI_ROOT/extension/schemas" ]] || \
         fail "extension/ not built; run npm run build (or tests/ui/run.sh)"
@@ -112,6 +110,7 @@ ui_start() {
         "['$GWP_UUID','$GWP_DRIVER_UUID']"
     gsettings set org.gnome.shell welcome-dialog-last-shown-version '"999"' \
         2>/dev/null || true
+    ui_config_write "$config_json"
     ui_set state 1
     ui_set orientation horizontal
     ui_set content-padding 0
@@ -247,9 +246,9 @@ ui_screenshot() {
     [[ -s "$path" ]] || fail "screenshot not written: $path"
 }
 
-# Overwrite widgets.json (triggers the panel's live-reload monitor).
+# Overwrite the `widgets` GSettings key (triggers the panel's live-reload).
 ui_config_write() {
-    printf '%s\n' "$1" > "$GWP_CONFIG_FILE"
+    gsettings set "$GWP_SCHEMA" widgets "$1"
 }
 
 # ---------------------------------------------------------------------------

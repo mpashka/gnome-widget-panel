@@ -3,7 +3,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {parseWidgetConfig, serializeWidgetConfig} from '../extension/widgetConfig.js';
+import {
+    defaultWidgetConfig,
+    parseWidgetConfig,
+    serializeWidgetConfig,
+} from '../extension/widgetConfig.js';
 
 test('parses a valid configuration', () => {
     const config = parseWidgetConfig(
@@ -58,6 +62,17 @@ test('skips a plugin entry without a string id (does not throw)', () => {
 
 test('rejects invalid JSON', () => {
     assert.throws(() => parseWidgetConfig('not json'));
+});
+
+test('default config is valid, schema 1, and returns fresh copies', () => {
+    const first = defaultWidgetConfig();
+    assert.equal(first.schema, 1);
+    assert.ok(first.plugins.length > 0);
+    // Round-trips through the parser (i.e. it is itself a valid config).
+    assert.deepEqual(parseWidgetConfig(serializeWidgetConfig(first)), first);
+    // Fresh copy every call: mutating one must not leak into the next.
+    first.plugins.push({id: 'x', enabled: true});
+    assert.notEqual(defaultWidgetConfig().plugins.length, first.plugins.length);
 });
 
 test('serialize produces trailing newline and round-trips', () => {

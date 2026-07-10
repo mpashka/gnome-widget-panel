@@ -37,10 +37,10 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
-import * as ConfigStore from './configStore.js';
 import * as ControlButton from './controlButton.js';
 import * as PluginManager from './pluginManager.js';
 import * as Utils from './utils.js';
+import {parseWidgetConfig} from './widgetConfig.js';
 
 // Persistent variable until restart of GNOME Shell
 // Needed when this is enabled during runtime.
@@ -146,7 +146,8 @@ const FloatingMiniPanel = GObject.registerClass(
             // config order so a widget id may appear multiple times.
             this._plugins = PluginManager.createConfiguredPlugins(
                 this,
-                extensionPath
+                extensionPath,
+                this._sets
             );
             for (const {actor} of this._plugins)
                 this.add_child(actor);
@@ -162,16 +163,16 @@ const FloatingMiniPanel = GObject.registerClass(
             // own map, so this is safe before the panel is on the stage.
             this._applyPanelLayoutToPlugins();
 
-            // Live-reload widgets when widgets.json changes ------------------
-            // Editing the config (directly or via the settings UI) must apply
-            // per-widget settings and add/remove/reorder/enable changes without
-            // a full GNOME Shell reload. Watch the config directory; a debounced
-            // timer rebuilds the plugin actors. Guarded so a monitor failure can
-            // never throw out of enable() and disable the whole extension.
-            this._configMonitor = null;
-            this._configMonitorId = null;
+            // Live-reload widgets when the `widgets` GSettings key changes ----
+            // Editing the config (via the settings UI or gsettings/dconf) must
+            // apply per-widget settings and add/remove/reorder/enable changes
+            // without a full GNOME Shell reload. A short debounce coalesces
+            // bursts of writes (e.g. a spin button being held).
             this._reloadTimeoutId = null;
-            this._setupConfigMonitor();
+            this._widgetsChangedId = this._sets.connect(
+                'changed::widgets',
+                () => this._scheduleReloadPlugins()
+            );
 
             // Apply the saved alignment on startup ----------------------------
             // The constructor above only restored the raw pos-x / pos-y. The
@@ -618,51 +619,9 @@ const FloatingMiniPanel = GObject.registerClass(
             this._extension.openAbout?.();
         }
 
-        // Watch the user config directory for widgets.json changes and arm a
-        // debounced reload. Monitoring the directory (not the file) keeps the
-        // watch valid across the replace/rename writes configStore performs.
-        // Guarded: any failure is logged and leaves the panel working.
-        _setupConfigMonitor() {
-            try {
-                const configPath = ConfigStore.userConfigPath();
-                this._configFileName = GLib.path_get_basename(configPath);
-                const configDir = GLib.path_get_dirname(configPath);
-                // Ensure the directory exists so the monitor is meaningful even
-                // before the user file is first written.
-                GLib.mkdir_with_parents(configDir, 0o755);
-                const dirFile = Gio.File.new_for_path(configDir);
-                this._configMonitor = dirFile.monitor_directory(
-                    Gio.FileMonitorFlags.NONE,
-                    null
-                );
-                this._configMonitorId = this._configMonitor.connect(
-                    'changed',
-                    (_monitor, file, _otherFile, _eventType) => {
-                        try {
-                            if (!file) return;
-                            if (file.get_basename() !== this._configFileName)
-                                return;
-                            // File writes emit several events; debounce them
-                            // into a single reload.
-                            this._scheduleReloadPlugins();
-                        } catch (e) {
-                            logError(
-                                e,
-                                'widget-panel: config monitor callback failed'
-                            );
-                        }
-                    }
-                );
-            } catch (e) {
-                logError(
-                    e,
-                    'widget-panel: failed to watch widgets.json for changes'
-                );
-            }
-        }
-
-        // (Re)arm a single ~300 ms timer so a burst of file events triggers one
-        // reload. The pending timer is removed before re-arming and in destroy().
+        // (Re)arm a single ~300 ms timer so a burst of `widgets` key writes
+        // triggers one reload. The pending timer is removed before re-arming
+        // and in destroy().
         _scheduleReloadPlugins() {
             if (this._reloadTimeoutId) {
                 GLib.Source.remove(this._reloadTimeoutId);
@@ -680,24 +639,41 @@ const FloatingMiniPanel = GObject.registerClass(
         }
 
         // Rebuild the configured plugin actors from the (possibly changed)
-        // widgets.json. Build the NEW instances FIRST, so an invalid or
-        // half-written config does not tear down the working panel. Only on
-        // success are the old actors destroyed and replaced. The control button
-        // and every non-plugin child stay in place: they were added first and
-        // are untouched here, so re-adding the new plugin actors in array
-        // (config) order preserves "control button, then plugins in order".
-        // Never throws out of the timeout callback.
+        // `widgets` GSettings key. Build the NEW instances FIRST, so an invalid
+        // config does not tear down the working panel. Only on success are the
+        // old actors destroyed and replaced. The control button and every
+        // non-plugin child stay in place: they were added first and are
+        // untouched here, so re-adding the new plugin actors in array (config)
+        // order preserves "control button, then plugins in order". Never throws
+        // out of the timeout callback.
         _reloadPlugins() {
+            // A broken/half-edited `widgets` value must keep the CURRENT
+            // widgets (loadWidgetConfig would gracefully fall back to the
+            // default set, which is right at startup but wrong for a live
+            // edit), so validate the raw key first.
+            try {
+                const raw = this._sets.get_string('widgets');
+                if (raw)
+                    parseWidgetConfig(raw);
+            } catch (e) {
+                logError(
+                    e,
+                    'widget-panel: invalid widgets config, keeping current widgets'
+                );
+                return;
+            }
+
             let next;
             try {
                 next = PluginManager.createConfiguredPlugins(
                     this,
-                    this._extensionPath
+                    this._extensionPath,
+                    this._sets
                 );
             } catch (e) {
                 logError(
                     e,
-                    'widget-panel: invalid widgets.json, keeping current widgets'
+                    'widget-panel: invalid widgets config, keeping current widgets'
                 );
                 return;
             }
@@ -981,18 +957,14 @@ const FloatingMiniPanel = GObject.registerClass(
                 actor.destroy();
             this._plugins = [];
 
-            // Release the config watcher and any pending debounced reload.
+            // Release the config-change listener and any pending debounced reload.
             if (this._reloadTimeoutId) {
                 GLib.Source.remove(this._reloadTimeoutId);
                 this._reloadTimeoutId = null;
             }
-            if (this._configMonitor) {
-                if (this._configMonitorId) {
-                    this._configMonitor.disconnect(this._configMonitorId);
-                    this._configMonitorId = null;
-                }
-                this._configMonitor.cancel();
-                this._configMonitor = null;
+            if (this._widgetsChangedId) {
+                this._sets.disconnect(this._widgetsChangedId);
+                this._widgetsChangedId = null;
             }
 
             if (this._timeoutId1) {

@@ -51,8 +51,9 @@ Environment knobs:
   GWP_HEADLESS=1       Headless + log only (no window).
   GWP_MONITOR_SPEC=WxH Headless virtual monitor size (default 1600x900).
   GWP_LOG=PATH         Full shell log path (default /tmp/gnome-widget-panel-dev.log).
-  GWP_CLAUDE_PORT=N    Run the dev ai-agent-usage widget on Claude port N via an
-                       isolated widgets.json (parallel to a main-session install).
+  GWP_CLAUDE_PORT=N    Run the dev ai-agent-usage widget on Claude port N (the
+                       port is patched into the dev dconf profile's widget
+                       config; useful parallel to a main-session install).
 
 Panel settings (orientation, content padding, position) apply live only from a
 preferences window on the dev shell's bus: use the panel's own Settings... item
@@ -136,31 +137,66 @@ mkdir -p "$devdir"
 printf 'user-db:gwpdev\n' >"$profile"
 : >"$statusfile"
 
-# Optional isolated widgets.json so the dev widget uses a different Claude port.
-# We point the dev shell at it via GWP_CONFIG_FILE (a config-path override honored
-# by configStore.ts) — this leaves dconf/XDG untouched, so extension enablement
-# still works. ~/.claude (the hook registry) stays under HOME, so the Claude
-# status-line fan-out reaches both this instance and your main session.
-cfg_export=""
+# Optional: give the dev ai-agent-usage widget its own Claude port. The widget
+# configuration lives in the `widgets` GSettings key of the dev shell's isolated
+# dconf profile, so we patch the claudePort right in that profile (read current
+# value or default, modify, write back). ~/.claude (the hook registry) stays
+# under HOME, so the Claude status-line fan-out reaches both this instance and
+# your main session.
+claude_port_cmd=""
 if [[ -n "$claude_port" ]]; then
-    devcfg="$devdir/widgets.json"
-    src="$HOME/.config/gnome-widget-panel/widgets.json"
-    [[ -f "$src" ]] || src="$root/extension/config/widgets.json"
-    python3 - "$src" "$devcfg" "$claude_port" <<'PY'
-import json, sys
-src, dst, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
-data = json.load(open(src))
-plugins = data.setdefault("plugins", [])
-ai = next((p for p in plugins if p.get("id") == "ai-agent-usage"), None)
-if ai is None:
-    ai = {"id": "ai-agent-usage", "enabled": True}
-    plugins.append(ai)
-ai["enabled"] = True
-ai.setdefault("options", {})["claudePort"] = port
-open(dst, "w").write(json.dumps(data, indent=2) + "\n")
-PY
-    printf 'Dev widget Claude port: %s (config %s)\n' "$claude_port" "$devcfg"
-    cfg_export="export GWP_CONFIG_FILE=\"$devcfg\""
+    # GJS helper (the project's native stack): reads/patches the `widgets` JSON
+    # in the dev dconf profile via Gio.Settings directly. Env (DCONF_PROFILE,
+    # GSETTINGS_SCHEMA_DIR) comes from the inner script that invokes it.
+    cat >"$devdir/patch-claude-port.js" <<'JS'
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import system from 'system';
+
+const [portArg] = system.programArgs;
+const port = Number(portArg);
+const schemaDir = GLib.getenv('GSETTINGS_SCHEMA_DIR');
+const source = Gio.SettingsSchemaSource.new_from_directory(
+    schemaDir, Gio.SettingsSchemaSource.get_default(), false);
+const schema = source.lookup(
+    'org.gnome.shell.extensions.floating-mini-panel', false);
+const settings = new Gio.Settings({settings_schema: schema});
+
+let data = null;
+try {
+    const raw = settings.get_string('widgets');
+    data = raw ? JSON.parse(raw) : null;
+} catch (e) {
+    data = null;
+}
+if (!data || !Array.isArray(data.plugins)) {
+    // Empty/broken key: the built-in default widget set (keep in sync with
+    // widgetConfig.defaultWidgetConfig).
+    data = {schema: 1, plugins: [
+        {id: 'gnome-action', enabled: true},
+        {id: 'gnome-menu', enabled: true},
+        {id: 'favorites', enabled: true},
+        {id: 'keyboard-layout', enabled: true},
+        {id: 'app-notifications', enabled: true},
+        {id: 'cpu-load-monitor', enabled: true},
+        {id: 'ai-agent-usage', enabled: true},
+        {id: 'clock', enabled: true},
+        {id: 'ubuntu-system-status', enabled: true},
+        {id: 'printscreen', enabled: false},
+    ]};
+}
+let ai = data.plugins.find(p => p.id === 'ai-agent-usage');
+if (!ai) {
+    ai = {id: 'ai-agent-usage', enabled: true};
+    data.plugins.push(ai);
+}
+ai.enabled = true;
+ai.options = {...(ai.options ?? {}), claudePort: port};
+settings.set_string('widgets', JSON.stringify(data));
+Gio.Settings.sync();
+JS
+    printf 'Dev widget Claude port: %s (patched into the dev dconf profile)\n' "$claude_port"
+    claude_port_cmd="gjs -m \"$devdir/patch-claude-port.js\" \"$claude_port\" || true"
 fi
 
 # Optional --theme: write the colour scheme into the dev dconf profile (the
@@ -177,7 +213,6 @@ fi
 cat >"$inner" <<INNER
 #!/usr/bin/env bash
 set -u
-${cfg_export}
 # Isolated extensions dir so the dev shell never touches the main session's.
 export XDG_DATA_HOME="$datahome"
 export DCONF_PROFILE="$profile"
@@ -204,6 +239,7 @@ rm -f "$runtime/gnome-shell-disable-extensions"
 gsettings set org.gnome.shell disable-user-extensions false 2>/dev/null || true
 gsettings set org.gnome.shell enabled-extensions "['$uuid']" 2>/dev/null || true
 ${theme_cmd}
+${claude_port_cmd}
 
 ${shell_cmd[*]} >>"$logfile" 2>&1 &
 shell_pid=\$!

@@ -34,6 +34,16 @@
         Is floating-mini-panel is aligned to a default position (NONE: 0, TOP: 1, BOTTOM: 2, LEFT: 4, RIGHT: 8, CENTER: 16).
       </description>
     </key>
+    <key name="widgets" type="s">
+      <default>''</default>
+      <summary>Widget configuration</summary>
+      <description>
+        JSON document describing the ordered widget list and per-widget options
+        (same schema as the former widgets.json: {"schema":1,"plugins":[...]}).
+        The empty string means "use the built-in default configuration". This is
+        the single source of truth for widget configuration; see widgetConfig.ts.
+      </description>
+    </key>
     <key name="orientation" enum="org.gnome.shell.extensions.floating-mini-panel.orientation">
       <default>'horizontal'</default>
       <summary>Panel orientation</summary>

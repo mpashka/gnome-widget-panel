@@ -58,3 +58,26 @@ export function parseWidgetConfig(raw: string): WidgetConfig {
 export function serializeWidgetConfig(config: WidgetConfig): string {
     return `${JSON.stringify(config, null, 2)}\n`;
 }
+
+/**
+ * The built-in default widget set, used when the `widgets` GSettings key is
+ * empty (fresh install) and no legacy `widgets.json` exists to migrate.
+ * Returns a fresh copy so callers may mutate it freely.
+ */
+export function defaultWidgetConfig(): WidgetConfig {
+    return {
+        schema: WIDGET_CONFIG_SCHEMA,
+        plugins: [
+            {id: 'gnome-action', enabled: true},
+            {id: 'gnome-menu', enabled: true},
+            {id: 'favorites', enabled: true},
+            {id: 'keyboard-layout', enabled: true},
+            {id: 'app-notifications', enabled: true},
+            {id: 'cpu-load-monitor', enabled: true},
+            {id: 'ai-agent-usage', enabled: true},
+            {id: 'clock', enabled: true},
+            {id: 'ubuntu-system-status', enabled: true},
+            {id: 'printscreen', enabled: false},
+        ],
+    };
+}

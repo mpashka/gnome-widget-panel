@@ -14,10 +14,10 @@ button.
 
 ## What it does
 
-Everything lives on a **single "Widgets" page**. The widget list edits
-`~/.config/gnome-widget-panel/widgets.json` directly — the configuration file
-stays the source of truth, there is no second settings model. The panel position
-and orientation groups on the same page edit the panel `GSettings`. Actions:
+Everything lives on a **single "Widgets" page**. The widget list edits the
+`widgets` GSettings key directly — that key stays the source of truth, there is
+no second settings model. The panel position and orientation groups on the same
+page edit the same panel `GSettings` object (different keys). Actions:
 
 - **Enable / disable** a widget with the per-row switch.
 - **Reorder** widgets by **dragging with the mouse**. Each configured-widget
@@ -51,10 +51,10 @@ and orientation groups on the same page edit the panel `GSettings`. Actions:
   systemInfo.widgetRequestUrl())`, for widgets that do not exist yet.
 
 Widget changes are written immediately and applied **live**: the running
-`FloatingMiniPanel` watches `widgets.json` with a `Gio.FileMonitor` and rebuilds
-its widgets (per-widget settings plus add/remove/reorder/enable) after a short
-debounce — no GNOME Shell reload or logout needed. See the `FloatingMiniPanel`
-live-reload note in [`object-model.md`](object-model.md).
+`FloatingMiniPanel` listens on `changed::widgets` and rebuilds its widgets
+(per-widget settings plus add/remove/reorder/enable) after a short debounce —
+no GNOME Shell reload or logout needed. See the `FloatingMiniPanel` live-reload
+note in [`object-model.md`](object-model.md).
 
 ## Panel settings
 
@@ -62,8 +62,8 @@ A single **Panel layout** `Adw.PreferencesGroup` on the same page exposes the
 panel-level settings that used to live in the control-button context menu (which
 now keeps **Settings…**, **About** and **Report a bug**; all other panel control
 is via mouse gestures on the panel handle). It edits the panel `GSettings`
-(`this.getSettings()`), not `widgets.json`, and is applied **live** to the
-running panel — no reload needed. It has these rows:
+(`this.getSettings()`) directly, using its own keys (not the `widgets` key), and
+is applied **live** to the running panel — no reload needed. It has these rows:
 
 - **Position** — an `Adw.ComboRow` whose first entry is
   **Floating (keep position)** (`aligned = 0`), followed by the six snap presets
@@ -146,15 +146,16 @@ the Shell-only plugin modules. The pieces:
   contracts: `WidgetConfig`, `PluginConfig`, `PluginDescriptor`,
   `PluginPreferencesModule`, `WidgetPreferencesContext`.
 - [`../extension-src/configStore.ts`](../extension-src/configStore.ts) — the only
-  place that reads, validates and writes `widgets.json`.
+  place that reads and writes the `widgets` GSettings key (parsing/validation
+  lives in the gi-free `widgetConfig.ts`).
 - [`../extension-src/plugins/registry.ts`](../extension-src/plugins/registry.ts)
   — process-independent metadata (label, description, `hasPreferences`) plus a
   lazy `loadPreferences()` importer. It imports no `gi://`/`resource://` module.
 - A widget with settings provides `plugins/<id>/prefs.ts` exporting
   `fillWidgetPreferences(context)`; it calls `context.window.add(page)` with its
   `Adw.PreferencesPage` and `context.save(options)` to persist its `options`
-  object back into `widgets.json`. Widgets with settings today: `ai-agent-usage`,
-  `cpu-load-monitor` and `clock`.
+  object back into the `widgets` GSettings key. Widgets with settings today:
+  `ai-agent-usage`, `cpu-load-monitor` and `clock`.
 
 The widget settings now open as an **in-window subpage**, not an
 `Adw.PreferencesDialog`. `_openWidgetPreferences` builds an `Adw.NavigationPage`
@@ -163,8 +164,8 @@ title and a working back button). The `context.window` handed to the widget is a
 small **shim** object whose `.add(page)` routes the widget's `Adw.PreferencesPage`
 into the toolbar's content (`toolbar.set_content(page)`). After the widget fills
 it, the subpage is pushed with `window.push_subpage(...)`. `context.save` is
-unchanged (persist to `widgets.json`), and the lazy `descriptor.loadPreferences()`
-import stays. This keeps the widget-prefs contract
+unchanged (persist to the `widgets` GSettings key), and the lazy
+`descriptor.loadPreferences()` import stays. This keeps the widget-prefs contract
 (`context.window.add(page)` + `context.save(options)`) intact.
 
 Shell-side instantiation is unchanged: `pluginManager.ts` still maps ids to the

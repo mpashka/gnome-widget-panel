@@ -14,7 +14,6 @@ uuid="gnome-widget-panel@mpashka.github.com"
 # Isolated dev extensions dir (XDG_DATA_HOME=<root>/.dev/data). NOT the user's
 # main extensions dir, so the main session never sees this widget.
 target="$root/.dev/data/gnome-shell/extensions/$uuid"
-config_dir="$HOME/.config/gnome-widget-panel"
 
 if [[ ! -x "$root/node_modules/.bin/tsc" ]]; then
   (cd "$root" && npm install)
@@ -27,10 +26,8 @@ rm -rf "$target"
 mkdir -p "$(dirname "$target")"
 ln -sfn "$root/extension" "$target"
 
-mkdir -p "$config_dir"
-if [[ ! -f "$config_dir/widgets.json" ]]; then
-  cp "$root/extension/config/widgets.json" "$config_dir/widgets.json"
-fi
+# Widget configuration lives in GSettings (the dev shell's isolated dconf
+# profile); nothing to seed on disk.
 
 printf 'Dev-installed %s (isolated from your main session)\n' "$uuid"
 printf '  %s -> %s/extension (symlink)\n' "$target" "$root"

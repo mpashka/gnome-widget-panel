@@ -72,13 +72,17 @@ A GNOME Shell 50 floating panel host (derived from Floating Mini Panel v8) that
 loads an ordered list of built-in **plugins**. `extension.ts` owns positioning,
 panel lifecycle and error isolation; `pluginManager.ts` is the registry + loader.
 
-- **Config as source of truth:** `pluginManager.ts` reads
-  `~/.config/gnome-widget-panel/widgets.json`, falling back to the bundled
-  `extension/config/widgets.json` (authored at
-  `extension-src/config/widgets.json`). It is an ordered list — array order =
-  panel order, `enabled: false` skips a plugin. Unknown enabled IDs throw rather
-  than silently load code. Any future preferences UI must edit this same schema,
-  not introduce a second settings model.
+- **Config as source of truth:** all configuration lives in GSettings/dconf
+  (schema `org.gnome.shell.extensions.floating-mini-panel`). The widget
+  list/order/enable state and per-widget `options` live in the `widgets` key, a
+  JSON string with the same document shape the former `widgets.json` file used
+  (`{"schema":1,"plugins":[{id,enabled,options}...]}`); an empty key means the
+  built-in default (`defaultWidgetConfig()` in `widgetConfig.ts`).
+  `pluginManager.ts` reads it via `configStore.ts`'s `loadWidgetConfig(settings)`.
+  It is an ordered list — array order = panel order, `enabled: false` skips a
+  plugin. Unknown enabled IDs throw rather than silently load code. Any future
+  preferences UI must edit this same schema, not introduce a second settings
+  model.
 - **Plugin contract:** each plugin is `extension-src/plugins/<id>/index.ts`
   exporting `create(parent, options)` that returns a Clutter/St actor with a
   `destroy()`. Register it in the `REGISTRY` map in `pluginManager.ts`.

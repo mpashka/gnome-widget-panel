@@ -20,10 +20,11 @@ plugins. `npm run build` generates the installable GJS extension under
 - `ubuntu-system-status`: Ubuntu Quick Settings indicators for Wi-Fi, sound,
   battery and related standard system state.
 
-Plugin order and enabled state are configured in
-`~/.config/gnome-widget-panel/widgets.json`. The bundled default is
-`extension/config/widgets.json`. Reload GNOME Shell (logout/login on Wayland) to
-apply changes.
+Plugin order, enabled state and per-widget options are configured in the
+`widgets` GSettings key (schema
+`org.gnome.shell.extensions.floating-mini-panel`); an empty key falls back to
+the built-in default configuration. Changes apply live, no reload needed (see
+[`docs/preferences.md`](docs/preferences.md)).
 
 ## Configure widgets
 
@@ -35,7 +36,7 @@ gnome-extensions prefs gnome-widget-panel@mpashka.github.com
 
 Widgets that have their own settings (currently `ai-agent-usage`) show a settings
 button that opens the widget's own settings dialog. The UI edits the same
-`widgets.json`; you can still edit that file by hand. See
+`widgets` GSettings key; you can also edit it by hand with `gsettings`. See
 [`docs/preferences.md`](docs/preferences.md).
 
 ## Install development build
