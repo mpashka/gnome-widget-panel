@@ -80,6 +80,16 @@ Grouped work items requested for the panel and widgets.
   control button's context menu; move them into settings. The menu now has only
   "Settings…"; a preferences "Panel" page holds auto-position + orientation
   (stored in the panel GSettings, applied live); mouse gestures still work.
+- [x] Fix issue #4: the control button's context menu no longer shares
+  `Main.panel.menuManager` (own private `PopupMenuManager` instead), so
+  hovering the drag handle while another menu was open could no longer steal
+  it and pop the context menu open uninvited.
+- [ ] Follow-up from issue #4: `favorites` and `gnome-menu` still register
+  their own `PopupMenu` with the shared `Main.panel.menuManager`, so the same
+  class of hover-triggered menu-switching can still happen *between* those two
+  widgets (or with a real top-bar indicator) when they sit next to each other
+  in the panel. Not reported yet; consider private managers for them too if it
+  is.
 
 ### cpu-load-monitor settings
 

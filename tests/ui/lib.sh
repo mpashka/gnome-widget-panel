@@ -194,12 +194,12 @@ ui_wait_js() {
 ui_set() { gsettings set "$GWP_SCHEMA" "$1" "$2"; }
 ui_get() { gsettings get "$GWP_SCHEMA" "$1"; }
 
-# Click the center of an actor with a virtual pointer device.
-# ui_click "plugin('gnome-action')"
-ui_click() {
-    ui_eval "
+# Shared JS: resolve `a` to the actor's transformed center (cx, cy) and a
+# lazily-created virtual pointer device `d`, reused by ui_click and ui_hover.
+_ui_vdev_prelude() {
+    echo "
         const a = ($1);
-        if (!a) throw new Error('ui_click: actor not found');
+        if (!a) throw new Error('$2: actor not found');
         const [ax, ay] = a.get_transformed_position();
         const cx = ax + a.width / 2, cy = ay + a.height / 2;
         const seat = Clutter.get_default_backend().get_default_seat();
@@ -207,9 +207,29 @@ ui_click() {
             seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
         const d = globalThis._gwpVdev;
         const t = () => global.get_current_time();
+    "
+}
+
+# Click the center of an actor with a virtual pointer device.
+# ui_click "plugin('gnome-action')"
+ui_click() {
+    ui_eval "
+        $(_ui_vdev_prelude "$1" ui_click)
         d.notify_absolute_motion(t(), cx, cy);
         d.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
         d.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+        ({x: cx, y: cy})
+    "
+}
+
+# Move the virtual pointer to hover over the center of an actor, with no
+# button press — a real ENTER event through the picking/reactive path, unlike
+# `actor.emit('enter-event', ...)` which bypasses picking.
+# ui_hover "plugin('favorites')"
+ui_hover() {
+    ui_eval "
+        $(_ui_vdev_prelude "$1" ui_hover)
+        d.notify_absolute_motion(t(), cx, cy);
         ({x: cx, y: cy})
     "
 }

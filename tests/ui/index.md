@@ -11,7 +11,7 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   every `t-*.sh` in its own isolated headless shell session.
 - [`lib.sh`](lib.sh) — harness library: session bootstrap (`ui_start`), shell
   JS evaluation (`ui_eval`), polling waits, GSettings helpers, virtual-pointer
-  clicks, screenshots, assertions.
+  clicks/hovers, screenshots, assertions.
 - `t-01-panel-loads.sh` — panel loads, widgets in config order, no JS errors.
 - `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate.
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
@@ -23,6 +23,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-08-all-widgets.sh` — every registered widget loads in one panel, no JS errors.
 - `t-09-live-reload-ai-widgets.sh` — a Soup.Server-backed widget keeps a bound
   server across a live config reload (the port-bind race).
+- `t-10-control-menu-no-hover-steal.sh` — opening a sibling widget's menu, then
+  hovering the control button (the drag handle) must not steal that menu into
+  the control button's own context menu (issue #4 regression).
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +

@@ -18,9 +18,11 @@ opens that location in the default file manager via
   Videos, Desktop, Public share, Templates), then GTK bookmarks parsed from
   `$XDG_CONFIG_HOME/gtk-3.0/bookmarks` (each line a `file://` URI with an
   optional trailing label), separated from the XDG entries.
-- The `PopupMenu` actor is added to `Main.uiGroup` and registered with
-  `Main.panel.menuManager`, mirroring `controlButton.ts`. It is destroyed in
-  `destroy()`.
+- The `PopupMenu` actor is added to `Main.uiGroup` and registered with the
+  shared `Main.panel.menuManager` (unlike `controlButton.ts`'s own context
+  menu, which moved to a private `PopupMenuManager` to fix issue #4 — see
+  [`../../../docs/object-model.md`](../../../docs/object-model.md#controlbutton)).
+  It is destroyed in `destroy()`.
 
 ## Options
 

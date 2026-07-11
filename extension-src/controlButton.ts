@@ -233,10 +233,11 @@ const CtlActions = GObject.registerClass(
                 case 0:
                     // Toggle deterministically from the press-time snapshot.
                     // Reading menu.isOpen (or calling menu.toggle()) here would
-                    // race with the panel menu-manager's ClickGesture, which
-                    // closes an open menu on this same release. That race made
-                    // right-click open the menu only every other time. Deciding
-                    // from the state captured on press removes the race.
+                    // race with this menu's own PopupMenuManager (`_menuManager`
+                    // above), which closes an open menu on an outside click of
+                    // this same release. That race made right-click open the
+                    // menu only every other time. Deciding from the state
+                    // captured on press removes the race.
                     if (this._menuOpenAtPress) {
                         this._actor.menu.close();
                     } else {
@@ -330,7 +331,20 @@ export const ControlButton = GObject.registerClass(
             // Control Menu
             this.menu = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
             Main.uiGroup.add_child(this.menu.actor);
-            Main.panel.menuManager.addMenu(this.menu);
+            // A *private* PopupMenuManager, not the shared `Main.panel.menuManager`
+            // (issue #4). That manager also owns every real top-bar indicator menu
+            // (and this panel's other menu-owning widgets, e.g. `favorites`,
+            // `gnome-menu`), and its captured-event handling switches the active
+            // menu to whichever registered menu's source actor the pointer enters
+            // next (the same behaviour that lets you hover from the Wi-Fi menu to
+            // the Bluetooth menu in the real top bar). This button doubles as the
+            // panel's drag handle, so merely moving the pointer across it while a
+            // sibling widget's menu was open used to steal that menu and pop this
+            // one's Settings context menu open instead. A private manager keeps
+            // this menu's open/close, modal grab and Escape-to-close behaviour
+            // intact while opting it out of that shared hover-switch pool.
+            this._menuManager = new PopupMenu.PopupMenuManager(this);
+            this._menuManager.addMenu(this.menu);
             this.menu.actor.hide();
 
             // Non-reactive header showing the extension name and version +

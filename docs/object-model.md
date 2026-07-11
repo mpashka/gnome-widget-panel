@@ -106,14 +106,27 @@ preferences window) with no separator above it; the former Auto-Position and
 Control-Functions menu sections were moved to the preferences "Panel" page, while
 the equivalent mouse gestures still work.
 
+Its context menu is registered with its own private `PopupMenu.PopupMenuManager`
+(`this._menuManager`), not the shared `Main.panel.menuManager` that every real
+top-bar indicator and this panel's other menu-owning widgets (`favorites`,
+`gnome-menu`) use. That shared manager switches the active menu to whichever
+registered menu's source actor the pointer enters next (the same mechanism that
+lets you hover from the Wi-Fi menu to the Bluetooth menu in the real top bar).
+Because this button doubles as the panel's drag handle, sharing that manager
+meant simply moving the pointer across it while a sibling widget's menu was open
+stole that menu and popped this button's own context menu open instead — the
+main menu closed without a click (issue #4). The private manager keeps this
+menu's open/close, modal grab and Escape-to-close behaviour, just scoped to
+this one menu.
+
 Gesture notes:
 
 - A plain left click on the handle is a no-op (it no longer toggles the overview
   or app grid); use a dedicated activities/gnome-menu widget for that.
 - A plain right click reliably opens/closes the context menu every time. It
-  snapshots the menu's open state on button press and toggles from that snapshot,
-  avoiding a race with the panel menu-manager's `ClickGesture`, which closes an
-  open menu on the same release.
+  snapshots the menu's open state on button press and toggles from that
+  snapshot, avoiding a race with this menu's own `PopupMenuManager`, which
+  closes an open menu on an outside click on the same release.
 
 ### `IndicatorsDrawer`
 
