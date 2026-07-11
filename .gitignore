@@ -9,3 +9,5 @@ node_modules/
 .idea/
 # throwaway feature-debug UI test scripts (copies of tests/ui/feature-debug.stub.sh)
 tests/ui/local-*
+# Local planning scratch notes (not part of the repo)
+docs/TODO-in.md.txt
