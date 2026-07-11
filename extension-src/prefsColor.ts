@@ -8,6 +8,8 @@
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 
+import {definedProps} from './props.js';
+
 export function hexToRgba(hex) {
     const rgba = new Gdk.RGBA();
     rgba.parse(hex || '#000000');
@@ -27,12 +29,15 @@ export function rgbaToHex(rgba) {
 // fallback), and `tooltip` is set as `tooltip_text` (pass `undefined` for
 // callers that show no tooltip).
 export function colorButton(target, key, fallback, commit, tooltip) {
-    const button = new Gtk.ColorDialogButton({
+    // `tooltip_text: undefined` must be dropped, not passed through: GJS rejects
+    // an `undefined` value in a GObject initializer (cpu-load-monitor is the only
+    // caller with no tooltip, which is why only its settings page failed to open).
+    const button = new Gtk.ColorDialogButton(definedProps({
         dialog: new Gtk.ColorDialog({with_alpha: false}),
         rgba: hexToRgba(target[key] || fallback),
         valign: Gtk.Align.CENTER,
         tooltip_text: tooltip,
-    });
+    }));
     button.connect('notify::rgba', () => {
         target[key] = rgbaToHex(button.get_rgba());
         commit();

@@ -40,6 +40,10 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   token/context/rate-limit mapping (including the null-`current_usage` and
   missing-`rate_limits` cases) and `UserPromptSubmit` → request-marker
   extraction (`@tag:widget-ai-agent-usage`, issue #6).
+- `props.test.mjs` — `definedProps` from
+  [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
+  keys from a GObject initializer (regression for the cpu-load-monitor settings
+  page failing to open on `tooltip_text: undefined`), keeps `null`/falsy values.
 
 ## Directories
 
