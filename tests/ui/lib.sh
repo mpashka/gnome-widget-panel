@@ -197,20 +197,37 @@ ui_get() { gsettings get "$GWP_SCHEMA" "$1"; }
 # Click the center of an actor with a virtual pointer device.
 # ui_click "plugin('gnome-action')"
 ui_click() {
+    ui_click_button "$1" Clutter.BUTTON_PRIMARY
+}
+
+# Press and (after an optional hold in ms, default 0) release a button on the
+# center of an actor with a virtual pointer device. Use a non-zero hold to
+# exercise click-vs-long-press timing (e.g. the drag-handle's secondary-click
+# context menu vs. its temporary-hide long-press, see t-10).
+# ui_click_button "plugin('ctlBtn')" Clutter.BUTTON_SECONDARY 300
+ui_click_button() {
+    local actor_js="$1" button="${2:-Clutter.BUTTON_PRIMARY}" hold_ms="${3:-0}"
+    # Eval runs via indirect eval (driver/…/extension.js), i.e. plain top-level
+    # sloppy-mode code — a bare top-level `await` is a syntax error there. Wrap
+    # the hold delay in an async IIFE instead; the driver awaits the returned
+    # Promise like any other thenable result.
     ui_eval "
-        const a = ($1);
-        if (!a) throw new Error('ui_click: actor not found');
-        const [ax, ay] = a.get_transformed_position();
-        const cx = ax + a.width / 2, cy = ay + a.height / 2;
-        const seat = Clutter.get_default_backend().get_default_seat();
-        globalThis._gwpVdev ??=
-            seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
-        const d = globalThis._gwpVdev;
-        const t = () => global.get_current_time();
-        d.notify_absolute_motion(t(), cx, cy);
-        d.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
-        d.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
-        ({x: cx, y: cy})
+        (async () => {
+            const a = ($actor_js);
+            if (!a) throw new Error('ui_click_button: actor not found');
+            const [ax, ay] = a.get_transformed_position();
+            const cx = ax + a.width / 2, cy = ay + a.height / 2;
+            const seat = Clutter.get_default_backend().get_default_seat();
+            globalThis._gwpVdev ??=
+                seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            const d = globalThis._gwpVdev;
+            const t = () => global.get_current_time();
+            d.notify_absolute_motion(t(), cx, cy);
+            d.notify_button(t(), $button, Clutter.ButtonState.PRESSED);
+            await new Promise(res => setTimeout(res, $hold_ms));
+            d.notify_button(t(), $button, Clutter.ButtonState.RELEASED);
+            return {x: cx, y: cy};
+        })()
     "
 }
 

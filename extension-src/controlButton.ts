@@ -46,6 +46,16 @@ const Alignment = {
     CENTER: 16,
 };
 
+// Press-and-hold threshold (ms) that distinguishes a click from a long-press
+// (drag-start on the left button, orientation toggle on the middle button,
+// temporary hide on the right button). Must comfortably exceed how long an
+// ordinary deliberate click can hold the button down — 250ms was too tight:
+// a normal (if slightly slow, e.g. touchpad secondary-click) right-click
+// routinely takes longer than that, so it was misread as a long-press and
+// fired `_tmpHide()` (hiding the whole panel for 5s, see extension.ts
+// `_tmpHide`) instead of opening the context menu — see issue #3.
+const LONGPRESS_MS = 400;
+
 const CtlActions = GObject.registerClass(
     class CtlActions extends Clutter.Action {
         constructor(actor) {
@@ -88,7 +98,7 @@ const CtlActions = GObject.registerClass(
                     }
                     this._timeoutId = GLib.timeout_add(
                         GLib.PRIORITY_DEFAULT,
-                        250,
+                        LONGPRESS_MS,
                         () => {
                             if (!this._click) {
                                 this._longpress = true;
