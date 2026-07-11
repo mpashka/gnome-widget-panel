@@ -137,6 +137,14 @@ completed, split, or newly discovered.
 
 ## Documentation: LLM wiki
 
+End-user documentation is separate: it lives in [`user-guide/`](user-guide/index.md)
+(what each widget is, its icon, what it does, its settings, and the AI-graph
+walkthrough), written for people *using* the extension. When you change a
+widget's user-visible behaviour, icon, or options, update the
+[widgets catalog](user-guide/widgets.md) — and the relevant per-widget page — in
+the same change, just like the developer docs below. README links to the user
+guide.
+
 Documentation for AI agents lives in `docs/` and beside the code it describes. It
 is a tree: **every meaningful directory must have an `index.md`** that gives a
 one-line description of each file and each sub-directory in that folder, and
@@ -189,6 +197,22 @@ grep -rn "@tag:" extension-src docs tests         # all tags
 Imperative: when a concept spans both code and docs, create a tag, register it in
 `docs/tags.md`, and place `@tag:<slug>` on the relevant code and documentation
 locations. Keep `docs/tags.md` current when tags are added, renamed or removed.
+
+## Process
+
+How work is filed, fixed and reviewed. Read the relevant page before the
+matching task:
+
+- **Filing bugs:** [`docs/bug-report-howto.md`](docs/bug-report-howto.md) — every
+  bug report must include the configuration and a screenshot/screencast. The
+  GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml))
+  prompts for both.
+- **Fixing bugs:** [`docs/bug-fixing-workflow.md`](docs/bug-fixing-workflow.md) —
+  the staged workflow (reproduce → analyse → fix → regression test → verify →
+  code review) and the subagent roles that drive it.
+- **Code quality:** [`docs/code-quality.md`](docs/code-quality.md) — modularity,
+  uniform naming across the whole codebase, and per-widget documentation, so that
+  adding a feature or fixing a bug never gets harder over time.
 
 ## Roadmap
 

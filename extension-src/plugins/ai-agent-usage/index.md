@@ -156,5 +156,7 @@ architecture.
 
 ## Related docs
 
+- [Reading the graph (user guide)](../../../user-guide/ai-agent-usage.md) — plain-language
+  explanation + interactive preview of the token columns and request markers (issue #6).
 - [Object model](../../../docs/object-model.md)
 - [Architecture](../../../docs/architecture.md)

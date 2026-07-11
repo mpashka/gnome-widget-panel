@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-agent-usage — interactive preview</title>
+<!--
+  @tag:widget-ai-agent-usage
+  Interactive, build-free mockup of the ai-agent-usage graph so a human can
+  confirm the intended behaviour described in ai-agent-usage.md.
+  Tracks https://github.com/mpashka/gnome-widget-panel/issues/6
+
+  This is a DOCUMENTATION MOCKUP, not the real widget. It reimplements only the
+  drawing rules (per-provider coloured token columns + orientation-aware request
+  markers drawn in the requesting agent's colour + two indicator bars that follow
+  the active agent) against a fixed TEST_TIMELINE. Edit TEST_TIMELINE below to try
+  other scenarios.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 24px;
+    font: 14px/1.5 system-ui, sans-serif;
+    background: #1e1e1e; color: #ddd;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #999; margin: 0 0 20px; }
+  .row { display: flex; gap: 40px; flex-wrap: wrap; align-items: flex-start; }
+  .panel { background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 10px; padding: 16px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: #aaa; margin: 0 0 12px; }
+  canvas { background: #141414; border-radius: 8px; display: block; }
+  .controls { margin: 20px 0; max-width: 760px; }
+  input[type=range] { width: 100%; }
+  .clock { font-variant-numeric: tabular-nums; color: #fff; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: #bbb; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  .tip { margin-top: 8px; font-size: 12px; color: #888; }
+  code { background: #333; padding: 1px 5px; border-radius: 4px; }
+  .events { margin-top: 16px; font-size: 12px; color: #aaa; max-width: 760px; }
+  .events b { color: #ddd; }
+  button { background: #3a3a3a; color: #ddd; border: 1px solid #4a4a4a; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { background: #454545; }
+</style>
+</head>
+<body>
+<h1>ai-agent-usage — interactive preview</h1>
+<p class="sub">Drag the time slider to scrub through a test session. Companion to
+<code>ai-agent-usage.md</code> and issue #6. This is a mockup of the
+drawing rules, not the real widget.</p>
+
+<div class="controls">
+  <div style="display:flex; gap:12px; align-items:center;">
+    <button id="playBtn">▶ Play</button>
+    <span>Time: <span class="clock" id="clock"></span></span>
+  </div>
+  <input type="range" id="scrub" min="0" max="100" value="100" step="1" />
+  <div class="tip">Window shown = 36 samples × <span id="ivl"></span>s interval.
+    Columns are coloured by the top-consuming provider; request lines are drawn in
+    the requesting agent's colour (vertical in a horizontal panel, horizontal in a
+    vertical panel); the two indicator bars show the active agent's usage/window.</div>
+</div>
+
+<div class="row">
+  <div class="panel">
+    <h2>Horizontal panel</h2>
+    <canvas id="hCanvas" width="360" height="80"></canvas>
+  </div>
+  <div class="panel">
+    <h2>Vertical panel</h2>
+    <canvas id="vCanvas" width="80" height="360"></canvas>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="swatch" style="background:#d97757"></span>Claude</span>
+  <span><span class="swatch" style="background:#10a37f"></span>Codex</span>
+  <span><span class="swatch" style="background:#4285f4"></span>Gemini</span>
+  <span>Request marker = the requesting agent's colour</span>
+  <span><span class="swatch" style="background:#ffb82e"></span>Usage bar (active agent)</span>
+  <span><span class="swatch" style="background:#4ca6ff"></span>Context-window bar (active agent)</span>
+</div>
+
+<div class="events" id="eventList"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// TEST DATA — a scripted session. Times are seconds from session start (t=0).
+// Edit freely to explore other scenarios; nothing else needs to change.
+// ---------------------------------------------------------------------------
+const UPDATE_INTERVAL = 5;     // seconds per sample (matches widget default)
+const HISTORY_WIDTH   = 36;    // visible sample columns
+const SESSION_SECONDS = 300;   // 5 minutes
+
+const PROVIDER_COLORS = { claude: '#d97757', codex: '#10a37f', gemini: '#4285f4' };
+const USAGE_COLOR = '#ffb82e', WINDOW_COLOR = '#4ca6ff', REQUEST_COLOR = '#e5484d';
+
+// Per-provider token load over time as [timeSec, tokens] control points;
+// values are linearly interpolated between points. A provider is "idle" (0) by
+// default. This scripts: Claude busy early, Codex spike mid, Gemini light tail.
+const TEST_TIMELINE = {
+  samples: {
+    claude: [[0,0],[10,1200],[40,5200],[70,3800],[110,900],[140,0],[300,0]],
+    codex:  [[0,0],[120,0],[150,6400],[180,8800],[210,4200],[240,0],[300,0]],
+    gemini: [[0,0],[230,0],[250,1500],[275,2600],[300,1800]],
+  },
+  // User prompts sent to an agent (drawn as red markers by their timestamp).
+  requests: [
+    { t: 8,   provider: 'claude', text: 'refactor configStore' },
+    { t: 38,  provider: 'claude', text: 'add regression test' },
+    { t: 66,  provider: 'claude', text: 'fix vertical layout' },
+    { t: 148, provider: 'codex',  text: 'port helper to gjs' },
+    { t: 185, provider: 'codex',  text: 'explain this stack trace' },
+    { t: 214, provider: 'codex',  text: 'write docs' },
+    { t: 252, provider: 'gemini', text: 'summarise diff' },
+    { t: 278, provider: 'gemini', text: 'lint pass' },
+  ],
+  // Current indicator levels (0..1) PER PROVIDER. The two bars show the ACTIVE
+  // agent's usage/window, so they switch as you move from one agent to another.
+  usage: {
+    claude: [[0,0.1],[40,0.5],[70,0.7],[110,0.85],[300,0.85]],
+    codex:  [[0,0],[120,0.2],[180,0.95],[240,0.6],[300,0.6]],
+    gemini: [[0,0],[250,0.15],[300,0.45]],
+  },
+  window: {
+    claude: [[0,0.2],[70,0.45],[110,0.6],[300,0.6]],
+    codex:  [[0,0],[120,0.3],[180,0.8],[300,0.8]],
+    gemini: [[0,0],[250,0.2],[300,0.35]],
+  },
+};
+
+// --- interpolation helper ---------------------------------------------------
+function lerpSeries(points, t) {
+  if (t <= points[0][0]) return points[0][1];
+  const last = points[points.length - 1];
+  if (t >= last[0]) return last[1];
+  for (let i = 1; i < points.length; i++) {
+    const [t1, v1] = points[i];
+    if (t <= t1) {
+      const [t0, v0] = points[i - 1];
+      const f = (t - t0) / (t1 - t0);
+      return v0 + (v1 - v0) * f;
+    }
+  }
+  return last[1];
+}
+
+// Build the visible window of columns ending at `now`. Each column: winning
+// provider + normalized height. Mirrors the widget: pick the provider with the
+// most tokens per sample, autoscale to the busiest column in the window.
+function buildColumns(now) {
+  const cols = [];
+  let maxTokens = 1;
+  for (let i = 0; i < HISTORY_WIDTH; i++) {
+    const t = now - (HISTORY_WIDTH - 1 - i) * UPDATE_INTERVAL;
+    let winner = null, best = 0, totalOfWinner = 0;
+    for (const p of Object.keys(TEST_TIMELINE.samples)) {
+      const v = t < 0 ? 0 : lerpSeries(TEST_TIMELINE.samples[p], t);
+      if (v > best) { best = v; winner = p; totalOfWinner = v; }
+    }
+    if (totalOfWinner > maxTokens) maxTokens = totalOfWinner;
+    cols.push({ t, winner, tokens: totalOfWinner });
+  }
+  for (const c of cols) c.h = c.tokens / maxTokens; // normalize 0..1
+  return cols;
+}
+
+function visibleRequests(now) {
+  const windowSec = HISTORY_WIDTH * UPDATE_INTERVAL;
+  return TEST_TIMELINE.requests.filter(r => r.t <= now && r.t > now - windowSec);
+}
+
+// The "active agent" — the agent you are interacting with right now. Driven by
+// the most recent prompt at/before `now`; if none yet, fall back to the provider
+// currently consuming the most tokens. The indicator bars follow this agent.
+function activeAgent(now) {
+  let latest = null;
+  for (const r of TEST_TIMELINE.requests) {
+    if (r.t <= now && (!latest || r.t > latest.t)) latest = r;
+  }
+  if (latest) return latest.provider;
+  let winner = null, best = 0;
+  for (const p of Object.keys(TEST_TIMELINE.samples)) {
+    const v = now < 0 ? 0 : lerpSeries(TEST_TIMELINE.samples[p], now);
+    if (v > best) { best = v; winner = p; }
+  }
+  return winner;
+}
+
+// --- drawing ----------------------------------------------------------------
+// Horizontal: time → x (right = now). Vertical: time → y (bottom = now),
+// bars along the bottom, request markers become horizontal lines.
+function draw(canvas, now, vertical) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#141414'; ctx.fillRect(0, 0, W, H);
+
+  const cols = buildColumns(now);
+  const barsThickness = 10, gap = 2;
+  const plotLen = (vertical ? H : W) - (barsThickness + 6); // leave room for bars
+  const cross   = vertical ? W : H;                          // cross-axis (height)
+  const colStep = plotLen / HISTORY_WIDTH;
+
+  // token-load columns
+  cols.forEach((c, i) => {
+    if (!c.winner || c.h <= 0) return;
+    ctx.fillStyle = PROVIDER_COLORS[c.winner];
+    const len = Math.max(1, c.h * (cross - 4));
+    if (!vertical) {
+      const x = i * colStep;
+      ctx.fillRect(x, H - len, Math.max(1, colStep - 1), len);
+    } else {
+      const y = i * colStep;
+      ctx.fillRect(0, y, len, Math.max(1, colStep - 1));
+    }
+  });
+
+  // request markers — drawn in the requesting agent's colour
+  const windowSec = HISTORY_WIDTH * UPDATE_INTERVAL;
+  ctx.lineWidth = 2;
+  visibleRequests(now).forEach(r => {
+    ctx.strokeStyle = PROVIDER_COLORS[r.provider] || REQUEST_COLOR;
+    const frac = 1 - (now - r.t) / windowSec; // 0 oldest .. 1 now
+    const pos = frac * plotLen;
+    ctx.beginPath();
+    if (!vertical) { ctx.moveTo(pos, 0); ctx.lineTo(pos, H); }
+    else           { ctx.moveTo(0, pos); ctx.lineTo(W, pos); }
+    ctx.stroke();
+  });
+
+  // indicator bars (current level) along the trailing edge — the ACTIVE agent's
+  // usage/window, so the bars switch as the active agent changes.
+  const active = activeAgent(now);
+  const usage  = active ? lerpSeries(TEST_TIMELINE.usage[active],  Math.max(0, now)) : 0;
+  const win    = active ? lerpSeries(TEST_TIMELINE.window[active], Math.max(0, now)) : 0;
+  function bar(offset, frac, color) {
+    ctx.fillStyle = color;
+    const len = frac * (cross - 4);
+    if (!vertical) ctx.fillRect(W - barsThickness + offset, H - len, (barsThickness - gap) / 2, len);
+    else           ctx.fillRect(0, H - barsThickness + offset, len, (barsThickness - gap) / 2);
+  }
+  if (!vertical) { bar(0, usage, USAGE_COLOR); bar((barsThickness)/2, win, WINDOW_COLOR); }
+  else           { bar(0, usage, USAGE_COLOR); bar((barsThickness)/2, win, WINDOW_COLOR); }
+}
+
+// --- wiring -----------------------------------------------------------------
+const scrub = document.getElementById('scrub');
+const clock = document.getElementById('clock');
+const hCanvas = document.getElementById('hCanvas');
+const vCanvas = document.getElementById('vCanvas');
+const eventList = document.getElementById('eventList');
+document.getElementById('ivl').textContent = UPDATE_INTERVAL;
+
+function fmt(sec) { const m = Math.floor(sec/60), s = Math.floor(sec%60); return `${m}:${String(s).padStart(2,'0')}`; }
+
+function render() {
+  const now = (scrub.value / 100) * SESSION_SECONDS;
+  clock.textContent = fmt(now) + ' / ' + fmt(SESSION_SECONDS);
+  draw(hCanvas, now, false);
+  draw(vCanvas, now, true);
+  const vis = visibleRequests(now);
+  const active = activeAgent(now);
+  eventList.innerHTML =
+    `<b>Active agent (drives the bars):</b> ${active || '(none)'}<br>` +
+    '<b>Visible requests at this time:</b> ' +
+    (vis.length ? vis.map(r => `[${fmt(r.t)}] ${r.provider}: ${r.text}`).join(' · ') : '(none)');
+}
+scrub.addEventListener('input', render);
+
+let playing = false, timer = null;
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  if (playing) {
+    timer = setInterval(() => {
+      let v = Number(scrub.value) + 1;
+      if (v > 100) v = 0;
+      scrub.value = v; render();
+    }, 120);
+  } else clearInterval(timer);
+});
+
+render();
+</script>
+</body>
+</html>

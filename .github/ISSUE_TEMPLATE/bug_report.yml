@@ -9,6 +9,19 @@ body:
         Thanks for taking the time to file a bug. Please fill in the sections
         below. The "System information" field is prefilled automatically when
         you open this form from the extension's About page.
+
+        **Two things make a bug fixable fast — please include both:**
+        - **Your configuration** — the widget list and per-widget options, plus
+          panel settings. Without it we cannot reproduce a layout- or
+          widget-specific bug. See the copy-paste command in the Configuration
+          field below.
+        - **A screenshot or screencast** — a picture of the wrong state (or a
+          short screen recording for anything animated / interaction-related)
+          is worth far more than a description. Drag the file into the
+          Screenshot field.
+
+        See [bug-report-howto.md](https://github.com/mpashka/gnome-widget-panel/blob/main/docs/bug-report-howto.md)
+        for what a good report looks like.
   - type: textarea
     id: what-happened
     attributes:
@@ -36,6 +49,20 @@ body:
     validations:
       required: false
   - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration
+      description: >-
+        Your widget list, per-widget options and panel settings. This is what
+        lets us reproduce a layout- or widget-specific bug. Paste the output of:
+        `gsettings --schemadir ~/.local/share/gnome-shell/extensions/gnome-widget-panel@mpashka.github.com/schemas
+        get org.gnome.shell.extensions.floating-mini-panel widgets`
+        and the relevant panel keys (`orientation`, `main-panel`, `aligned`).
+        Redact any secrets (e.g. `claudeSecret`) before pasting.
+      render: json
+    validations:
+      required: false
+  - type: textarea
     id: system
     attributes:
       label: System information
@@ -48,10 +75,14 @@ body:
   - type: textarea
     id: screenshots
     attributes:
-      label: Screenshots
+      label: Screenshot or screencast
       description: >-
-        If applicable, add screenshots to help explain the problem. Drag and
-        drop image files into this area to attach them (URLs cannot pre-attach
-        images).
+        Please attach a screenshot of the wrong state — and a short **screencast**
+        (screen recording) for anything animated, timing-related or triggered by
+        an interaction (clicks, hover, drag, lock/unlock). A picture almost always
+        resolves the bug faster than any description. Drag and drop image or video
+        files into this area to attach them (URLs cannot pre-attach media). On
+        GNOME, `Ctrl+Shift+Alt+R` starts/stops a screen recording; a single
+        screenshot is `PrtSc`.
     validations:
       required: false

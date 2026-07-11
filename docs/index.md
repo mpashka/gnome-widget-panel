@@ -22,6 +22,19 @@ Start here, then follow the links down to the code under
 - [`ui-testing.md`](ui-testing.md) — headless UI test harness: approaches
   considered, architecture, regression suite (`npm run test:ui`) and the
   feature-debug stub workflow.
+- [`bug-report-howto.md`](bug-report-howto.md) — the rule for filing bugs
+  (mandatory configuration + screenshot/screencast), for humans and agents.
+- [`bug-fixing-workflow.md`](bug-fixing-workflow.md) — staged bug-fixing workflow
+  (reproduce → analyse → fix → regression test → verify → code review) using
+  subagents.
+- [`code-quality.md`](code-quality.md) — modularity, uniform naming, per-widget
+  documentation and the rules that keep change cost from growing over time.
+
+End-user documentation lives separately under
+[`../user-guide/`](../user-guide/index.md) (widgets catalog, AI-graph
+walkthrough + interactive preview) — it is written for people using the
+extension, not for agents. Keep the `ai-agent-usage` spec/preview there in sync
+with the plugin when its behaviour changes.
 - [`object-model.md`](object-model.md) — runtime object map.
 - [`ai-management.md`](ai-management.md) — AI-assisted panel management concept.
 - [`upstream.md`](upstream.md) — Floating Mini Panel origin and license notes.
