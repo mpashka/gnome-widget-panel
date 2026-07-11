@@ -29,6 +29,10 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   instead of misfiring the long-press temporary-hide (issue #3,
   `controlButton.ts` `LONGPRESS_MS`); a genuine long-press still hides the
   panel.
+- `t-11-drag-starts-immediately.sh` — dragging the drag handle starts on the
+  first pointer movement, not after the `LONGPRESS_MS` timer, so raising that
+  threshold for right-click does not make the widget feel "glued" (issue #3
+  follow-up, `controlButton.ts` MOTION handler).
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
