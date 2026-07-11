@@ -352,6 +352,18 @@ export const ControlButton = GObject.registerClass(
                 })
             );
 
+            // Temporarily hide the whole panel for a few seconds — the same
+            // action as a long right-click on the drag handle
+            // (_rightBtnLongPress -> FloatingMiniPanel._tmpHide, which reshows
+            // after 5s). Exposed here so it is discoverable without knowing the
+            // long-press gesture. Keep the seconds in the label in sync with
+            // _tmpHide's timeout.
+            this.menu.addMenuItem(
+                new MenuItem('Hide for 5 seconds', '', () => {
+                    this._parent._tmpHide();
+                })
+            );
+
             // "Release notes" opens this version's GitHub Release page (the
             // per-version release-notes page, version in its URL). controlButton
             // runs in the Shell process; systemInfo is process-safe, so call it

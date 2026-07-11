@@ -23,6 +23,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-08-all-widgets.sh` — every registered widget loads in one panel, no JS errors.
 - `t-09-live-reload-ai-widgets.sh` — a Soup.Server-backed widget keeps a bound
   server across a live config reload (the port-bind race).
+- `t-12-menu-hide-temporarily.sh` — the control button context menu's "Hide for
+  5 seconds" item runs `_tmpHide` (same as a long right-click): the panel hides
+  and reappears after the timeout.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
