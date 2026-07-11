@@ -39,6 +39,18 @@ button that opens the widget's own settings dialog. The UI edits the same
 `widgets` GSettings key; you can also edit it by hand with `gsettings`. See
 [`docs/preferences.md`](docs/preferences.md).
 
+## Install from extensions.gnome.org
+
+The extension is published on the GNOME Extensions store:
+
+- **https://extensions.gnome.org/extension/10381/gnome-widget-panel/**
+
+Install it from that page (browser extension / GNOME Extensions app). Each
+uploaded version goes through GNOME's manual review, so a freshly released
+version may briefly show as *unreviewed* before it is approved. To pick the
+right version for your GNOME Shell, see [`CHANGELOG.md`](CHANGELOG.md) (GNOME
+Shell support matrix).
+
 ## Install development build
 
 ```bash

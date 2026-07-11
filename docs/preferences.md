@@ -147,6 +147,9 @@ An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added b
   version (`…/releases/tag/vA.B.C`). The control-button context menu has the
   matching **Release notes** item calling the same URL directly from the Shell
   process (`controlButton.ts`).
+- **View on extensions.gnome.org** → `systemInfo.egoUrl` — the GNOME Extensions
+  store page (extension 10381), the primary end-user install source. The
+  control-button context menu has the matching item.
 - **All releases & GNOME support** → `systemInfo.changelogUrl`
   (`…/blob/main/CHANGELOG.md`) — every release plus the GNOME Shell version →
   plugin version support matrix.

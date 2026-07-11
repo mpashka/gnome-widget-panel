@@ -362,6 +362,13 @@ export const ControlButton = GObject.registerClass(
                 })
             );
 
+            // Opens the extensions.gnome.org store page for this extension.
+            this.menu.addMenuItem(
+                new MenuItem('View on extensions.gnome.org', '', () => {
+                    SystemInfo.openUrl(SystemInfo.egoUrl);
+                })
+            );
+
             // Opens a prefilled GitHub bug-report issue form in the browser.
             // controlButton runs in the Shell process; systemInfo is process-safe
             // (guards its Shell-only reads), so call it directly to keep the panel

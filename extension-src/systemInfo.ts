@@ -21,6 +21,12 @@ import {formatVersionLabel} from './version.js';
 // source.
 export const repoUrl = 'https://github.com/mpashka/gnome-widget-panel';
 
+// The extensions.gnome.org (EGO) store page for this extension (id 10381). EGO
+// is the primary end-user install source; every uploaded version goes through
+// GNOME's manual review.
+export const egoUrl =
+    'https://extensions.gnome.org/extension/10381/gnome-widget-panel/';
+
 // GitHub "new issue" endpoint and the issue-form filenames created under
 // `.github/ISSUE_TEMPLATE/`. These names must match those files exactly.
 const NEW_ISSUE_URL = `${repoUrl}/issues/new`;

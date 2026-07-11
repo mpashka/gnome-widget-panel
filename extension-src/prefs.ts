@@ -313,6 +313,15 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         );
         aboutGroup.add(versionRow);
 
+        // extensions.gnome.org store page (the primary end-user install source).
+        aboutGroup.add(
+            this._aboutLinkRow(
+                'View on extensions.gnome.org',
+                'The GNOME Extensions store page for this extension.',
+                () => SystemInfo.openUrl(SystemInfo.egoUrl)
+            )
+        );
+
         // All releases + the GNOME Shell support matrix (which plugin version to
         // install for a given GNOME version).
         aboutGroup.add(
