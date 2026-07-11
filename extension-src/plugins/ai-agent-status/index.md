@@ -30,7 +30,9 @@ Not in the default config; add it via the panel preferences.
 Claude Code lifecycle hooks are installed by
 [`../ai-agent-usage/claudeHook.ts`](../ai-agent-usage/claudeHook.ts)
 (`installEventHooks()` / `eventHooksStatus()`, shared with the usage widget's
-statusLine hook). `installEventHooks()` writes the port-independent script
+statusLine hook — the usage widget also auto-installs the event hook on
+startup, for its own request markers, so it is configured even if this widget
+is never added). `installEventHooks()` writes the port-independent script
 `~/.claude/gnome-widget-panel-agent-event-hook.js` and idempotently merges an
 entry for it into `~/.claude/settings.json` `hooks` for the events
 `UserPromptSubmit`, `Stop`, `Notification` and `SessionEnd` (no matcher;
@@ -40,7 +42,8 @@ payload from stdin, reads the shared endpoint registry
 raw payload to `http://127.0.0.1:<port>/agent-event` on **every** registered
 endpoint with an `X-Gnome-Widget-Panel-Token` header. It prints nothing and
 always exits 0 — a Stop hook's stdout is interpreted by Claude, so the script
-must stay silent and fast.
+must stay silent and fast. Its shebang is `env -S gjs -m` (module mode), like
+the statusLine hook's — see [`../ai-agent-usage/index.md`](../ai-agent-usage/index.md).
 
 Coexistence with the statusLine hook (both fan out to all registered
 endpoints):
@@ -49,8 +52,9 @@ endpoints):
   200, so the statusLine fan-out (which prints the *first 200 body*) never
   takes this widget's empty body as the status line text; the payload is still
   used as busy-activity evidence.
-- The usage widget has no `/agent-event` handler, so event posts to it 404
-  harmlessly (the event hook ignores per-endpoint errors).
+- The usage widget also has an `/agent-event` handler (for its own request
+  markers): it only reacts to `UserPromptSubmit`, ignoring every other event
+  this widget cares about (`Stop`, `Notification`, `SessionEnd`).
 
 The widget starts its own `Soup.Server` on `options.port` (default 17871,
 distinct from ai-agent-usage's 17861), registers `{port, secret}` in the shared

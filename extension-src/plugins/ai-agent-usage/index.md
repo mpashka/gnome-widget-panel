@@ -20,11 +20,21 @@ and Gemini CLI.
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
   `isClaudeInstalled`), usable from both the shell and preferences processes.
   It also owns the lifecycle **event** hooks (`installEventHooks`,
-  `eventHooksStatus`, `eventHookScript`) used by the
+  `eventHooksStatus`, `eventHookScript`), auto-installed by this widget (for
+  request markers) and also used by the
   [`ai-agent-status`](../ai-agent-status/index.md) widget: a silent
   port-independent script POSTing Claude's UserPromptSubmit/Stop/Notification/
   SessionEnd payloads to `/agent-event` on every endpoint in the same shared
-  ports registry.
+  ports registry. Both generated hook scripts' shebang is `env -S gjs -m`
+  (module mode) — the script bodies use ES module `import`; a bare `gjs`
+  shebang runs gjs's legacy import system and crashes with a `SyntaxError` on
+  every invocation, which was issue #6's root cause for the empty token graph.
+- `claudeStatusLine.ts` — gi-free normalization of the two Claude HTTP hook
+  payloads: `normalizeClaudeStatusLine` (statusLine → the per-provider sample,
+  including mapping `rate_limits.five_hour`/`seven_day` onto
+  `limits.primary`/`secondary`) and `claudePromptRequest`
+  (`UserPromptSubmit` → an `AgentRequest` marker). Unit-tested in
+  [`../../../tests/claudeStatusLine.test.mjs`](../../../tests/claudeStatusLine.test.mjs).
 - `aiAgentUsageGraph.ts` — in-memory provider state, Claude HTTP hook server,
   Codex helper process management and graph rendering.
 - `helpers/codex-usage-helper.ts` — out-of-process GJS helper that scans Codex
@@ -99,8 +109,13 @@ Requests (user prompts) reported by a provider in its `requests: AgentRequest[]`
 array (see [`../../contracts.ts`](../../contracts.ts)) are drawn as vertical red
 markers positioned by their timestamp within the visible graph window. Markers
 are deduplicated and pruned to twice the visible window. Codex and Gemini CLI
-populate requests today (from their session/log files); Claude statusLine does not
-carry prompt text, so no Claude markers appear yet.
+populate requests from their session/log files. Claude's `statusLine` payload
+carries no prompt text, so its markers instead come from the separate
+`UserPromptSubmit` lifecycle event hook (`claudeHook.ts`'s
+`installEventHooks()`/`eventHookScript()`, auto-installed alongside the
+statusLine hook): the widget's `/agent-event` handler turns each event into an
+`AgentRequest` via `claudePromptRequest()` (`claudeStatusLine.ts`), using the
+event's receipt time as the timestamp since the payload carries none.
 
 Each provider has an enable toggle (`enableClaude`, `enableCodex`, `enableGemini`,
 all default true) and a graph colour option (`claudeColor`, `codexColor`,
@@ -153,6 +168,13 @@ button persists a secret into the widget options and registers the endpoint so
 the widget prefers `options.claudeSecret` after a reload. Codex uses stdout JSON
 Lines from the helper. No cache file or persistence is part of the active
 architecture.
+
+The widget's own `Soup.Server` also has an `/agent-event` handler for the
+`UserPromptSubmit` lifecycle event (see "Requests" above); both server
+handlers read the request's bearer token via `msg.get_request_headers()`, not
+a `request_headers` property — `Soup.ServerMessage` (the server-side request
+object) has no such GObject property, unlike the client-side `Soup.Message`
+the hook scripts use, so reading it directly is always `undefined` and throws.
 
 ## Related docs
 

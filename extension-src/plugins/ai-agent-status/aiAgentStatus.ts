@@ -208,7 +208,13 @@ export const AiAgentStatus = GObject.registerClass(
                 msg.set_status(Soup.Status.METHOD_NOT_ALLOWED, null);
                 return null;
             }
-            const token = msg.request_headers.get_one('X-Gnome-Widget-Panel-Token');
+            // Soup.ServerMessage has no `request-headers` GObject property
+            // (unlike the client-side Soup.Message the hook scripts use),
+            // only the `get_request_headers()` method — reading
+            // `msg.request_headers` is always undefined and throws on
+            // `.get_one`, rejecting every request before it is checked (same
+            // root cause as issue #6's ai-agent-usage hook delivery).
+            const token = msg.get_request_headers().get_one('X-Gnome-Widget-Panel-Token');
             if (token !== this._secret) {
                 msg.set_status(Soup.Status.FORBIDDEN, null);
                 return null;

@@ -56,8 +56,15 @@ export function isClaudeInstalled() {
 // status line. Because the hook file content no longer embeds a port/secret,
 // multiple running widgets no longer overwrite each other's hook — they only add
 // their endpoint to the registry.
+//
+// The shebang MUST be `env -S gjs -m`: Claude Code invokes this file directly
+// (honouring the shebang), and the body below uses ES module `import`
+// statements, which are only valid in gjs's module mode (`-m`/`--module`); a
+// bare `gjs` shebang runs the legacy import system and the script throws
+// `SyntaxError: import declarations may only appear at top level of a module`
+// on every invocation, silently dropping every sample (issue #6).
 export function hookScript() {
-    return `#!/usr/bin/env gjs
+    return `#!/usr/bin/env -S gjs -m
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
@@ -108,9 +115,10 @@ if (output !== null)
 // run time and POSTs the raw Claude stdin payload to `/agent-event` on every
 // registered endpoint. Unlike the status-line hook it must print NOTHING —
 // Claude interprets a Stop hook's stdout — and always exit 0, quickly, so it
-// never disturbs or blocks the Claude session it observes.
+// never disturbs or blocks the Claude session it observes. See hookScript()
+// for why the shebang must be `env -S gjs -m`.
 export function eventHookScript() {
-    return `#!/usr/bin/env gjs
+    return `#!/usr/bin/env -S gjs -m
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 

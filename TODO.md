@@ -19,8 +19,13 @@ list current when implementing or discovering stable contracts.
   with provider identity retained on every displayed sample.
 - [ ] Define configurable provider-color types and validated defaults.
 - [ ] Define and validate the Codex helper JSON Lines protocol.
-- [ ] Define and validate Claude statusLine payloads and the local HTTP
-  request/response protocol.
+- [x] Define and validate the Claude `statusLine` and `UserPromptSubmit` event
+  payloads (`plugins/ai-agent-usage/claudeStatusLine.ts`:
+  `normalizeClaudeStatusLine`/`claudePromptRequest`, unit-tested in
+  `tests/claudeStatusLine.test.mjs`); fixed issue #6 (empty token graph, no
+  request markers) along the way.
+- [ ] Type the local HTTP request/response protocol itself (the `Soup.Server`
+  handlers in `aiAgentUsageGraph.ts`/`aiAgentStatus.ts` stay `// @ts-nocheck`).
 - [ ] Remove `// @ts-nocheck` incrementally as the affected file boundaries
   become typed.
 - [ ] Enable stricter TypeScript compiler options once the stable boundaries

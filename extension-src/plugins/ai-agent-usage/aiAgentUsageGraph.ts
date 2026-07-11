@@ -13,6 +13,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import * as ClaudeHook from './claudeHook.js';
+import {claudePromptRequest, normalizeClaudeStatusLine} from './claudeStatusLine.js';
 import {hexToRgb, nowSeconds} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
@@ -119,32 +120,6 @@ function eventAgeSeconds(value) {
     if (!Number.isFinite(timestamp))
         return 0;
     return Math.max(0, nowSeconds() - Math.floor(timestamp / 1000));
-}
-
-function normalizeClaudeStatusLine(data) {
-    const context = data?.context_window ?? {};
-    const usage = context.current_usage ?? {};
-    const tokens = {
-        input: Number(usage.input_tokens ?? 0),
-        output: Number(usage.output_tokens ?? 0),
-        cache_creation: Number(usage.cache_creation_input_tokens ?? 0),
-        cache_read: Number(usage.cache_read_input_tokens ?? 0),
-    };
-    tokens.total = Object.values(tokens)
-        .filter(Number.isFinite)
-        .reduce((sum, value) => sum + value, 0);
-
-    return {
-        provider: 'claude',
-        updated_at: new Date().toISOString(),
-        updated_monotonic: nowSeconds(),
-        model: data?.model?.id ?? null,
-        tokens,
-        context: {
-            used_percent: Number(context.used_percentage ?? 0),
-            window_tokens: Number(context.context_window_size ?? 0),
-        },
-    };
 }
 
 function formatStatusLine(value) {
@@ -332,14 +307,22 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 this._server.add_handler('/claude-statusline', (server, msg) => {
                     this._handleClaudeRequest(msg);
                 });
+                // UserPromptSubmit lifecycle event: the statusLine payload
+                // carries no prompt text, so request markers (issue #6) come
+                // from this separate event hook instead.
+                this._server.add_handler('/agent-event', (server, msg) => {
+                    this._handleAgentEvent(msg);
+                });
                 this._server.listen_local(
                     this._claudePort,
                     Soup.ServerListenOptions.IPV4_ONLY
                 );
-                // Install the port-independent hook and register this endpoint
-                // so Claude's status line fans out to it (alongside any other
-                // running panel instances on their own ports).
+                // Install the port-independent hooks and register this
+                // endpoint so Claude's status line and lifecycle events fan
+                // out to it (alongside any other running panel instances on
+                // their own ports).
                 ClaudeHook.installHook();
+                ClaudeHook.installEventHooks();
                 ClaudeHook.registerPort(this._claudePort, this._claudeSecret);
                 this._claudeRegistered = true;
             } catch (error) {
@@ -354,7 +337,13 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     msg.set_status(Soup.Status.METHOD_NOT_ALLOWED, null);
                     return;
                 }
-                const token = msg.request_headers.get_one('X-Gnome-Widget-Panel-Token');
+                // Soup.ServerMessage (unlike the client-side Soup.Message used
+                // by the hook scripts) has no `request-headers` GObject
+                // property, only the `get_request_headers()` method — reading
+                // `msg.request_headers` is always undefined and throws on
+                // `.get_one`, rejecting every request before it is checked
+                // (issue #6).
+                const token = msg.get_request_headers().get_one('X-Gnome-Widget-Panel-Token');
                 if (token !== this._claudeSecret) {
                     msg.set_status(Soup.Status.FORBIDDEN, null);
                     return;
@@ -379,6 +368,43 @@ export const AiAgentUsageGraph = GObject.registerClass(
             }
         }
 
+        // UserPromptSubmit/Stop/Notification/SessionEnd fan out here too (the
+        // event hook POSTs the same raw payload to every registered
+        // endpoint); only UserPromptSubmit carries a `prompt` this widget
+        // turns into a request marker, everything else is ignored. The
+        // response body is never read by the event hook, unlike the
+        // statusLine hook's first-OK-body fan-out.
+        _handleAgentEvent(msg) {
+            try {
+                if (msg.get_method() !== 'POST') {
+                    msg.set_status(Soup.Status.METHOD_NOT_ALLOWED, null);
+                    return;
+                }
+                // Soup.ServerMessage (unlike the client-side Soup.Message used
+                // by the hook scripts) has no `request-headers` GObject
+                // property, only the `get_request_headers()` method — reading
+                // `msg.request_headers` is always undefined and throws on
+                // `.get_one`, rejecting every request before it is checked
+                // (issue #6).
+                const token = msg.get_request_headers().get_one('X-Gnome-Widget-Panel-Token');
+                if (token !== this._claudeSecret) {
+                    msg.set_status(Soup.Status.FORBIDDEN, null);
+                    return;
+                }
+
+                const body = msg.get_request_body().flatten().get_data();
+                const payload = JSON.parse(decodeBytes(body));
+                const request = claudePromptRequest(payload);
+                if (request) {
+                    this._ingestRequests({provider: 'claude', requests: [request]});
+                    this.queue_repaint();
+                }
+                msg.set_status(Soup.Status.OK, null);
+            } catch (error) {
+                logError(error, 'GNOME Widget Panel Claude agent-event failed');
+                msg.set_status(Soup.Status.BAD_REQUEST, null);
+            }
+        }
 
         _stopClaudeHttpHook() {
             if (this._claudeRegistered) {

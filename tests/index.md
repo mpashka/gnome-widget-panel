@@ -34,6 +34,12 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   [`../extension-src/version.ts`](../extension-src/version.ts): channel badge
   formatting, stable (empty-channel) case, default channel, empty-version
   fallback (`@tag:versioning`).
+- `claudeStatusLine.test.mjs` — `normalizeClaudeStatusLine`/`claudePromptRequest`
+  from
+  [`../extension-src/plugins/ai-agent-usage/claudeStatusLine.ts`](../extension-src/plugins/ai-agent-usage/claudeStatusLine.ts):
+  token/context/rate-limit mapping (including the null-`current_usage` and
+  missing-`rate_limits` cases) and `UserPromptSubmit` → request-marker
+  extraction (`@tag:widget-ai-agent-usage`, issue #6).
 
 ## Directories
 

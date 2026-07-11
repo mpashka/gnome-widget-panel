@@ -81,13 +81,18 @@ Vertical panel (time → down, markers become horizontal lines):
    [window]
 ```
 
-## What "empty graph" (the bug) looks like
+## What "empty graph" (the bug) looked like
 
-With Claude Code active and prompts sent, none of the above appears: no coloured
-columns, no agent-coloured markers. Either the Claude `statusLine` hook is not delivering
-samples to the widget, or (for markers specifically) Claude request markers are
-not yet populated because the `statusLine` payload carries no prompt text. See
-the plugin doc's "Requests" and "Claude" sections and issue #6.
+Issue #6: with Claude Code active and prompts sent, none of the above appeared —
+no coloured columns, no agent-coloured markers. Root cause: the generated Claude
+hook scripts' shebang ran `gjs` in legacy (non-module) mode while their body used
+ES module `import` statements, so every invocation crashed with a `SyntaxError`
+before delivering any data, and separately the widget's HTTP handlers read a
+`request_headers` property that does not exist on the server-side Soup message
+(only `get_request_headers()` does), so even a successful delivery would have
+been rejected. Both are fixed; Claude's request markers now come from the
+`UserPromptSubmit` lifecycle event hook (the `statusLine` payload itself still
+carries no prompt text). See the plugin doc's "Requests" and "Claude" sections.
 
 ## Confirm the intended look
 
