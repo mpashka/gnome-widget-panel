@@ -81,16 +81,22 @@ by the provider that won that sample, using configurable per-provider colours
 Google/Gemini blue `#4285f4`). The two
 vertical bars use configurable indicator colours — usage/rate-limit
 (`usageColor`, default `#ffb82e`) and context window (`windowColor`, default
-`#4ca6ff`) — and the matching tooltip icons reuse those same colours. The visible
-token-load graph first applies an idle threshold: samples below `minActiveTokens`
-default to zero.
+`#4ca6ff`) — and the matching tooltip icons reuse those same colours. Each
+sample's height is the **load** metric — `input + output + cache_creation`
+(`parseTokenLoad`), i.e. what a turn actually consumed, deliberately excluding
+the reused `cache_read` (tens of thousands of tokens even for a one-line reply,
+which otherwise pinned every column to full height — the "solid block" bug).
+The visible token-load graph first applies an idle threshold: samples below
+`minActiveTokens` (default 500 load tokens) draw as zero.
 Active samples are autoscaled (normalised) against the maximum active token
 count in the **full window**. The visible window is `HISTORY_WIDTH` (36) sample
 columns; the full window is `HISTORY_WIDTH * scaleWindowRatio` (default ratio 2,
 so twice the visible window). The tallest active sample in the full window is
-100% and every other column's height is normalised to it. `scaleWindowRatio` is
-read from the widget `options` (default 2) but is intentionally **not** exposed
-in the settings UI.
+100% and every other column's height is normalised to it, then the drawn height
+is **square-root compressed** so a single huge `cache_creation` turn (which can
+be ~50× a normal reply) doesn't squash every ordinary turn to 1–2 px.
+`scaleWindowRatio` is read from the widget `options` (default 2) but is
+intentionally **not** exposed in the settings UI.
 
 Each vertical bar can be hidden independently: `showUsageBar` (default true)
 controls the usage/rate-limit bar and `showWindowBar` (default true) controls the

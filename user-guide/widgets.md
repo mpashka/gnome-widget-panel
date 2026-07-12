@@ -131,15 +131,32 @@ widgets are optional — add them from preferences.
   demo.
 
 ### AI Agent Status — `ai-agent-status`  *(optional)*
-- **Icon:** a row of self-drawn **status dots** (no icon) — one per Claude Code
-  session, coloured by state: needs-input red `#f03333`, ready green `#3dc752`,
-  busy blue `#4ca6ff`, idle grey `#777777`.
-- **What it does:** shows the live status of several parallel Claude Code sessions
-  at a glance, so you can see which ones are waiting for your input.
-- **Interactions:** hover shows a summary (e.g. "1 waiting · 2 busy") and a
-  per-session table.
-- **Settings:** colours per state, idle/expiry timers, max dots before "+N",
+- **Icon:** a single self-drawn **status dot** (no icon), coloured by the
+  most-urgent state across all your Claude Code sessions:
+  - **waiting** — the agent is asking you something → **pulsing red** `#f03333`;
+  - **idle** — finished, ready for your next prompt → **pulsing amber** `#ffb82e`;
+  - **thinking** — generating, just wait → **solid blue** `#4ca6ff`;
+  - no open sessions → a dim grey placeholder.
+
+  A **pulsing** dot means there's a session you can type into right now.
+- **What it does:** you start one or more agents and switch away with the
+  conversation hidden; this one dot is your **"an agent needs me"** light. It
+  flags — without opening anything — when an agent is **asking you something**
+  (pulsing red) or has **finished and is ready for your next prompt** (pulsing
+  amber), versus just **thinking** (solid blue), so you go back exactly when
+  there's something to do instead of babysitting the terminal. Several sessions
+  collapse into one dot showing the loudest state (priority waiting > idle >
+  thinking); if any session is waiting the dot is red even while others think.
+- **Interactions:** hover shows a summary (e.g. "1 waiting · 1 idle · 2 thinking")
+  and a per-session table — that's where you see *which* agent is in which state.
+- **Settings:** colour per state, whether "idle" pulses, the expiry timer,
   tooltip options, and a **Configure** button for the session hook.
+- **Use case:** the widget exists to make the human + AI-agent loop faster while
+  taking almost no panel space. You delegate a task and stop watching; the dot
+  pulls you back only when your input unblocks the agent (a permission prompt) or
+  when a turn is done to check — turning "keep glancing at the terminal" into
+  "glance at one dot", so several agents can run in parallel while you do other
+  work.
 
 ---
 

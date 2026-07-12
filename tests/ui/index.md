@@ -26,6 +26,10 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-13-disable-enable-no-crash.sh` — disabling and re-enabling the extension (the
   path the shell drives around screen lock/unlock) does not throw; the panel
   returns and no `super.destroy` / JS error is logged (issue #7 regression).
+- `t-14-agent-status-merge.sh` — ai-agent-status collapses several sessions into
+  one dot showing the most-urgent state (priority `waiting > idle > thinking`),
+  statusline activity never demotes `waiting`, and the placeholder returns when
+  empty.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +

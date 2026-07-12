@@ -25,7 +25,14 @@ const HEIGHT = 16;
 // normalisation window is HISTORY_WIDTH * scaleWindowRatio (default 2), computed
 // per-instance from options.
 const HISTORY_WIDTH = 36;
-const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
+// Idle floor for the graph height, in *load* tokens (input + output +
+// cache_creation, NOT cache_read — see parseTokenLoad). A real Claude turn lands
+// around 1.5k–90k load; the old 10k default was calibrated for `total` (which
+// cache_read inflated past 100k every turn) and, once the metric switched to
+// load, silently zeroed almost every real turn — an empty graph. 500 keeps
+// genuine turns visible while a lone near-zero ping still can't blow up the
+// autoscale.
+const DEFAULT_MIN_ACTIVE_TOKENS = 500;
 const SAMPLE_INTERVAL_SECONDS = 5;
 const STALE_AFTER_SECONDS = 120;
 const DEFAULT_CLAUDE_PORT = 17861;
@@ -65,6 +72,32 @@ function decodeBytes(bytes) {
 function parseTokens(value) {
     const tokens = value?.tokens ?? {};
     return Number(tokens.total ?? 0);
+}
+
+// Token *consumption* for the graph height: fresh input + generated output +
+// newly-written cache (cache_creation). Excludes cache_read, which is reused
+// context — it dominates `total` (tens of thousands even for a one-line reply)
+// and pinned every column to full height, so the graph read as a solid block.
+// Falls back to `total` for older payloads that lack the per-kind breakdown.
+function parseTokenLoad(value) {
+    const tokens = value?.tokens ?? {};
+    // The Claude normalizer supplies a precomputed `load`; prefer it.
+    if (tokens.load != null && Number.isFinite(Number(tokens.load)))
+        return Number(tokens.load);
+    // Otherwise derive it from the per-kind breakdown when present…
+    const hasBreakdown =
+        tokens.input != null ||
+        tokens.output != null ||
+        tokens.cache_creation != null;
+    if (hasBreakdown) {
+        const load =
+            Number(tokens.input ?? 0) +
+            Number(tokens.output ?? 0) +
+            Number(tokens.cache_creation ?? 0);
+        return Number.isFinite(load) ? load : 0;
+    }
+    // …and fall back to `total` for providers without a breakdown.
+    return parseTokens(value);
 }
 
 function parseContext(value) {
@@ -358,6 +391,12 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 }
                 const payload = JSON.parse(text);
                 const value = normalizeClaudeStatusLine(payload);
+                // Mark freshness so _currentProvider()/_currentTokenProvider()
+                // treat Claude as active — otherwise (no timestamp) Claude is
+                // always "stale" and skipped, so its columns never draw and the
+                // widget shows another provider (Codex) instead. Mirrors the
+                // Codex/Gemini helpers, which set this on every update.
+                value.updated_monotonic = nowSeconds();
                 this._providers.set('claude', value);
                 this._ingestRequests(value);
                 this.queue_repaint();
@@ -627,7 +666,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     return 0;
             }
 
-            return parseTokens(value);
+            return parseTokenLoad(value);
         }
 
         _currentTokenProvider() {
@@ -661,7 +700,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             const statusValue = tokenValue ?? this._currentProvider();
             const sample = statusValue
                 ? {
-                    tokens: tokenValue ? parseTokens(tokenValue) : 0,
+                    tokens: tokenValue ? parseTokenLoad(tokenValue) : 0,
                     context: parseContext(statusValue),
                     limit: parseLimit(statusValue),
                     provider: tokenValue?.provider ?? statusValue?.provider ?? null,
@@ -821,19 +860,32 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 const hex = this._providerHex(sample.provider);
                 const [r, g, b] = hex ? hexToRgb(hex) : foreground;
                 context.setSourceRGBA(r, g, b, 0.9);
-                const barHeight = value * (height - 1);
+                // Compress the height with a square root: a single big
+                // cache_creation turn (tens of thousands of load tokens) can be
+                // ~50× a normal reply, and a linear scale would then squash every
+                // ordinary turn to 1–2 px (the graph reads as empty). sqrt keeps
+                // the ordering but lifts small-but-real turns into view.
+                const barHeight = Math.sqrt(value) * (height - 1);
                 context.rectangle(x, height - barHeight, 1, barHeight);
                 context.fill();
             }
 
-            // Vertical red markers: one per request in the visible window.
+            // Vertical request markers: one per request in the visible window,
+            // drawn in the requesting agent's colour (falls back to the red
+            // REQUEST_COLOR when the provider has no configured colour).
             const now = nowSeconds();
             for (const request of this._visibleRequests()) {
                 const age = now - request.ts;
                 const markerX = (HISTORY_WIDTH - 1) - age / this._sampleInterval;
                 if (markerX < 0 || markerX > HISTORY_WIDTH)
                     continue;
-                context.setSourceRGBA(...REQUEST_COLOR);
+                const markerHex = this._providerHex(request.provider);
+                if (markerHex) {
+                    const [mr, mg, mb] = hexToRgb(markerHex);
+                    context.setSourceRGBA(mr, mg, mb, 0.9);
+                } else {
+                    context.setSourceRGBA(...REQUEST_COLOR);
+                }
                 context.rectangle(Math.round(markerX), 0, 1, height);
                 context.fill();
             }

@@ -6,11 +6,25 @@ Back to [plugins index](../index.md).
 
 ## Purpose
 
-At-a-glance status of multiple parallel AI-agent sessions (Claude Code). The
-user runs several agent sessions at once; this widget makes it immediately
-visible when any of them is **waiting for the user** — a finished turn
-(`ready`) or a permission/attention request (`needs-input`) — versus still
-`busy` or gone `idle`. Waiting-for-you sessions sort first and pulse.
+One glanceable cue for the state of *all* parallel AI-agent sessions (Claude
+Code). The user kicks off one or more agents and switches away with the
+conversation hidden; a **single dot** then tells them, without opening anything,
+what an agent needs. Each open session is in one of three states:
+
+- **waiting** — the agent explicitly wants the user (a permission/attention
+  request). Red, pulsing. Highest priority.
+- **idle** — the turn finished; the session is open and **ready for the next
+  prompt** (the user may prompt it or leave it). Amber, pulsing.
+- **thinking** — the agent is generating; nothing to do but wait. Blue, solid.
+
+A **pulsing** dot always means "a session you can type into right now" (waiting
+or idle). Sessions are open until they end (a `SessionEnd`, or the expiry
+fallback); with none open the widget shows a dim grey placeholder (`no-sessions`).
+The single dot shows the **most-urgent** state across every session —
+priority **waiting > idle > thinking > no-sessions** — and the hover tooltip
+carries the per-session breakdown (which agent is in which state). See the
+[user guide](../../../user-guide/widgets.md#ai-agent-status--ai-agent-status--optional)
+for the end-user framing.
 
 Not in the default config; add it via the panel preferences.
 
@@ -18,10 +32,10 @@ Not in the default config; add it via the panel preferences.
 
 - `index.ts` — plugin entrypoint (`create(parent, options)`).
 - `aiAgentStatus.ts` — the widget: localhost HTTP server receiving Claude hook
-  events, the per-session state machine, the dot-row rendering and the
-  templated tooltip.
+  events, the per-session state machine, the single aggregated-dot rendering and
+  the templated tooltip.
 - `prefs.ts` — widget settings UI: Claude hooks status dot + Configure button,
-  port/idle/expire/maxDots rows, state colours, pulse switch and the tooltip
+  port/expire rows, the three state colours, pulse switch and the tooltip
   template editor with live preview. See
   [`../../../docs/preferences.md`](../../../docs/preferences.md).
 
@@ -68,42 +82,54 @@ the first 8 chars of the id):
 
 | Input | State |
 | --- | --- |
-| `UserPromptSubmit` event | `busy` |
-| statusLine activity (fires only while generating) | `busy` (but never demotes `needs-input`) |
-| `Notification` event (asking permission/attention) | `needs-input` — highest priority |
-| `Stop` event (turn finished, waiting for the user) | `ready` |
+| `UserPromptSubmit` event | `thinking` |
+| statusLine activity (fires only while generating) | `thinking` (but never demotes `waiting`) |
+| `Notification` event (asking permission/attention) | `waiting` — highest priority |
+| `Stop` event (turn finished, ready for the next prompt) | `idle` |
 | `SessionEnd` event | session removed |
-| no events for > 10 min while `busy` | `idle` (a dead session must not look busy forever) |
-| no events for > `idleMinutes` (default 30) | `idle` |
-| no events for > `expireMinutes` (default 180) | session removed |
+| `thinking` with no events for > 10 min (`THINKING_STALE_SECONDS`) | `idle` (missed Stop — no longer "working") |
+| no events at all for > `expireMinutes` (default 180) | session removed (missed SessionEnd fallback) |
 
-Age transitions run on a 5 s tick. Each session stores `id`, `cwd`, `label`,
-`provider`, `state`, `lastEvent` and `lastChange` timestamps.
+There is no separate grey "stale" state: an open session at rest is `idle`
+(ready for the next prompt), and a session is either open or removed — liveness
+comes from `SessionEnd` with the expiry as a fallback. Age transitions run on a
+5 s tick. Each session stores `id`, `cwd`, `label`, `provider`, `state`,
+`lastEvent` and `lastChange` timestamps.
 
 ## Visualization
 
-**Chosen design: one dot per session** — a row of ~12 px round Cairo dots,
-filled in the state colour; `needs-input` and `ready` also get a brighter 1 px
-ring and pulse their opacity (600 ms ease cadence; `pulseReady: false` limits
-the pulse to `needs-input`). Sort order: `needs-input`, `ready`, `busy`,
-`idle`. At most `maxDots` dots (default 8) plus a small `+N` overflow label;
-with no sessions a single dim hollow placeholder dot keeps the widget visible.
-A **rejected alternative** was a single cycling icon showing one aggregated
-state: it hides simultaneous states (one busy + one waiting would be
-invisible), which defeats the widget's purpose.
+**Chosen design: one aggregated dot** — a single ~12 px round Cairo dot filled
+in the colour of the **most-urgent** session state. `_sortedSessions()` orders
+sessions by `waiting`, `idle`, `thinking` (then by recency), and element 0 wins,
+so one glyph reflects "the loudest thing an agent needs from you right now". The
+two **promptable** states (`waiting`, `idle`) get a brighter 1 px ring and pulse
+their opacity (600 ms ease cadence) — a pulsing dot means "a session you can type
+into now"; `pulseIdle: false` limits the pulse to `waiting`. `thinking` is solid.
+With no sessions a dim grey hollow placeholder dot keeps the widget visible and
+hoverable.
 
-In a vertical panel the dots stack vertically (`setPanelLayout({vertical})`
-switches the BoxLayout orientation; round dots need no rotation) and the hover
-tooltip is placed beside the widget as in
-[`ai-agent-usage`](../ai-agent-usage/index.md).
+The dot's whole job is a single "an agent needs you" cue while the conversation
+is hidden, so it is deliberately **one glyph** regardless of session count — the
+minimal panel footprint the widget is optimised for. Showing one dot per session
+(the **rejected** earlier design) split the user's attention across glyphs and
+grew the widget without adding actionable signal: the user acts on *one* agent at
+a time, and the per-session detail (including simultaneous states) is already in
+the tooltip. Merging by "highest state" keeps the at-a-glance signal honest — if
+*any* session is `waiting` the dot is red even while others are `thinking`.
+
+In a vertical panel the single dot needs no orientation change
+(`setPanelLayout({vertical})` still switches the BoxLayout for consistency;
+round dots need no rotation) and the hover tooltip is placed beside the widget
+as in [`ai-agent-usage`](../ai-agent-usage/index.md).
 
 The flicker-free hover tooltip is rendered from a user-editable template via
 [`../../tooltipTemplate.ts`](../../tooltipTemplate.ts) (`@tag:ui`). Tokens:
 
-- `{counts}` — summary line, e.g. `1 waiting · 2 busy · 1 idle` (waiting =
-  `needs-input` + `ready`, coloured with the needs-input colour).
+- `{counts}` — summary line, e.g. `1 waiting · 1 idle · 2 thinking` (waiting and
+  idle coloured with their state colour).
 - `{sessions}` — monospace table, one line per session:
-  state-coloured `●`, label, state, `m:ss` since the last state change.
+  state-coloured `●`, label, state (`waiting`/`idle`/`thinking`), `m:ss` since
+  the last state change.
 
 Default template: `{counts}\n{sessions}`.
 
@@ -113,14 +139,11 @@ Default template: `{counts}\n{sessions}`.
 | --- | --- | --- |
 | `port` | `17871` | Localhost port of the widget's hook endpoint. |
 | `secret` | random per run | Endpoint token; persisted by the Configure button. |
-| `idleMinutes` | `30` | Minutes without events before a session shows `idle`. |
-| `expireMinutes` | `180` | Minutes without events before a session is dropped. |
-| `maxDots` | `8` | Dot cap (1–16); further sessions collapse into `+N`. |
-| `needsInputColor` | `#f03333` | `needs-input` dot colour. |
-| `readyColor` | `#3dc752` | `ready` dot colour. |
-| `busyColor` | `#4ca6ff` | `busy` dot colour. |
-| `idleColor` | `#777777` | `idle` dot colour. |
-| `pulseReady` | `true` | Also pulse `ready` dots (not only `needs-input`). |
+| `expireMinutes` | `180` | Minutes without any events before a session is dropped (missed-`SessionEnd` fallback). |
+| `waitingColor` | `#f03333` | `waiting` dot colour (red). |
+| `idleColor` | `#ffb82e` | `idle` (ready-for-prompt) dot colour (amber). |
+| `thinkingColor` | `#4ca6ff` | `thinking` dot colour (blue). |
+| `pulseIdle` | `true` | Also pulse the `idle` dot (`waiting` always pulses). |
 | `showTooltip` | `true` | Enable the hover tooltip. |
 | `template` | `{counts}\n{sessions}` | Tooltip template. |
 

@@ -62,7 +62,13 @@ export interface ClaudeProviderSample {
         output: number;
         cache_creation: number;
         cache_read: number;
+        // Full session tally (everything, incl. reused cache_read).
         total: number;
+        // Consumption that drives the graph height: input + output +
+        // cache_creation, i.e. `total` minus reused `cache_read`. cache_read is
+        // tens of thousands of tokens even for a one-line reply and pinned every
+        // column to full height (the "solid block" bug), so it is excluded here.
+        load: number;
     };
     context: {
         used_percent: number;
@@ -102,6 +108,7 @@ export function normalizeClaudeStatusLine(data: ClaudeStatusLinePayload): Claude
     const total = Object.values(tokens)
         .filter(Number.isFinite)
         .reduce((sum, value) => sum + value, 0);
+    const load = tokens.input + tokens.output + tokens.cache_creation;
 
     const primary = normalizeLimit(data?.rate_limits?.five_hour);
     const secondary = normalizeLimit(data?.rate_limits?.seven_day);
@@ -116,7 +123,7 @@ export function normalizeClaudeStatusLine(data: ClaudeStatusLinePayload): Claude
         updated_at: new Date().toISOString(),
         updated_monotonic: nowSeconds(),
         model: data?.model?.id ?? null,
-        tokens: {...tokens, total},
+        tokens: {...tokens, total, load},
         context: {
             used_percent: Number(context.used_percentage ?? 0),
             window_tokens: Number(context.context_window_size ?? 0),

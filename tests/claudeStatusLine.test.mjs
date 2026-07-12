@@ -37,8 +37,27 @@ test('normalizeClaudeStatusLine sums current_usage into tokens.total', () => {
         cache_creation: 5000,
         cache_read: 2000,
         total: 16700,
+        load: 14700,
     });
     assert.deepEqual(value.context, {used_percent: 8, window_tokens: 200000});
+});
+
+test('tokens.load is total minus reused cache_read (drives the graph height)', () => {
+    // cache_read dwarfs a turn's real work (32k reused vs a 1k reply) and pinned
+    // every column to full height; `load` excludes it so the graph varies.
+    const value = normalizeClaudeStatusLine({
+        context_window: {
+            current_usage: {
+                input_tokens: 2,
+                output_tokens: 1128,
+                cache_creation_input_tokens: 1637,
+                cache_read_input_tokens: 31092,
+            },
+        },
+    });
+    assert.equal(value.tokens.total, 33859);
+    assert.equal(value.tokens.load, 2767);
+    assert.equal(value.tokens.load, value.tokens.total - value.tokens.cache_read);
 });
 
 test('normalizeClaudeStatusLine maps rate_limits onto limits.primary/secondary', () => {
@@ -53,7 +72,7 @@ test('normalizeClaudeStatusLine tolerates a null current_usage (before the first
     const value = normalizeClaudeStatusLine({
         context_window: {used_percentage: 0, context_window_size: 200000, current_usage: null},
     });
-    assert.deepEqual(value.tokens, {input: 0, output: 0, cache_creation: 0, cache_read: 0, total: 0});
+    assert.deepEqual(value.tokens, {input: 0, output: 0, cache_creation: 0, cache_read: 0, total: 0, load: 0});
 });
 
 test('normalizeClaudeStatusLine omits limits when rate_limits is absent', () => {

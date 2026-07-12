@@ -18,18 +18,18 @@ const DEFAULT_PORT = 17871;
 // Keep in sync with aiAgentStatus.ts DEFAULT_TOOLTIP_TEMPLATE / DEFAULT_COLORS.
 const DEFAULT_TOOLTIP_TEMPLATE = '{counts}\n{sessions}';
 const DEFAULT_COLORS = {
-    needsInputColor: '#f03333',
-    readyColor: '#3dc752',
-    busyColor: '#4ca6ff',
-    idleColor: '#777777',
+    waitingColor: '#f03333',
+    idleColor: '#ffb82e',
+    thinkingColor: '#4ca6ff',
 };
 // Representative coloured fragments for the live template preview.
 const SAMPLE_FRAGMENTS = {
-    counts: '<span foreground="#f03333">1 waiting</span> · 2 busy · 1 idle',
-    sessions: '<tt><span foreground="#3dc752">●</span> my-project    ready        0:42\n'
-        + '<span foreground="#4ca6ff">●</span> panel-widget  busy         3:07\n'
-        + '<span foreground="#4ca6ff">●</span> experiments   busy        12:55\n'
-        + '<span foreground="#777777">●</span> notes         idle        48:10</tt>',
+    counts: '<span foreground="#f03333">1 waiting</span> · '
+        + '<span foreground="#ffb82e">1 idle</span> · 2 thinking',
+    sessions: '<tt><span foreground="#f03333">●</span> my-project    waiting      0:42\n'
+        + '<span foreground="#ffb82e">●</span> notes         idle         2:18\n'
+        + '<span foreground="#4ca6ff">●</span> panel-widget  thinking     3:07\n'
+        + '<span foreground="#4ca6ff">●</span> experiments   thinking    12:55</tt>',
 };
 
 function statusImage() {
@@ -133,49 +133,37 @@ export function fillWidgetPreferences(context) {
         subtitle: 'Localhost port for the Claude event endpoint',
         lower: 1024, upper: 65535, page: 100, value: DEFAULT_PORT,
     }, commit);
-    spinRow(sessions, current, 'idleMinutes', {
-        title: 'Idle after',
-        subtitle: 'Minutes without events before a session shows as idle',
-        lower: 1, upper: 720, page: 10, value: 30,
-    }, commit);
     spinRow(sessions, current, 'expireMinutes', {
         title: 'Expire after',
-        subtitle: 'Minutes without events before a session is dropped',
+        subtitle: 'Minutes without any events before a session is dropped',
         lower: 5, upper: 1440, page: 30, value: 180,
     }, commit);
-    spinRow(sessions, current, 'maxDots', {
-        title: 'Maximum dots',
-        subtitle: 'Further sessions collapse into a +N overflow label',
-        lower: 1, upper: 16, page: 4, value: 8,
-    }, commit);
-
     // --- Appearance ---------------------------------------------------------
     const appearance = new Adw.PreferencesGroup({
         title: 'Appearance',
-        description: 'One dot per session, coloured by its state.',
+        description: 'A single dot, coloured by the most-urgent session state.',
     });
     page.add(appearance);
     const colorRows = [
-        ['needsInputColor', 'Needs input', 'Claude is asking for permission/attention'],
-        ['readyColor', 'Ready', 'Finished, waiting for you'],
-        ['busyColor', 'Busy', 'Generating / working'],
-        ['idleColor', 'Idle', 'No recent activity'],
+        ['waitingColor', 'Waiting', 'The agent is asking you something (highest priority)'],
+        ['idleColor', 'Idle', 'Finished — ready for your next prompt'],
+        ['thinkingColor', 'Thinking', 'Generating / working — nothing to do but wait'],
     ];
     for (const [key, title, subtitle] of colorRows) {
         const row = new Adw.ActionRow({title, subtitle});
         row.add_suffix(colorButton(current, key, DEFAULT_COLORS[key], commit, 'Dot colour'));
         appearance.add(row);
     }
-    const pulseReady = new Adw.SwitchRow({
-        title: 'Pulse ready sessions',
-        subtitle: 'Animate the dot of finished sessions (needs-input always pulses)',
-        active: current.pulseReady !== false,
+    const pulseIdle = new Adw.SwitchRow({
+        title: 'Pulse idle sessions',
+        subtitle: 'Also pulse the idle (ready-for-prompt) dot; waiting always pulses',
+        active: current.pulseIdle !== false,
     });
-    pulseReady.connect('notify::active', () => {
-        current.pulseReady = pulseReady.active;
+    pulseIdle.connect('notify::active', () => {
+        current.pulseIdle = pulseIdle.active;
         commit();
     });
-    appearance.add(pulseReady);
+    appearance.add(pulseIdle);
 
     // --- Tooltip ------------------------------------------------------------
     const tooltip = new Adw.PreferencesGroup({title: 'Tooltip'});

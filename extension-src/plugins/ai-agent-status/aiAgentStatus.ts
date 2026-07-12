@@ -19,23 +19,29 @@ import {renderTemplate} from '../../tooltipTemplate.js';
 const DEFAULT_PORT = 17871;
 const DOT_SIZE = 12;
 const DOT_SPACING = 4;
-const DEFAULT_MAX_DOTS = 8;
-const DEFAULT_IDLE_MINUTES = 30;
 const DEFAULT_EXPIRE_MINUTES = 180;
-// A 'busy' session with no events for this long is presumed dead/abandoned.
-const BUSY_STALE_SECONDS = 10 * 60;
+// A 'thinking' session with no events for this long is presumed finished (a Stop
+// we never saw) and drops to 'idle' — still open, ready for the next prompt.
+const THINKING_STALE_SECONDS = 10 * 60;
 const TICK_INTERVAL_SECONDS = 5;
 const PULSE_INTERVAL_MS = 600;
 const PULSE_LOW_OPACITY = 120;
-// State colours (options with these defaults).
+// The three per-session states (options carry these default colours). 'waiting'
+// (the agent explicitly wants you) and 'idle' (finished — ready for your next
+// prompt) are both promptable and pulse; 'thinking' (agent working — nothing to
+// do but wait) is solid. A pulsing dot therefore always means "a session you can
+// type into right now".
 const DEFAULT_COLORS = {
-    needsInputColor: '#f03333',
-    readyColor: '#3dc752',
-    busyColor: '#4ca6ff',
-    idleColor: '#777777',
+    waitingColor: '#f03333',   // red — the agent is asking you something
+    idleColor: '#ffb82e',      // amber — done, ready for your next prompt
+    thinkingColor: '#4ca6ff',  // blue — generating, just wait
 };
-// Sort order in the dot row and the tooltip: waiting-for-you states first.
-const STATE_ORDER = ['needs-input', 'ready', 'busy', 'idle'];
+// Dim grey hollow placeholder shown when there are no open sessions.
+const PLACEHOLDER_HEX = '#777777';
+// Single-dot priority (highest first): a session you must answer outranks one
+// you may prompt, which outranks one that's merely working. No sessions -> the
+// placeholder. This is the merge order for the one aggregated dot.
+const STATE_ORDER = ['waiting', 'idle', 'thinking'];
 // Default hover-tooltip template. Tokens: {counts} (one summary line, e.g.
 // `1 waiting · 2 busy · 1 idle`) and {sessions} (one monospace line per
 // session). Literal text is Pango-escaped; `\n` is a line break.
@@ -101,30 +107,25 @@ export const AiAgentStatus = GObject.registerClass(
             // Prefer a persisted secret (written by the Configure button in
             // preferences) so the hooks and this server agree after a reload.
             this._secret = options.secret || GLib.uuid_string_random();
-            this._idleSeconds = Math.max(
-                60, Math.round(toNumber(options.idleMinutes, DEFAULT_IDLE_MINUTES)) * 60);
             this._expireSeconds = Math.max(
-                this._idleSeconds,
+                60,
                 Math.round(toNumber(options.expireMinutes, DEFAULT_EXPIRE_MINUTES)) * 60);
-            this._maxDots = Math.min(
-                16, Math.max(1, Math.round(toNumber(options.maxDots, DEFAULT_MAX_DOTS))));
-            this._pulseReady = options.pulseReady !== false;
+            // Pulse the 'idle' (ready-for-prompt) dot too, not only 'waiting'.
+            this._pulseIdle = options.pulseIdle !== false;
             this._showTooltip = options.showTooltip !== false;
             this._template = typeof options.template === 'string'
                 ? options.template
                 : DEFAULT_TOOLTIP_TEMPLATE;
             this._colors = {
-                'needs-input': options.needsInputColor || DEFAULT_COLORS.needsInputColor,
-                'ready': options.readyColor || DEFAULT_COLORS.readyColor,
-                'busy': options.busyColor || DEFAULT_COLORS.busyColor,
+                'waiting': options.waitingColor || DEFAULT_COLORS.waitingColor,
                 'idle': options.idleColor || DEFAULT_COLORS.idleColor,
+                'thinking': options.thinkingColor || DEFAULT_COLORS.thinkingColor,
             };
 
             // --- state --------------------------------------------------------
             // session_id -> {id, cwd, label, provider, state, lastEvent, lastChange}
             this._sessions = new Map();
             this._dots = [];
-            this._overflowLabel = null;
             this._pulsePhase = false;
             this._rotated = false;
             this._server = null;
@@ -268,11 +269,11 @@ export const AiAgentStatus = GObject.registerClass(
 
         // --- session state machine --------------------------------------------
 
-        // Event -> state: UserPromptSubmit/statusline activity -> busy,
-        // Notification -> needs-input, Stop -> ready, SessionEnd -> removed.
-        // 'needs-input' has the highest priority: background statusline
-        // activity must not demote it — only an explicit UserPromptSubmit
-        // (the user answered) or Stop/SessionEnd moves it on.
+        // Event -> state: UserPromptSubmit/statusline activity -> thinking,
+        // Notification -> waiting, Stop -> idle, SessionEnd -> removed.
+        // 'waiting' has the highest priority: background statusline activity
+        // must not demote it — only an explicit UserPromptSubmit (the user
+        // answered) or Stop/SessionEnd moves it on.
         _applyEvent(eventName, id, cwd) {
             const now = nowSeconds();
             if (eventName === 'SessionEnd') {
@@ -282,17 +283,17 @@ export const AiAgentStatus = GObject.registerClass(
             }
             let state = null;
             if (eventName === 'UserPromptSubmit' || eventName === 'statusline-activity')
-                state = 'busy';
+                state = 'thinking';
             else if (eventName === 'Notification')
-                state = 'needs-input';
+                state = 'waiting';
             else if (eventName === 'Stop')
-                state = 'ready';
+                state = 'idle';
             if (!state)
                 return;
 
             let session = this._sessions.get(id);
             if (eventName === 'statusline-activity'
-                && session?.state === 'needs-input') {
+                && session?.state === 'waiting') {
                 session.lastEvent = now;
                 return;
             }
@@ -321,9 +322,12 @@ export const AiAgentStatus = GObject.registerClass(
             this._refresh();
         }
 
-        // Age out sessions: any state goes 'idle' after idleMinutes without
-        // events ('busy' already after BUSY_STALE_SECONDS — a dead session must
-        // not look busy forever); everything is dropped after expireMinutes.
+        // Liveness fallback for missed hook events. A session normally leaves
+        // 'thinking' via its own Stop event; if we never saw one, drop it to
+        // 'idle' after THINKING_STALE_SECONDS so a stuck dot doesn't claim the
+        // agent is still working. Any session with no events at all for
+        // expireMinutes is presumed gone (missed SessionEnd) and removed —
+        // leaving only genuinely open sessions.
         _tick() {
             const now = nowSeconds();
             let changed = false;
@@ -334,10 +338,7 @@ export const AiAgentStatus = GObject.registerClass(
                     changed = true;
                     continue;
                 }
-                const idleAfter = session.state === 'busy'
-                    ? Math.min(BUSY_STALE_SECONDS, this._idleSeconds)
-                    : this._idleSeconds;
-                if (session.state !== 'idle' && age > idleAfter) {
+                if (session.state === 'thinking' && age > THINKING_STALE_SECONDS) {
                     session.state = 'idle';
                     session.lastChange = now;
                     changed = true;
@@ -364,34 +365,24 @@ export const AiAgentStatus = GObject.registerClass(
                 this._updateTooltip();
         }
 
-        // --- visualization: one dot per session --------------------------------
+        // --- visualization: one dot aggregating every session -----------------
 
+        // A single dot represents ALL sessions, coloured by the most-urgent state
+        // among them (waiting > idle > thinking — the STATE_ORDER
+        // `_sortedSessions()` sorts by, so element 0 is the winner). Its whole job
+        // is a glanceable "an agent needs you" / "an agent finished" cue while the
+        // conversation is hidden, so one dot is enough — showing one per session
+        // would waste panel space and split the user's attention. The tooltip
+        // breaks the aggregate down per session (which agent needs what).
         _rebuildDots() {
             for (const dot of this._dots)
                 dot.destroy();
             this._dots = [];
-            if (this._overflowLabel) {
-                this._overflowLabel.destroy();
-                this._overflowLabel = null;
-            }
 
-            const sessions = this._sortedSessions();
-            if (sessions.length === 0) {
-                // Dim placeholder so the widget stays visible (and hoverable).
-                this.add_child(this._makeDot(null));
-                return;
-            }
-            for (const session of sessions.slice(0, this._maxDots))
-                this.add_child(this._makeDot(session));
-            const overflow = sessions.length - this._maxDots;
-            if (overflow > 0) {
-                this._overflowLabel = new St.Label({
-                    text: `+${overflow}`,
-                    y_align: Clutter.ActorAlign.CENTER,
-                    style: 'font-size: 9px;',
-                });
-                this.add_child(this._overflowLabel);
-            }
+            // `_sortedSessions()[0]` is the most-urgent session, or `null` when
+            // idle — `_makeDot(null)` then draws a dim hollow placeholder so the
+            // widget stays visible and hoverable.
+            this.add_child(this._makeDot(this._sortedSessions()[0] ?? null));
         }
 
         _makeDot(session) {
@@ -401,8 +392,10 @@ export const AiAgentStatus = GObject.registerClass(
                 height: DOT_SIZE,
                 y_align: Clutter.ActorAlign.CENTER,
             });
-            dot._pulses = state === 'needs-input'
-                || (state === 'ready' && this._pulseReady);
+            // Pulse the promptable states (a session you can type into now):
+            // always 'waiting', and 'idle' unless the user turned it off.
+            dot._pulses = state === 'waiting'
+                || (state === 'idle' && this._pulseIdle);
             dot.connect('repaint', () => {
                 try {
                     this._drawDot(dot, state);
@@ -421,13 +414,13 @@ export const AiAgentStatus = GObject.registerClass(
             const cy = h / 2;
             const radius = Math.min(w, h) / 2 - 1.5;
             if (state) {
-                const [r, g, b] = hexToRgb(this._colors[state] ?? DEFAULT_COLORS.idleColor);
+                const [r, g, b] = hexToRgb(this._colors[state] ?? PLACEHOLDER_HEX);
                 context.setSourceRGBA(r, g, b, 1);
                 context.arc(cx, cy, radius, 0, 2 * Math.PI);
                 context.fill();
-                // Waiting states get a brighter ring so they stand out even for
-                // colour-impaired users / tiny dots.
-                if (state === 'needs-input' || state === 'ready') {
+                // The promptable states get a brighter ring so they stand out
+                // even for colour-impaired users / tiny dots.
+                if (state === 'waiting' || state === 'idle') {
                     context.setLineWidth(1);
                     context.setSourceRGBA(
                         Math.min(1, r + 0.35),
@@ -439,8 +432,8 @@ export const AiAgentStatus = GObject.registerClass(
                     context.stroke();
                 }
             } else {
-                // Placeholder: dim hollow dot.
-                const [r, g, b] = hexToRgb(this._colors.idle);
+                // Placeholder: dim hollow grey dot (no open sessions).
+                const [r, g, b] = hexToRgb(PLACEHOLDER_HEX);
                 context.setLineWidth(1);
                 context.setSourceRGBA(r, g, b, 0.6);
                 context.arc(cx, cy, radius, 0, 2 * Math.PI);
@@ -469,24 +462,16 @@ export const AiAgentStatus = GObject.registerClass(
         // --- tooltip ------------------------------------------------------------
 
         _countsFragment(sessions) {
-            const counts = {waiting: 0, busy: 0, idle: 0};
-            for (const session of sessions) {
-                if (session.state === 'needs-input' || session.state === 'ready')
-                    counts.waiting++;
-                else if (session.state === 'busy')
-                    counts.busy++;
-                else
-                    counts.idle++;
-            }
+            const counts = {waiting: 0, idle: 0, thinking: 0};
+            for (const session of sessions)
+                counts[session.state] = (counts[session.state] ?? 0) + 1;
             const parts = [];
-            if (counts.waiting) {
-                const hex = this._colors['needs-input'];
-                parts.push(`<span foreground="${hex}">${counts.waiting} waiting</span>`);
-            }
-            if (counts.busy)
-                parts.push(`${counts.busy} busy`);
+            if (counts.waiting)
+                parts.push(`<span foreground="${this._colors.waiting}">${counts.waiting} waiting</span>`);
             if (counts.idle)
-                parts.push(`${counts.idle} idle`);
+                parts.push(`<span foreground="${this._colors.idle}">${counts.idle} idle</span>`);
+            if (counts.thinking)
+                parts.push(`${counts.thinking} thinking`);
             return parts.join(' · ');
         }
 
@@ -495,7 +480,7 @@ export const AiAgentStatus = GObject.registerClass(
             const labelWidth = Math.max(...sessions.map(s => s.label.length));
             const stateWidth = Math.max(...sessions.map(s => s.state.length));
             const rows = sessions.map(session => {
-                const hex = this._colors[session.state] ?? DEFAULT_COLORS.idleColor;
+                const hex = this._colors[session.state] ?? PLACEHOLDER_HEX;
                 const label = escapeMarkup(session.label.padEnd(labelWidth));
                 const state = session.state.padEnd(stateWidth);
                 const since = formatSince(now - session.lastChange);
