@@ -44,6 +44,10 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
   keys from a GObject initializer (regression for the cpu-load-monitor settings
   page failing to open on `tooltip_text: undefined`), keeps `null`/falsy values.
+- `hookStdin.test.mjs` — `READ_STDIN_FN` from
+  [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
+  the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input
+  on a socket), not `file_get_contents('/dev/stdin')` which reads a socket empty.
 
 ## Directories
 

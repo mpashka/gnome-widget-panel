@@ -8,6 +8,8 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {READ_STDIN_FN} from './hookStdin.js';
+
 export const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 export const EVENT_HOOK_NAME = 'gnome-widget-panel-agent-event-hook.js';
 export const PORTS_NAME = 'gnome-widget-panel-ports.json';
@@ -65,15 +67,13 @@ export function isClaudeInstalled() {
 // on every invocation, silently dropping every sample (issue #6).
 export function hookScript() {
     return `#!/usr/bin/env -S gjs -m
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
 const REGISTRY = ${JSON.stringify(portsRegistryPath())};
 
-function readStdin() {
-    const [ok, contents] = GLib.file_get_contents('/dev/stdin');
-    return ok ? contents : new Uint8Array();
-}
+${READ_STDIN_FN}
 
 function readEndpoints() {
     try {
@@ -119,19 +119,13 @@ if (output !== null)
 // for why the shebang must be `env -S gjs -m`.
 export function eventHookScript() {
     return `#!/usr/bin/env -S gjs -m
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
 const REGISTRY = ${JSON.stringify(portsRegistryPath())};
 
-function readStdin() {
-    try {
-        const [ok, contents] = GLib.file_get_contents('/dev/stdin');
-        return ok ? contents : new Uint8Array();
-    } catch (error) {
-        return new Uint8Array();
-    }
-}
+${READ_STDIN_FN}
 
 function readEndpoints() {
     try {

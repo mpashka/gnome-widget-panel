@@ -349,8 +349,14 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     return;
                 }
 
-                const body = msg.get_request_body().flatten().get_data();
-                const payload = JSON.parse(decodeBytes(body));
+                const text = decodeBytes(msg.get_request_body().flatten().get_data());
+                if (!text.trim()) {
+                    // An empty POST is nothing to do, not a parse error — some
+                    // lifecycle events can carry no useful body.
+                    msg.set_status(Soup.Status.OK, null);
+                    return;
+                }
+                const payload = JSON.parse(text);
                 const value = normalizeClaudeStatusLine(payload);
                 this._providers.set('claude', value);
                 this._ingestRequests(value);
@@ -392,8 +398,14 @@ export const AiAgentUsageGraph = GObject.registerClass(
                     return;
                 }
 
-                const body = msg.get_request_body().flatten().get_data();
-                const payload = JSON.parse(decodeBytes(body));
+                const text = decodeBytes(msg.get_request_body().flatten().get_data());
+                if (!text.trim()) {
+                    // An empty POST is nothing to do, not a parse error — some
+                    // lifecycle events can carry no useful body.
+                    msg.set_status(Soup.Status.OK, null);
+                    return;
+                }
+                const payload = JSON.parse(text);
                 const request = claudePromptRequest(payload);
                 if (request) {
                     this._ingestRequests({provider: 'claude', requests: [request]});

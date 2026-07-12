@@ -219,8 +219,16 @@ export const AiAgentStatus = GObject.registerClass(
                 msg.set_status(Soup.Status.FORBIDDEN, null);
                 return null;
             }
-            const body = msg.get_request_body().flatten().get_data();
-            return JSON.parse(new TextDecoder().decode(body));
+            const text = new TextDecoder().decode(
+                msg.get_request_body().flatten().get_data()
+            );
+            if (!text.trim()) {
+                // Empty POST: nothing to do, not a parse error. 204 keeps the
+                // statusLine fan-out from mistaking it for a status line body.
+                msg.set_status(Soup.Status.NO_CONTENT, null);
+                return null;
+            }
+            return JSON.parse(text);
         }
 
         _handleAgentEvent(msg) {
