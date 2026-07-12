@@ -215,7 +215,10 @@ matching task:
   bug that only reproduces in a running GNOME Shell, follow this loop:
   1. **Always write the plan in `MANUAL-TESTING.md`** (git-excluded via
      `.git/info/exclude`) as **numbered steps**. The user walks them in order and
-     ticks each `done/worked` or `couldn't do`.
+     ticks each `done/worked` or `couldn't do`. `MANUAL-TESTING.md` is a
+     **temporary, per-session file**: **recreate it from scratch for each new
+     manual-testing task** (it holds only the current test) instead of
+     accumulating past runs — those live in issues/commits.
   2. **Minimise the user's manual steps with a state-driven script.** Give **one
      script** that persists its progress and prior settings to a **state file**,
      reads that state on each run to **work out which step is next**, and runs it
