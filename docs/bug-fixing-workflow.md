@@ -10,11 +10,48 @@ stages. Each stage has an exit condition; do not start the next stage until the
 current one is met. The goal is that a fix is *reproduced before it is written*
 and *verified before it is reviewed*, so regressions do not slip back in.
 
+## Environments: dev before prod
+
+**Always reproduce and fix a bug in the dev environment first; only touch the
+user's real (prod) session once dev has taken it as far as it can.** A prod
+change costs the user a full logout/login (Wayland caches the extension module),
+so every avoidable prod round-trip is wasted user time.
+
+1. **Dev first.** Reproduce in the isolated dev profile — a failing
+   `npm run test:ui` / pure-logic test, or an interactive `./dev-run.sh` nested
+   shell (no logout). Rendering/logic bugs (e.g. the token-graph height, state
+   colours, layout) are fully reproducible here with synthetic data — do **not**
+   send the user through a relogin to observe something a dev run would show.
+2. **Prod only for what dev can't hold.** Escalate to the real session only for
+   things the dev environment genuinely can't drive (the real lock screen, live
+   Claude hook traffic across IDEs, a specific GPU/monitor setup). When you do,
+   batch every pending change into **one** relogin.
+3. **Screenshots in prod** use the dev-only in-session screenshot tool (see
+   [`development.md`](development.md)); it is never shipped in a release.
+
+**Minimise human interaction.** Every step you can script, script — don't ask the
+user to click, type a prompt, or take a screenshot when a command can. Examples:
+drive a real Claude session from the command line (`claude -p "<prompt>"` in a
+target `cwd`) to generate genuine hook traffic instead of asking the user to
+prompt an agent; capture the screen with the dev screenshot tool instead of
+asking for a screenshot; feed a widget synthetic events through `ui_eval` /
+`_applyEvent` in a `./dev-run.sh` or headless session. Reserve the user's manual
+input for what truly can't be automated (a physical lock/unlock, a subjective
+"does this look right"), and batch those into a single, clearly-listed ask.
+
 ## Roles (subagents)
 
 Delegate independent, read-heavy or adversarial work to subagents so the main
 thread keeps the plan and the conclusions, not the file dumps. Pick the cheapest
 model that can do each job (see the project memory on model selection).
+
+**Run reproduction and bug-hunting loops in a subagent.** The iterative,
+context-hungry cycles — reproducing a bug, and searching for bugs/root causes
+(log spelunking, screenshot-and-inspect passes, trying inputs until it breaks) —
+must run inside a subagent, not on the main thread. They burn tokens and produce
+noise; the subagent returns only the conclusion (the deterministic repro, or the
+offending file/line and mechanism), keeping the main thread's context clean for
+the plan and the fix.
 
 - **Reproducer** — turns the report + [configuration](bug-report-howto.md) into a
   deterministic repro (a failing UI test, a script, or exact manual steps).

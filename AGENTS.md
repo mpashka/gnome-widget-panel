@@ -209,7 +209,15 @@ matching task:
   prompts for both.
 - **Fixing bugs:** [`docs/bug-fixing-workflow.md`](docs/bug-fixing-workflow.md) —
   the staged workflow (reproduce → analyse → fix → regression test → verify →
-  code review) and the subagent roles that drive it.
+  code review) and the subagent roles that drive it. **Dev before prod:** always
+  reproduce and fix in the dev environment first (`npm run test:ui`, `./dev-run.sh`)
+  — a prod change costs the user a full logout/login, so never send them through a
+  relogin to observe what a dev run can already show. **Minimise human interaction:**
+  script every step you can (drive Claude via `claude -p`, capture with the dev
+  screenshot tool, inject events via `ui_eval`) instead of asking the user to type,
+  click or screenshot; reserve manual asks for what truly can't be automated.
+  **Run reproduction and bug-hunting loops in a subagent** — those context-hungry,
+  noisy cycles return only their conclusion, keeping the main thread clean.
 - **Debugging a Shell-only bug (local, with the user):**
   [`Debugging methods`](docs/bug-fixing-workflow.md#debugging-methods). For any
   bug that only reproduces in a running GNOME Shell, follow this loop:
