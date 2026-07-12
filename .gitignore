@@ -4,7 +4,7 @@
 /extension/
 # Packed release zips produced by `npm run pack` / the Release workflow.
 /dist/
-node_modules/
+node_modules
 .dev/
 .idea/
 # throwaway feature-debug UI test scripts (copies of tests/ui/feature-debug.stub.sh)
