@@ -37,6 +37,20 @@ const DISPLAY = global.display;
 
 const shellVersion = parseFloat(Config.PACKAGE_VERSION);
 
+// GNOME 50's Mutter no longer exposes the `Meta.Cursor` enum that older Shell
+// releases used, so `Meta.Cursor.MOVE` / `.DEFAULT` throw "Meta.Cursor is
+// undefined". Guard the cursor change: when the enum is present we still show
+// the move/default cursor while dragging; otherwise the drag just keeps the
+// default cursor. Without this the thrown error aborted the drag cleanup and
+// the post-drag `_relocate` mid-way.
+function setDragCursor(name) {
+    try {
+        const value = Meta.Cursor?.[name];
+        if (value !== undefined)
+            DISPLAY.set_cursor(value);
+    } catch (_e) {}
+}
+
 const Alignment = {
     NONE: 0,
     TOP: 1,
@@ -121,7 +135,7 @@ const CtlActions = GObject.registerClass(
                             this._grab.dismiss();
                             this._grab = null;
                             this._actor.firstChild.opacity = 255;
-                            DISPLAY.set_cursor(Meta.Cursor.DEFAULT);
+                            setDragCursor('DEFAULT');
                             this._parent._relocate(true);
                         }
                     } else {
@@ -156,10 +170,7 @@ const CtlActions = GObject.registerClass(
                 this._actor.remove_style_pseudo_class('focus');
                 this._parent.style = null;
                 this._actor.firstChild.opacity = 0;
-                let cursor = Meta.Cursor.MOVE;
-                if (shellVersion < 47)
-                    cursor = Meta.Cursor.MOVE_OR_RESIZE_WINDOW;
-                DISPLAY.set_cursor(cursor);
+                setDragCursor(shellVersion < 47 ? 'MOVE_OR_RESIZE_WINDOW' : 'MOVE');
             }
         }
 
@@ -277,7 +288,13 @@ const CtlActions = GObject.registerClass(
                 GLib.Source.remove(this._timeoutId);
                 this._timeoutId = null;
             }
-            super.destroy();
+            // NB: this is a Clutter.Action, not an actor — it has no
+            // `super.destroy()`. Calling it threw "super.destroy is not a
+            // function", which aborted ControlButton.destroy() → the whole
+            // FloatingMiniPanel.destroy()/disable(). On screen lock that left the
+            // extension in ERROR so GNOME never re-enabled it on unlock and the
+            // widget vanished (issue #7). The action is released when its actor
+            // is destroyed; here we only need to drop the pending timeout.
         }
     }
 );

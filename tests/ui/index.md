@@ -23,6 +23,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-08-all-widgets.sh` — every registered widget loads in one panel, no JS errors.
 - `t-09-live-reload-ai-widgets.sh` — a Soup.Server-backed widget keeps a bound
   server across a live config reload (the port-bind race).
+- `t-13-disable-enable-no-crash.sh` — disabling and re-enabling the extension (the
+  path the shell drives around screen lock/unlock) does not throw; the panel
+  returns and no `super.destroy` / JS error is logged (issue #7 regression).
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
