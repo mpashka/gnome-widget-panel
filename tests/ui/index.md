@@ -11,7 +11,8 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   every `t-*.sh` in its own isolated headless shell session.
 - [`lib.sh`](lib.sh) — harness library: session bootstrap (`ui_start`), shell
   JS evaluation (`ui_eval`), polling waits, GSettings helpers, virtual-pointer
-  clicks, screenshots, assertions.
+  clicks (`ui_click` primary-button shorthand, `ui_click_button` for another
+  button and/or a press-and-hold duration), screenshots, assertions.
 - `t-01-panel-loads.sh` — panel loads, widgets in config order, no JS errors.
 - `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate.
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
@@ -23,6 +24,15 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-08-all-widgets.sh` — every registered widget loads in one panel, no JS errors.
 - `t-09-live-reload-ai-widgets.sh` — a Soup.Server-backed widget keeps a bound
   server across a live config reload (the port-bind race).
+- `t-10-right-click-menu.sh` — a right-click on the drag handle (`ctlBtn`) held
+  slightly longer than an instant tap still opens/closes its context menu
+  instead of misfiring the long-press temporary-hide (issue #3,
+  `controlButton.ts` `LONGPRESS_MS`); a genuine long-press still hides the
+  panel.
+- `t-11-drag-starts-immediately.sh` — dragging the drag handle starts on the
+  first pointer movement, not after the `LONGPRESS_MS` timer, so raising that
+  threshold for right-click does not make the widget feel "glued" (issue #3
+  follow-up, `controlButton.ts` MOTION handler).
 - `t-13-disable-enable-no-crash.sh` — disabling and re-enabling the extension (the
   path the shell drives around screen lock/unlock) does not throw; the panel
   returns and no `super.destroy` / JS error is logged (issue #7 regression).

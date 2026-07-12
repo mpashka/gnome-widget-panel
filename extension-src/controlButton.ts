@@ -60,6 +60,18 @@ const Alignment = {
     CENTER: 16,
 };
 
+// Press-and-hold threshold (ms) that distinguishes a click from a long-press
+// (orientation toggle on the middle button, temporary hide on the right
+// button). Must comfortably exceed how long an ordinary deliberate click can
+// hold the button down — 250ms was too tight: a normal (if slightly slow, e.g.
+// touchpad secondary-click) right-click routinely takes longer than that, so it
+// was misread as a long-press and fired `_tmpHide()` (hiding the whole panel
+// for 5s, see extension.ts `_tmpHide`) instead of opening the context menu —
+// see issue #3. Left-button dragging does NOT wait for this threshold: it
+// starts on the first pointer movement (see the MOTION handler), so raising it
+// never makes the widget feel "glued".
+const LONGPRESS_MS = 400;
+
 const CtlActions = GObject.registerClass(
     class CtlActions extends Clutter.Action {
         constructor(actor) {
@@ -75,6 +87,27 @@ const CtlActions = GObject.registerClass(
         vfunc_handle_event(event) {
             switch (event.type()) {
                 case Clutter.EventType.MOTION:
+                    // Start the drag on the FIRST movement while the primary
+                    // button is held, instead of waiting for the long-press
+                    // timer to enter drag mode. Gating drag-start on the timer
+                    // made the widget feel "glued" — it would not move until
+                    // LONGPRESS_MS elapsed — which got noticeably worse once #3
+                    // raised that threshold to 400ms to fix right-click. Now the
+                    // threshold only governs the middle/right long-press actions;
+                    // dragging is immediate. `_leftBtnLongPress()` guards on a
+                    // null grab, so the still-pending timer is a harmless no-op.
+                    if (
+                        this._grab === null &&
+                        !this._longpress &&
+                        event.get_state() & Clutter.ModifierType.BUTTON1_MASK
+                    ) {
+                        this._longpress = true;
+                        if (this._timeoutId) {
+                            GLib.Source.remove(this._timeoutId);
+                            this._timeoutId = null;
+                        }
+                        this._leftBtnLongPress();
+                    }
                     // Execute Drag
                     if (this._grab !== null) {
                         let [x, y] = event.get_coords();
@@ -102,7 +135,7 @@ const CtlActions = GObject.registerClass(
                     }
                     this._timeoutId = GLib.timeout_add(
                         GLib.PRIORITY_DEFAULT,
-                        250,
+                        LONGPRESS_MS,
                         () => {
                             if (!this._click) {
                                 this._longpress = true;
