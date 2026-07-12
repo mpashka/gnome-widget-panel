@@ -137,8 +137,12 @@ with sub-commands** plus a numbered **use-case** (in `MANUAL-TESTING.md`,
 git-excluded via `.git/info/exclude`); the user runs the steps and ticks each one
 `done / worked` or `couldn't do`. Design the script to **minimise manual steps**:
 
-- **Self-state:** persist progress/prior settings to a state file, read the live
-  system state on each run, and self-determine which step to run next.
+- **Self-state (drive the plan from a state file):** persist progress and any
+  prior settings to a **state file**. On each run the script reads that state
+  (and the live system state), **works out which numbered step is next, and runs
+  it** — so the user just re-runs the same script to advance instead of copying
+  different commands per step. Keep the state file in sync with the numbered
+  steps in `MANUAL-TESTING.md`.
 - **Self-driving where possible:** install the handlers the scenario needs
   (e.g. screen lock/unlock hooks), trigger the actions it can (`loginctl
   lock-session`, set a short idle timeout to lock by timeout), and start/stop its

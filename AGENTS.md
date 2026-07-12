@@ -210,13 +210,25 @@ matching task:
 - **Fixing bugs:** [`docs/bug-fixing-workflow.md`](docs/bug-fixing-workflow.md) —
   the staged workflow (reproduce → analyse → fix → regression test → verify →
   code review) and the subagent roles that drive it.
-- **Debugging a Shell-only bug:** [`Debugging methods`](docs/bug-fixing-workflow.md#debugging-methods) —
-  the preferred loop for bugs that only reproduce in a running GNOME Shell:
-  (a) add temporary `GWP-DBG` debug logging to find the cause and **strip it before
-  committing** the fix; (b) hand the user **one script + a numbered use-case** in
-  `MANUAL-TESTING.md` that self-determines the next step, self-installs
-  lock/unlock handlers, drives what it can and collects logs — then the agent
-  reads the logs and cleans up the script's artifacts afterwards.
+- **Debugging a Shell-only bug (local, with the user):**
+  [`Debugging methods`](docs/bug-fixing-workflow.md#debugging-methods). For any
+  bug that only reproduces in a running GNOME Shell, follow this loop:
+  1. **Always write the plan in `MANUAL-TESTING.md`** (git-excluded via
+     `.git/info/exclude`) as **numbered steps**. The user walks them in order and
+     ticks each `done/worked` or `couldn't do`.
+  2. **Minimise the user's manual steps with a state-driven script.** Give **one
+     script** that persists its progress and prior settings to a **state file**,
+     reads that state on each run to **work out which step is next**, and runs it
+     — so the user just re-runs the same script to advance. Have it self-install
+     the handlers the scenario needs (e.g. lock/unlock hooks), trigger the actions
+     it can, and start/collect its own logs. Only genuinely manual bits (typing a
+     password, judging a visual symptom, attaching a screenshot) stay with the user.
+  3. **Debug logging:** add temporary `GWP-DBG`/`GWP-AI` logs to find the cause,
+     then **strip them before committing** the fix (productionize on a clean
+     branch carrying only the fix + its regression test).
+  4. After the user reports a run, the **agent reads the logs itself and cleans up**
+     the script's artifacts — installed handlers, log capture, changed settings
+     (e.g. restore the idle timeout) and the state file.
 - **Code quality:** [`docs/code-quality.md`](docs/code-quality.md) — modularity,
   uniform naming across the whole codebase, and per-widget documentation, so that
   adding a feature or fixing a bug never gets harder over time.
