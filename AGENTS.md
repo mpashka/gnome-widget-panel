@@ -12,6 +12,45 @@ Write all code, comments, commit messages and agent-facing context in English.
 Documentation authored for AI agents (this file, `docs/`, and every `index.md`)
 is also English, regardless of the language a request is written in.
 
+## Orchestrated task files
+
+Use the personal `orchestrator-task` skill when the user invokes
+`/orchestrator-task <task-file>`, names that skill, or asks to execute a task
+file through an orchestrator. The skill owns adaptive decomposition,
+delegation, integration and final verification; it must not launch every
+possible role for every task.
+
+This repository's rules remain authoritative during that workflow. In
+particular, every agent must follow the documentation tree, use IDEA MCP for
+project file operations and commands, preserve the `extension-src/` source of
+truth, avoid overlapping writes, and run the verification required by the
+affected area. The orchestrator must pass these constraints and explicit
+file/component ownership to every delegated agent.
+
+Store durable orchestration state under `.ai/tasks/<task-id>/` only when the
+task is substantial enough to need it. Treat those files as temporary
+agent-facing work state unless the user explicitly asks to commit them; do not
+add them to the LLM documentation tree or directory indexes. Project
+documentation and the integrated code remain the final source of truth.
+
+## Plan files for complex work
+
+For any complex or multi-step task (a release effort, a multi-bug batch, a
+refactor spanning several files, anything you'd otherwise track in your head),
+**write a plan to a file first and keep it updated as you go.** The plan lists
+the stages/bugs with an explicit status marker per item, and **you tick each
+stage off in the file the moment it is done** — the file, not memory, is the
+source of truth for progress, so work survives a context reset or handoff.
+
+- Use a checkbox/legend the file states up front (e.g. `[ ]` todo · `[~]` in
+  progress · `[X]` done · `[!]` blocked). Update the marker as the item moves.
+- These plan files are **temporary, agent-facing work state**: keep them out of
+  git (git-exclude via `.git/info/exclude`, like `MANUAL-TESTING.md`) unless the
+  user explicitly asks to commit one. A release plan lives in e.g.
+  `RELEASE-PLAN.md`; per-bug manual test steps live in `MANUAL-TESTING.md`.
+- Trivial one-step changes don't need a plan file — this is for work whose scope
+  or length would otherwise lose track of what's done vs pending.
+
 ## Source of truth: `extension-src/`, never `extension/`
 
 TypeScript in `extension-src/` is the source of truth; `extension/**/*.js` is
