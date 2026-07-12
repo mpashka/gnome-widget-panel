@@ -107,6 +107,55 @@ merge.
 **Exit:** review findings resolved; diff is minimal, typed at its boundaries,
 documented, and tested.
 
+## Debugging methods
+
+Most real bugs here live in dynamic GJS/Shell code that cannot be reproduced
+outside a running GNOME Shell, and some triggers (screen lock/unlock, suspend,
+monitor changes) need a real session the agent cannot drive. Two collaboration
+patterns make that tractable — both were used to root-cause issue #7 (the
+lock/unlock giant-icon bug):
+
+### A. Debug-logging fix loop
+
+When the root cause is not obvious from reading the code:
+
+1. The agent adds **temporary instrumentation** — a small `GWP-DBG` logging
+   helper gated by a `const GWP_DEBUG` flag — at the suspected lifecycle points
+   (enable/disable, constructor, `destroy()`, relocate, signal handlers), logging
+   the state that could explain the symptom (sizes, scale factors, session mode).
+   This goes on the bug's branch; it is instrumentation, not a fix.
+2. The scenario is **run jointly** (see method B): the user reproduces, the agent
+   reads the emitted logs from the journal and pins the mechanism.
+3. **Before committing the fix, the debug logs are removed.** Productionize on a
+   clean branch off `main` that carries only the fix + its regression test — no
+   `GWP-DBG` lines. (Archive the throwaway debug branch if useful.)
+
+### B. Scripted scenario the user walks through
+
+The preferred way to exercise a manual repro. The agent produces **one script
+with sub-commands** plus a numbered **use-case** (in `MANUAL-TESTING.md`,
+git-excluded via `.git/info/exclude`); the user runs the steps and ticks each one
+`done / worked` or `couldn't do`. Design the script to **minimise manual steps**:
+
+- **Self-state:** persist progress/prior settings to a state file, read the live
+  system state on each run, and self-determine which step to run next.
+- **Self-driving where possible:** install the handlers the scenario needs
+  (e.g. screen lock/unlock hooks), trigger the actions it can (`loginctl
+  lock-session`, set a short idle timeout to lock by timeout), and start/stop its
+  own **log collection**.
+- **Hand back the minimum:** only the genuinely manual bits (typing the unlock
+  password, judging a visual symptom, attaching a screenshot/screencast).
+
+After the user reports the scenario was run, the **agent reads the logs itself**
+(from the journal / collected files) and then **cleans up the script's
+artifacts** — removes installed handlers, stops log collection, restores changed
+settings (e.g. the idle timeout), and deletes temporary state — so the system is
+left as it was.
+
+This turns a fuzzy "it breaks sometimes after unlock" into a repeatable,
+low-effort loop, and the scenario itself becomes the regression check that a
+later automated test ([stage 4](#4-regression-test-create-or-update)) encodes.
+
 ## Close-out
 - **Squash-merge the branch into `main`** so `main` has exactly one commit for the
   issue; end the message with `Fixes #N` so it closes on merge; delete the branch

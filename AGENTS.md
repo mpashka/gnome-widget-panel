@@ -210,6 +210,13 @@ matching task:
 - **Fixing bugs:** [`docs/bug-fixing-workflow.md`](docs/bug-fixing-workflow.md) —
   the staged workflow (reproduce → analyse → fix → regression test → verify →
   code review) and the subagent roles that drive it.
+- **Debugging a Shell-only bug:** [`Debugging methods`](docs/bug-fixing-workflow.md#debugging-methods) —
+  the preferred loop for bugs that only reproduce in a running GNOME Shell:
+  (a) add temporary `GWP-DBG` debug logging to find the cause and **strip it before
+  committing** the fix; (b) hand the user **one script + a numbered use-case** in
+  `MANUAL-TESTING.md` that self-determines the next step, self-installs
+  lock/unlock handlers, drives what it can and collects logs — then the agent
+  reads the logs and cleans up the script's artifacts afterwards.
 - **Code quality:** [`docs/code-quality.md`](docs/code-quality.md) — modularity,
   uniform naming across the whole codebase, and per-widget documentation, so that
   adding a feature or fixing a bug never gets harder over time.
