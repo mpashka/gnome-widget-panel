@@ -51,6 +51,13 @@ ui_eval "plugin('ai-agent-status')._applyEvent('statusline-activity','s1','/home
 assert_true "plugin('ai-agent-status')._sessions.get('s1').state === 'waiting'" \
     "statusline activity does not demote waiting"
 
+# Issue #21: when the user actually ANSWERS a waiting session, Claude fires a
+# real UserPromptSubmit (not a background statusline ping) — the session must
+# leave 'waiting' and go back to 'thinking', not stay stuck asking for input.
+ui_eval "plugin('ai-agent-status')._applyEvent('UserPromptSubmit','s1','/home/u/proj-a'); true" >/dev/null
+assert_true "plugin('ai-agent-status')._sessions.get('s1').state === 'thinking'" \
+    "issue #21: answering a waiting session moves it to thinking, not stuck waiting"
+
 # All sessions end -> back to the placeholder dot.
 ui_eval "for (const id of ['s1','s2']) plugin('ai-agent-status')._applyEvent('SessionEnd', id); true" >/dev/null
 assert_true "plugin('ai-agent-status')._sortedSessions().length === 0" \
