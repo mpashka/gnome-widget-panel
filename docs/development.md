@@ -125,6 +125,26 @@ session's configuration (previously `widgets.json` was shared between them).
 - **GNOME on Xorg.** Log in once choosing “GNOME on Xorg”, then reload the real
   shell with `Alt+F2` → `r` → Enter — no logout per change. X11 only.
 
+## Screenshots of the real session (`@tag:dev-screenshot`)
+
+External capture is blocked on GNOME 44+ (see the note above:
+`org.gnome.Shell.Screenshot` → `AccessDenied`, `gnome-screenshot`/portal/grim all
+unusable for an unattended agent). When you must see the user's **real** session —
+not a headless/dev-run one — use the dev-only screenshot driver, which captures
+from *inside* gnome-shell via the internal `Shell.Screenshot`:
+
+```bash
+tools/dev-screenshot/gwp-shot install   # copy + enable (fresh install needs one relogin)
+tools/dev-screenshot/gwp-shot panel     # PNG of just the widget panel
+tools/dev-screenshot/gwp-shot full      # whole screen
+tools/dev-screenshot/gwp-shot uninstall # remove when the debug session is done
+```
+
+It is **not part of the product** (lives under `tools/`, never packed into a
+release). Full details in [`../tools/dev-screenshot/README.md`](../tools/dev-screenshot/README.md).
+For anything reproducible without the real session, prefer the headless harness's
+`ui_screenshot` (`tests/ui/lib.sh`), which uses the same API.
+
 ## Notes and caveats
 
 - A shell killed mid-startup leaves `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions`,

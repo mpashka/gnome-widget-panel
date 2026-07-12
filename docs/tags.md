@@ -45,6 +45,7 @@ grep -rn "@tag:<slug>" extension-src docs tests
 | `main-panel` | GNOME top-bar (main panel) behaviour control: hide / auto-hide / visible, the built-in Hide Top Bar replacement (`extension-src/mainPanel.ts`, `extension.ts` gating, `prefs.ts` group + conflict detection, the `main-panel` schema key, `docs/object-model.md`, `docs/preferences.md`). |
 | `dev` | Developer reload-without-logout workflow: symlink install and nested-shell runner (`dev-install.sh`, `dev-run.sh`, `docs/development.md`). |
 | `ui-testing` | Headless UI test harness: isolated headless shell + test-driver extension + regression tests and feature-debug stub (`tests/ui/`, `docs/ui-testing.md`). |
+| `dev-screenshot` | Dev-only in-session screenshot driver for debugging UI bugs: an internal-`Shell.Screenshot` D-Bus extension + CLI, never shipped in a release (`tools/dev-screenshot/`, `docs/development.md`). |
 
 Per-widget tags live on that widget's `index.ts` (code) and `index.md` (docs)
 under `extension-src/plugins/<id>/`.

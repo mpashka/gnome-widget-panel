@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# @tag:dev-screenshot
+# CLI for the dev-only in-session screenshot driver (gwp-dev-shot@gwp.dev).
+# It captures the GNOME session via the in-process Shell.Screenshot, which
+# external tools can't use on GNOME 44+ (see tools/dev-screenshot/README.md).
+#
+# Typical debug session (agent-driven):
+#   tools/dev-screenshot/gwp-shot install   # copy + enable (fresh install may need one relogin)
+#   tools/dev-screenshot/gwp-shot panel      # PNG of just the widget panel -> agent reads it
+#   tools/dev-screenshot/gwp-shot full       # PNG of the whole screen
+#   tools/dev-screenshot/gwp-shot uninstall  # disable + remove when done
+set -uo pipefail
+
+UUID="gwp-dev-shot@gwp.dev"
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SRC="$HERE/$UUID"
+DEST="$HOME/.local/share/gnome-shell/extensions/$UUID"
+DBUS=(gdbus call --session --dest org.gwp.DevShot --object-path /org/gwp/DevShot --method)
+OUTDIR="${GWP_SHOT_DIR:-$HOME/Pictures/gwp-shots}"
+
+_stamp() { date +%Y%m%d-%H%M%S 2>/dev/null || echo shot; }
+
+# Parse a `(true, 'payload')` gdbus reply -> prints payload, returns its bool.
+_reply() {
+    local out="$1"
+    local payload="${out#*, \'}"; payload="${payload%\'*}"
+    printf '%s\n' "$payload"
+    [[ "$out" == "(true,"* ]]
+}
+
+_running() { gdbus introspect --session --dest org.gwp.DevShot \
+    --object-path /org/gwp/DevShot >/dev/null 2>&1; }
+
+_need_running() {
+    _running && return 0
+    echo "org.gwp.DevShot is not on the bus. Run: $0 install   (a fresh install may need one relogin, then '$0 enable')." >&2
+    exit 1
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  install)
+    mkdir -p "$DEST"
+    cp -a "$SRC/." "$DEST/"
+    echo "Installed $UUID -> $DEST"
+    gnome-extensions enable "$UUID" 2>/dev/null \
+      && echo "Enabled (live)." \
+      || echo "Could not enable yet — gnome-shell hasn't scanned the new extension. Log out/in once, then: $0 enable"
+    ;;
+  enable)  gnome-extensions enable  "$UUID" && echo "Enabled $UUID"  ;;
+  disable) gnome-extensions disable "$UUID" && echo "Disabled $UUID" ;;
+  uninstall)
+    gnome-extensions disable "$UUID" 2>/dev/null || true
+    rm -rf "$DEST"
+    echo "Removed $DEST (disable takes effect immediately; the module unloads on next relogin)."
+    ;;
+  status)
+    gnome-extensions info "$UUID" 2>&1 | grep -E "Name|State|Enabled" || echo "not installed"
+    _running && echo "bus: org.gwp.DevShot UP" || echo "bus: org.gwp.DevShot down"
+    ;;
+  full)
+    _need_running
+    out="${1:-$OUTDIR/full-$(_stamp).png}"; mkdir -p "$(dirname -- "$out")"
+    res="$("${DBUS[@]}" org.gwp.DevShot.Screenshot false "$out")"
+    if _reply "$res" >/dev/null; then echo "Saved $out"; else echo "FAILED: $(_reply "$res")" >&2; exit 1; fi
+    ;;
+  panel)
+    _need_running
+    out="${1:-$OUTDIR/panel-$(_stamp).png}"; mkdir -p "$(dirname -- "$out")"
+    b="$("${DBUS[@]}" org.gwp.DevShot.PanelBounds)"
+    json="$(_reply "$b")" || { echo "FAILED: $json" >&2; exit 1; }
+    read -r x y w h < <(echo "$json" | sed -E 's/[^0-9]+/ /g' | awk '{print $1, $2, $3, $4}')
+    res="$("${DBUS[@]}" org.gwp.DevShot.ScreenshotArea "$x" "$y" "$w" "$h" "$out")"
+    if _reply "$res" >/dev/null; then echo "Saved $out (panel ${w}x${h} @ ${x},${y})"; else echo "FAILED: $(_reply "$res")" >&2; exit 1; fi
+    ;;
+  area)
+    _need_running
+    [[ $# -ge 4 ]] || { echo "usage: $0 area X Y W H [out.png]" >&2; exit 2; }
+    x="$1" y="$2" w="$3" h="$4"; out="${5:-$OUTDIR/area-$(_stamp).png}"; mkdir -p "$(dirname -- "$out")"
+    res="$("${DBUS[@]}" org.gwp.DevShot.ScreenshotArea "$x" "$y" "$w" "$h" "$out")"
+    if _reply "$res" >/dev/null; then echo "Saved $out"; else echo "FAILED: $(_reply "$res")" >&2; exit 1; fi
+    ;;
+  *)
+    sed -n '2,16p' "${BASH_SOURCE[0]}"
+    ;;
+esac

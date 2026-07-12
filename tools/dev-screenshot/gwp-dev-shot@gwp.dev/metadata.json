@@ -1,0 +1,7 @@
+{
+  "uuid": "gwp-dev-shot@gwp.dev",
+  "name": "GWP Dev Screenshot",
+  "description": "Dev-only in-session screenshot driver for debugging GNOME Widget Panel UI bugs. Exports org.gwp.DevShot (Screenshot / ScreenshotArea / PanelBounds) on the session bus, capturing via the in-process Shell.Screenshot (which external callers cannot use). NOT part of the product and never shipped in a release; an agent installs it for a debug session and removes it after. See tools/dev-screenshot/README.md.",
+  "shell-version": ["48", "49", "50", "51"],
+  "url": "https://github.com/mpashka/gnome-widget-panel"
+}
