@@ -31,6 +31,7 @@ import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {clickModifiers} from './clickModifiers.js';
 import * as SystemInfo from './systemInfo.js';
 
 const DISPLAY = global.display;
@@ -172,9 +173,12 @@ const CtlActions = GObject.registerClass(
                             this._parent._relocate(true);
                         }
                     } else {
-                        // Button released after click (quick release)
+                        // Button released after click (quick release). Keep only
+                        // Shift/Ctrl: a real release carries lock modifiers
+                        // (NumLock=0x10, CapsLock) and button masks, which made
+                        // every `case` miss so the click did nothing (issue #3).
                         this._click = true;
-                        let state = event.get_state();
+                        let state = clickModifiers(event.get_state());
                         switch (event.get_button()) {
                             case Clutter.BUTTON_PRIMARY:
                                 this._leftBtnClick(state);
@@ -218,57 +222,20 @@ const CtlActions = GObject.registerClass(
             this._parent._tmpHide();
         }
 
-        // Left click
-        _leftBtnClick(state) {
-            switch (state) {
-                case 0:
-                    // No-op: a plain left click on the drag handle must not open
-                    // the overview / app grid. The handle is only for dragging
-                    // and the (long-press) menu now; a dedicated activities /
-                    // gnome-menu widget provides that entry point instead.
-                    break;
-                case Clutter.ModifierType.SHIFT_MASK:
-                    this._actor._doAlign(Alignment.LEFT | Alignment.TOP);
-                    break;
-                case Clutter.ModifierType.CONTROL_MASK:
-                    if (this._actor[this._actor.orientStr]) {
-                        this._actor._doAlign(Alignment.RIGHT | Alignment.TOP);
-                    } else {
-                        this._actor._doAlign(Alignment.LEFT | Alignment.BOTTOM);
-                    }
-                    break;
-                default:
-                    break;
-            }
-        }
+        // Left click — intentionally a no-op. A plain left click on the drag
+        // handle must not open the overview / app grid (the handle is only for
+        // dragging and the right-click menu; a dedicated gnome-menu widget is the
+        // entry point instead). The former Shift/Ctrl+left-click alignment
+        // shortcuts were removed — alignment lives in the preferences window.
+        _leftBtnClick(_state) {}
 
         // Middle click
         _middleBtnClick(state) {
-            switch (state) {
-                case 0:
-                    this._parent._indsDrawer.toggle();
-                    break;
-                case Clutter.ModifierType.SHIFT_MASK:
-                    if (this._actor[this._actor.orientStr]) {
-                        this._actor._doAlign(Alignment.CENTER | Alignment.LEFT);
-                    } else {
-                        this._actor._doAlign(Alignment.CENTER | Alignment.TOP);
-                    }
-                    break;
-                case Clutter.ModifierType.CONTROL_MASK:
-                    if (this._actor[this._actor.orientStr]) {
-                        this._actor._doAlign(
-                            Alignment.CENTER | Alignment.RIGHT
-                        );
-                    } else {
-                        this._actor._doAlign(
-                            Alignment.CENTER | Alignment.BOTTOM
-                        );
-                    }
-                    break;
-                default:
-                    break;
-            }
+            // Only a plain middle-click acts (toggle the indicators drawer).
+            // Shift/Ctrl+middle-click alignment shortcuts were removed with the
+            // right-click ones — alignment lives in the preferences window.
+            if (state === 0)
+                this._parent._indsDrawer.toggle();
         }
 
         // Right click
@@ -287,17 +254,11 @@ const CtlActions = GObject.registerClass(
                         this._actor.menu.open();
                     }
                     break;
-                case Clutter.ModifierType.SHIFT_MASK:
-                    if (this._actor[this._actor.orientStr]) {
-                        this._actor._doAlign(Alignment.LEFT | Alignment.BOTTOM);
-                    } else {
-                        this._actor._doAlign(Alignment.RIGHT | Alignment.TOP);
-                    }
-                    break;
-                case Clutter.ModifierType.CONTROL_MASK:
-                    this._actor._doAlign(Alignment.RIGHT | Alignment.BOTTOM);
-                    break;
                 default:
+                    // Shift/Ctrl+right-click no longer aligns the panel to a
+                    // corner — panel alignment lives in the preferences window.
+                    // (Those orphaned shortcuts also fired unexpectedly once #3
+                    // stopped masking NumLock out of the click state.)
                     break;
             }
         }
