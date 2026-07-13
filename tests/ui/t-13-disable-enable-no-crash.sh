@@ -15,12 +15,13 @@ CTL="panel && find(panel, x => x.name === 'ctlBtn')"
 assert_true "$CTL" "control button present initially"
 
 # Toggle the extension off and back on via the ExtensionManager — the same path
-# the shell drives around screen lock/unlock.
-ui_eval "
-    Main.extensionManager.disableExtension('$GWP_UUID');
-    Main.extensionManager.enableExtension('$GWP_UUID');
-    'toggled'
-" >/dev/null
+# the shell drives around screen lock/unlock. Disable and enable must land in
+# SEPARATE main-loop turns: doing both in one eval tick makes the manager swallow
+# the enable while the disable is still transitioning, leaving the extension
+# DISABLED (a harness artefact, not the ERROR this test guards against). Two evals
+# guarantee the disable settles before the enable.
+ui_eval "Main.extensionManager.disableExtension('$GWP_UUID'); 'disabled'" >/dev/null
+ui_eval "Main.extensionManager.enableExtension('$GWP_UUID'); 'enabled'" >/dev/null
 
 ui_wait_js "$CTL" \
     || fail "control button did not come back after disable/enable (extension likely stuck in ERROR)"
