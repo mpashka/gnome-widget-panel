@@ -11,3 +11,6 @@ node_modules
 tests/ui/local-*
 # Local planning scratch notes (not part of the repo)
 docs/TODO-in.md.txt
+
+# Local, non-git debug/investigation archive (per-bug context + debug scripts)
+.archive/
