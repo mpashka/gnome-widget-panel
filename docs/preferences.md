@@ -133,6 +133,17 @@ directories (`_hideTopBarStatus`):
 - **installed but disabled**: shows a softer `warning` row noting it can be
   removed, and leaves the combo usable.
 
+The warning row carries a **Remove…** button (`destructive-action`). It opens an
+`Adw.AlertDialog` confirmation, then uninstalls Hide Top Bar through the Shell's
+own `org.gnome.Shell.Extensions.UninstallExtension` D-Bus method — the same call
+the Extensions app makes (`_confirmRemoveHideTopBar` / `_uninstallHideTopBar`).
+That method only removes a user-installed copy (`~/.local/share`); a system copy
+under `/usr/share` returns `false`, and we toast that it must be removed manually.
+The banner (title/subtitle/`error`↔`warning` class, the combo's sensitivity and
+the whole row's visibility) is driven by a single `applyHtbStatus` closure that
+re-runs after an uninstall, so the UI updates in place without reopening
+preferences.
+
 ## About and GitHub issue integration
 
 An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added by

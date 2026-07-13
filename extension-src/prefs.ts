@@ -120,7 +120,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         rebuild();
 
         this._addPanelGroups(page);
-        this._addMainPanelGroup(page);
+        this._addMainPanelGroup(page, window);
         this._addAboutGroup(page);
     }
 
@@ -166,8 +166,8 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     // live by the MainPanelController. When the standalone "Hide Top Bar"
     // extension is present it shows a banner (and disables the row while that
     // extension is actively controlling the bar, to avoid two controllers
-    // fighting over it).
-    _addMainPanelGroup(page) {
+    // fighting over it) plus a button that uninstalls it.
+    _addMainPanelGroup(page, window) {
         const settings = this.getSettings();
         const group = new Adw.PreferencesGroup({
             title: 'Main panel (top bar)',
@@ -178,29 +178,25 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         });
         page.add(group);
 
-        const {enabled: htbEnabled, installed: htbInstalled} =
-            this._hideTopBarStatus();
-
-        if (htbInstalled) {
-            const warn = new Adw.ActionRow({
-                title: htbEnabled
-                    ? 'Hide Top Bar is enabled'
-                    : 'Hide Top Bar is still installed',
-                subtitle: htbEnabled
-                    ? 'It already controls the top bar. Disable or remove it ' +
-                      'to use this setting — otherwise the two conflict.'
-                    : 'This widget now provides the same feature. You can ' +
-                      'remove the “Hide Top Bar” extension.',
-            });
-            warn.add_prefix(
-                new Gtk.Image({
-                    icon_name: 'dialog-warning-symbolic',
-                    valign: Gtk.Align.CENTER,
-                })
-            );
-            warn.add_css_class(htbEnabled ? 'error' : 'warning');
-            group.add(warn);
-        }
+        // Conflict banner for the standalone "Hide Top Bar" extension. Built
+        // once and shown/updated by `applyHtbStatus` so the UI can refresh in
+        // place after an uninstall. Carries a "Remove…" button that uninstalls
+        // that extension via the Shell's D-Bus interface.
+        const warn = new Adw.ActionRow();
+        warn.add_prefix(
+            new Gtk.Image({
+                icon_name: 'dialog-warning-symbolic',
+                valign: Gtk.Align.CENTER,
+            })
+        );
+        const removeButton = new Gtk.Button({
+            label: 'Remove…',
+            valign: Gtk.Align.CENTER,
+            tooltip_text: 'Uninstall the “Hide Top Bar” extension',
+        });
+        removeButton.add_css_class('destructive-action');
+        warn.add_suffix(removeButton);
+        group.add(warn);
 
         const shortLabels = MAIN_PANEL_MODES.map((m) => m.label);
         const model = Gtk.StringList.new(shortLabels);
@@ -221,9 +217,35 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         });
         row.list_factory = listFactory;
 
-        // While Hide Top Bar is actively controlling the bar, our setting is
-        // meaningless (the controller stands down), so disable the row.
-        row.sensitive = !htbEnabled;
+        // Reflect the current "Hide Top Bar" state into the banner + the row's
+        // sensitivity. Re-run after an uninstall so the UI updates in place
+        // without reopening preferences. `enabled` (actively controlling the
+        // bar) is a hard conflict shown as an error that also disables the row;
+        // `installed` (present but inactive) is a softer warning. When it is no
+        // longer installed the whole banner (and its Remove button) hides.
+        const applyHtbStatus = () => {
+            const {enabled, installed} = this._hideTopBarStatus();
+            warn.visible = installed;
+            warn.title = enabled
+                ? 'Hide Top Bar is enabled'
+                : 'Hide Top Bar is still installed';
+            warn.subtitle = enabled
+                ? 'It already controls the top bar. Disable or remove it to ' +
+                  'use this setting — otherwise the two conflict.'
+                : 'This widget now provides the same feature. You can remove ' +
+                  'the “Hide Top Bar” extension.';
+            warn.remove_css_class('error');
+            warn.remove_css_class('warning');
+            warn.add_css_class(enabled ? 'error' : 'warning');
+            // While Hide Top Bar is actively controlling the bar, our setting is
+            // meaningless (the controller stands down), so disable the row.
+            row.sensitive = !enabled;
+        };
+        applyHtbStatus();
+
+        removeButton.connect('clicked', () =>
+            this._confirmRemoveHideTopBar(window, applyHtbStatus)
+        );
 
         const readIndex = () => {
             const nick = settings.get_string('main-panel');
@@ -258,6 +280,82 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         const changedId = settings.connect('changed::main-panel', sync);
         row.connect('destroy', () => settings.disconnect(changedId));
         group.add(row);
+    }
+
+    // Confirm before uninstalling the standalone "Hide Top Bar" extension.
+    // Removal is reversible (reinstallable from EGO) but still surprising, so we
+    // gate the D-Bus uninstall behind a destructive AlertDialog. `onDone` re-runs
+    // `applyHtbStatus` to refresh the banner in place.
+    _confirmRemoveHideTopBar(window, onDone) {
+        const dialog = new Adw.AlertDialog({
+            heading: 'Remove Hide Top Bar?',
+            body:
+                'This uninstalls the standalone “Hide Top Bar” extension ' +
+                `(${HIDE_TOP_BAR_UUID}). You can reinstall it later from ` +
+                'extensions.gnome.org.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+        dialog.add_response('remove', 'Remove');
+        dialog.set_response_appearance(
+            'remove',
+            Adw.ResponseAppearance.DESTRUCTIVE
+        );
+        dialog.set_default_response('cancel');
+        dialog.set_close_response('cancel');
+        dialog.connect('response', (_d, response) => {
+            if (response === 'remove')
+                this._uninstallHideTopBar(window, onDone);
+        });
+        dialog.present(window);
+    }
+
+    // Uninstall "Hide Top Bar" through the Shell's own D-Bus interface
+    // (`org.gnome.Shell.Extensions.UninstallExtension`) — the same call the
+    // Extensions app makes. It only removes user-installed extensions
+    // (`~/.local/share`); a system copy under `/usr/share` cannot be removed
+    // this way, in which case the call returns false and we tell the user to
+    // remove it manually. Runs asynchronously; on completion we toast the result
+    // and refresh the banner via `onDone`.
+    _uninstallHideTopBar(window, onDone) {
+        const toast = (title) => {
+            try {
+                window?.add_toast(new Adw.Toast({title}));
+            } catch (_e) {
+                // Window may not support toasts; the banner refresh still runs.
+            }
+        };
+        try {
+            Gio.DBus.session.call(
+                'org.gnome.Shell.Extensions',
+                '/org/gnome/Shell/Extensions',
+                'org.gnome.Shell.Extensions',
+                'UninstallExtension',
+                new GLib.Variant('(s)', [HIDE_TOP_BAR_UUID]),
+                new GLib.VariantType('(b)'),
+                Gio.DBusCallFlags.NONE,
+                -1,
+                null,
+                (source, res) => {
+                    let ok = false;
+                    try {
+                        ok = source.call_finish(res).deepUnpack()[0];
+                    } catch (e) {
+                        logError(e, 'widget-panel: UninstallExtension failed');
+                    }
+                    toast(
+                        ok
+                            ? 'Hide Top Bar removed.'
+                            : 'Could not remove Hide Top Bar automatically — ' +
+                                  'remove it from the Extensions app.'
+                    );
+                    onDone();
+                }
+            );
+        } catch (e) {
+            logError(e, 'widget-panel: UninstallExtension call failed');
+            toast('Could not remove Hide Top Bar — remove it manually.');
+            onDone();
+        }
     }
 
     // "About" group at the bottom of the main page: extension name + version
