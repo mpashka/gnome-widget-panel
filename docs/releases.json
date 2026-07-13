@@ -2,6 +2,58 @@
   "schema": 1,
   "releases": [
     {
+      "version": "0.1.1",
+      "code": 2,
+      "date": "2026-07-13",
+      "shellVersions": [
+        "46",
+        "47",
+        "48",
+        "49",
+        "50"
+      ],
+      "url": "https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.1",
+      "milestone": "v0.1.1",
+      "issues": [
+        {
+          "number": 21,
+          "title": "[Bug]: Claude AI agent status stays waiting after the user answers",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/21",
+          "category": "fixes"
+        },
+        {
+          "number": 19,
+          "title": "AI widgets get no data: Claude hooks read empty stdin (fd 0 is a socket, not /dev/stdin)",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/19",
+          "category": "fixes"
+        },
+        {
+          "number": 16,
+          "title": "Settings UI: clicking a widget's settings does nothing for widgets without a colour-button tooltip (cpu-load-monitor)",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/16",
+          "category": "fixes"
+        },
+        {
+          "number": 7,
+          "title": "Gigantic font/icons after auto-lock + unlock; widget shown on the lock screen",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/7",
+          "category": "fixes"
+        },
+        {
+          "number": 6,
+          "title": "ai-agent-usage: token graph empty for Claude Code (no request markers, no token-load history)",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/6",
+          "category": "fixes"
+        },
+        {
+          "number": 3,
+          "title": "Right-click on widget drag area does nothing (context menu never opens, widget flickers/reloads)",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/3",
+          "category": "fixes"
+        }
+      ]
+    },
+    {
       "version": "0.1.0",
       "code": 1,
       "date": "2026-07-10",
