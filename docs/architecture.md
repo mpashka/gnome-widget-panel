@@ -25,7 +25,11 @@ local CPU monitor. `npm run build` generates installable GJS modules under
 `configStore.ts`'s `loadWidgetConfig(settings)`, falling back to the built-in
 default configuration (`defaultWidgetConfig()` in `widgetConfig.ts`) when the
 key is empty or invalid. A legacy `~/.config/gnome-widget-panel/widgets.json`
-is migrated into the key once on first load.
+is migrated into the key once by `configStore.ts`'s async
+`migrateLegacyConfigIfNeeded(settings)`, kicked off (best-effort, not awaited)
+from `extension.ts` `enable()`. `loadWidgetConfig` itself stays synchronous (the
+panel build needs its result immediately); when the migration writes the key the
+panel's `changed::widgets` handler reloads the widgets.
 
 The configuration is an ordered list. `enabled: false` disables a plugin; array
 order defines panel order. Unknown enabled plugin IDs fail explicitly instead of

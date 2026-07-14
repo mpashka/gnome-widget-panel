@@ -115,16 +115,16 @@ export function fillWidgetPreferences(context) {
         label: 'Configure',
         valign: Gtk.Align.CENTER,
     });
-    const refreshClaude = () => setStatus(claudeStatus, ClaudeHook.configStatus());
-    configure.connect('clicked', () => {
+    const refreshClaude = async () => setStatus(claudeStatus, await ClaudeHook.configStatus());
+    configure.connect('clicked', async () => {
         try {
             if (!current.claudeSecret)
                 current.claudeSecret = GLib.uuid_string_random();
             const port = Number(current.claudePort) || DEFAULT_CLAUDE_PORT;
             // Install the port-independent hook and register this endpoint so
             // Claude feeds it; a running widget re-registers on reload.
-            ClaudeHook.installHook();
-            ClaudeHook.registerPort(port, current.claudeSecret);
+            await ClaudeHook.installHook();
+            await ClaudeHook.registerPort(port, current.claudeSecret);
             commit();
         } catch (error) {
             logError(error, 'Cannot configure Claude Code hook');

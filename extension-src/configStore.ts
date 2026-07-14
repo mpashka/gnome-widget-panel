@@ -21,6 +21,10 @@ import {
     serializeWidgetConfig,
 } from './widgetConfig.js';
 
+// Async legacy-file read keeps the one-time migration off the Shell main loop
+// (EGO forbids synchronous file I/O there).
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
+
 export const WIDGETS_KEY = 'widgets';
 
 const LEGACY_DIR_NAME = 'gnome-widget-panel';
@@ -35,14 +39,16 @@ export function legacyConfigPath(): string {
     ]);
 }
 
-function readLegacyFile(): WidgetConfig | null {
+async function readLegacyFile(): Promise<WidgetConfig | null> {
     const path = legacyConfigPath();
     if (!GLib.file_test(path, GLib.FileTest.EXISTS))
         return null;
     try {
-        const [ok, contents] = GLib.file_get_contents(path);
-        if (!ok)
-            return null;
+        const file = Gio.File.new_for_path(path);
+        // Promisified load_contents_async resolves to [contents, etag] (the
+        // Uint8Array and the etag string) — NO leading success boolean; it
+        // throws on failure, handled by the surrounding try/catch.
+        const [contents] = await file.load_contents_async(null);
         return parseWidgetConfig(new TextDecoder().decode(contents));
     } catch (error) {
         logError(error, `widget-panel: invalid legacy config at ${path}`);
@@ -50,14 +56,27 @@ function readLegacyFile(): WidgetConfig | null {
     }
 }
 
-// One-time migration: import the legacy widgets.json into the GSettings key
-// and rename the file so it is visibly no longer the source of truth. Both the
-// shell and the preferences process may race here; the operations are
-// idempotent (same parsed content, second rename fails silently).
-function migrateLegacyConfig(settings: Gio.Settings): WidgetConfig | null {
-    const config = readLegacyFile();
+/**
+ * One-time async migration: if the `widgets` GSettings key is still empty and a
+ * legacy `widgets.json` exists, import it into the key and rename the file so it
+ * is visibly no longer the source of truth. Writing the key fires the panel's
+ * `changed::widgets` handler, which reloads the widgets. Returns early (no I/O)
+ * once the key is set. Both the shell and preferences process may race here; the
+ * operations are idempotent (same parsed content, second rename fails silently).
+ *
+ * `loadWidgetConfig` no longer migrates so it can stay synchronous for the
+ * enable()-time panel build; call this once (best-effort, not awaited) from
+ * `extension.ts` enable().
+ */
+export async function migrateLegacyConfigIfNeeded(
+    settings: Gio.Settings
+): Promise<void> {
+    // Already configured/migrated: nothing to do (and no file I/O).
+    if (settings.get_string(WIDGETS_KEY))
+        return;
+    const config = await readLegacyFile();
     if (!config)
-        return null;
+        return;
     try {
         settings.set_string(WIDGETS_KEY, serializeWidgetConfig(config));
         const from = legacyConfigPath();
@@ -69,20 +88,21 @@ function migrateLegacyConfig(settings: Gio.Settings): WidgetConfig | null {
     } catch (error) {
         logError(error, 'widget-panel: legacy config migration failed');
     }
-    return config;
 }
 
 /**
  * Read the effective configuration from the `widgets` GSettings key, degrading
  * gracefully so a broken or incompatible value can never crash the panel:
- * empty key → legacy-file migration → built-in default; invalid JSON → the
- * built-in default. Errors are logged, not thrown. Malformed individual widget
- * entries are skipped by `parseWidgetConfig`.
+ * empty key → built-in default; invalid JSON → the built-in default. Errors are
+ * logged, not thrown. Malformed individual widget entries are skipped by
+ * `parseWidgetConfig`. Stays synchronous so the enable()-time panel build gets
+ * its config immediately; the one-time legacy-file migration is handled
+ * separately by `migrateLegacyConfigIfNeeded`.
  */
 export function loadWidgetConfig(settings: Gio.Settings): WidgetConfig {
     const raw = settings.get_string(WIDGETS_KEY);
     if (!raw)
-        return migrateLegacyConfig(settings) ?? defaultWidgetConfig();
+        return defaultWidgetConfig();
     try {
         return parseWidgetConfig(raw);
     } catch (error) {

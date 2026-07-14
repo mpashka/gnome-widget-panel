@@ -91,9 +91,11 @@ the same actor. Every barrier, pointer watch, signal and timer is released in
 ### `PluginManager`
 
 Reads the `widgets` GSettings key via `configStore.ts`'s `loadWidgetConfig`,
-falling back to the built-in default configuration (via legacy-file migration
-first, see [`architecture.md`](architecture.md)). The registry maps plugin IDs
-to `extension-src/plugins/<plugin-id>/index.ts`.
+falling back to the built-in default configuration when the key is empty. The
+one-time legacy-file migration is a separate async step
+(`migrateLegacyConfigIfNeeded`, run from `enable()`; see
+[`architecture.md`](architecture.md)). The registry maps plugin IDs to
+`extension-src/plugins/<plugin-id>/index.ts`.
 
 Plugin `create(parent, options)` returns a GNOME Shell actor. Plugin order is
 the order in the config file.

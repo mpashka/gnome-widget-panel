@@ -304,14 +304,15 @@ const MenuItem = GObject.registerClass(
                 x_align: Clutter.ActorAlign.START,
             });
             this.add_child(this.side);
-            this.add_child(
-                new St.Label({
-                    text: hotkey,
-                    x_expand: true,
-                    x_align: Clutter.ActorAlign.END,
-                    style: 'color: grey !important;',
-                })
-            );
+            // Kept as a field so a caller can fill it in later (the version
+            // string is now read asynchronously — see ControlButton below).
+            this.hotkeyLabel = new St.Label({
+                text: hotkey,
+                x_expand: true,
+                x_align: Clutter.ActorAlign.END,
+                style: 'color: grey !important;',
+            });
+            this.add_child(this.hotkeyLabel);
             this.connect('activate', () => action());
         }
     }
@@ -328,6 +329,9 @@ export const ControlButton = GObject.registerClass(
             });
 
             this._parent = parent;
+            // Guards async continuations (version string, URL builds) that may
+            // resolve after this button has been destroyed.
+            this._destroyed = false;
 
             this.add_child(
                 new St.Icon({
@@ -346,15 +350,24 @@ export const ControlButton = GObject.registerClass(
 
             // Non-reactive header showing the extension name and version +
             // release channel (e.g. "0.1.0 (alpha)"), read via the process-safe
-            // systemInfo helper. Mirrors the About group's name/version row.
-            this.menu.addMenuItem(
-                new MenuItem(
-                    'GNOME Widget Panel',
-                    SystemInfo.versionDisplay(),
-                    () => {},
-                    {reactive: false, can_focus: false}
-                )
+            // systemInfo helper. Mirrors the About group's name/version row. The
+            // version string comes from an async (metadata.json) read, so start
+            // with an empty hotkey column and fill it in when it resolves; guard
+            // against the button having been destroyed meanwhile.
+            const headerItem = new MenuItem(
+                'GNOME Widget Panel',
+                '',
+                () => {},
+                {reactive: false, can_focus: false}
             );
+            this.menu.addMenuItem(headerItem);
+            SystemInfo.versionDisplay()
+                .then(text => {
+                    if (this._destroyed || !headerItem.hotkeyLabel)
+                        return;
+                    headerItem.hotkeyLabel.set_text(text);
+                })
+                .catch(() => {});
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
             this.menu.addMenuItem(
@@ -369,7 +382,9 @@ export const ControlButton = GObject.registerClass(
             // directly, like "Report a bug" below.
             this.menu.addMenuItem(
                 new MenuItem('Release notes', '', () => {
-                    SystemInfo.openUrl(SystemInfo.releaseNotesUrl());
+                    SystemInfo.releaseNotesUrl()
+                        .then(url => SystemInfo.openUrl(url))
+                        .catch(() => {});
                 })
             );
 
@@ -386,7 +401,9 @@ export const ControlButton = GObject.registerClass(
             // and menu decoupled.
             this.menu.addMenuItem(
                 new MenuItem('Report a bug', '', () => {
-                    SystemInfo.openUrl(SystemInfo.bugReportUrl());
+                    SystemInfo.bugReportUrl()
+                        .then(url => SystemInfo.openUrl(url))
+                        .catch(() => {});
                 })
             );
 
@@ -452,6 +469,7 @@ export const ControlButton = GObject.registerClass(
         }
 
         destroy() {
+            this._destroyed = true;
             if (this._ctlActions) {
                 this._ctlActions.destroy();
                 this._ctlActions = null;

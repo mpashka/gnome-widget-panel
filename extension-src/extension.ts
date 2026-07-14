@@ -37,6 +37,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
+import {migrateLegacyConfigIfNeeded} from './configStore.js';
 import * as ControlButton from './controlButton.js';
 import * as MainPanel from './mainPanel.js';
 import * as PluginManager from './pluginManager.js';
@@ -1103,10 +1104,19 @@ export default class FloatingMiniPanelExtension extends Extension {
     }
 
     enable() {
+        const settings = this.getSettings();
         this._floatingMiniPanel = new FloatingMiniPanel(
-            this.getSettings(),
+            settings,
             this.path,
             this
+        );
+
+        // One-time async migration of a legacy widgets.json into the `widgets`
+        // GSettings key. Best-effort and NOT awaited: when it writes the key the
+        // panel's `changed::widgets` handler reloads the widgets. The panel above
+        // built from defaults (empty key) meanwhile, which is correct.
+        migrateLegacyConfigIfNeeded(settings).catch(e =>
+            logError(e, 'widget-panel: legacy config migration failed')
         );
     }
 

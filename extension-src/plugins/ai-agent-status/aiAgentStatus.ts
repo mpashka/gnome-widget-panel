@@ -181,7 +181,12 @@ export const AiAgentStatus = GObject.registerClass(
                 );
                 // Join the shared endpoint registry so the (port-independent)
                 // status-line and event hooks fan out to this widget too.
-                ClaudeHook.registerPort(this._port, this._secret);
+                // Best-effort, fire-and-forget: _startServer runs from the
+                // synchronous _init, so let the async registration run detached
+                // and just log failures.
+                ClaudeHook.registerPort(this._port, this._secret).catch(
+                    (error) => logError(error, 'GNOME Widget Panel agent-status register failed')
+                );
                 this._registered = true;
             } catch (error) {
                 logError(error, 'GNOME Widget Panel agent-status server failed');
@@ -191,11 +196,11 @@ export const AiAgentStatus = GObject.registerClass(
 
         _stopServer() {
             if (this._registered) {
-                try {
-                    ClaudeHook.deregisterPort(this._port);
-                } catch (error) {
-                    logError(error, 'GNOME Widget Panel agent-status deregister failed');
-                }
+                // Best-effort, fire-and-forget: destroy() cannot await, so let
+                // the async deregistration run detached and just log failures.
+                ClaudeHook.deregisterPort(this._port).catch(
+                    (error) => logError(error, 'GNOME Widget Panel agent-status deregister failed')
+                );
                 this._registered = false;
             }
             if (this._server) {

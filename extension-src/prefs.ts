@@ -23,6 +23,10 @@ import {DESCRIPTORS_BY_ID, PLUGIN_DESCRIPTORS} from './plugins/registry.js';
 import * as SystemInfo from './systemInfo.js';
 import {RELEASE_CHANNEL} from './version.js';
 
+// Async existence check (query_info) keeps the Hide-Top-Bar on-disk probe off
+// the main loop (EGO forbids synchronous file I/O there).
+Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
+
 // Panel alignment bitfield, mirrored from controlButton.ts / extension.ts.
 const Alignment = {
     NONE: 0,
@@ -129,7 +133,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     // means it is still present on disk (user should remove it). Read from the
     // shell's own GSettings + the extension directories, since the preferences
     // process has no ExtensionManager.
-    _hideTopBarStatus() {
+    async _hideTopBarStatus() {
         let enabledList = [];
         let disabledList = [];
         let masterOff = false;
@@ -141,14 +145,21 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         } catch (e) {
             // org.gnome.shell schema unavailable; treat as not present.
         }
-        const onDisk = [
+        const diskPaths = [
             GLib.build_filenamev([
                 GLib.get_home_dir(),
                 '.local/share/gnome-shell/extensions',
                 HIDE_TOP_BAR_UUID,
             ]),
             `/usr/share/gnome-shell/extensions/${HIDE_TOP_BAR_UUID}`,
-        ].some((p) => Gio.File.new_for_path(p).query_exists(null));
+        ];
+        let onDisk = false;
+        for (const p of diskPaths) {
+            if (await this._pathExists(p)) {
+                onDisk = true;
+                break;
+            }
+        }
 
         const enabled =
             !masterOff &&
@@ -159,6 +170,23 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             enabledList.includes(HIDE_TOP_BAR_UUID) ||
             disabledList.includes(HIDE_TOP_BAR_UUID);
         return {enabled, installed};
+    }
+
+    // Async existence check for a filesystem path (replaces query_exists). A
+    // successful query_info means the path exists; any failure means it does not
+    // (or is unreadable), matching the prior boolean semantics.
+    async _pathExists(path) {
+        try {
+            await Gio.File.new_for_path(path).query_info_async(
+                'standard::type',
+                Gio.FileQueryInfoFlags.NONE,
+                GLib.PRIORITY_DEFAULT,
+                null
+            );
+            return true;
+        } catch (_e) {
+            return false;
+        }
     }
 
     // "Main panel" group: a three-way combo (Visible / Auto hide / Hidden) for
@@ -223,8 +251,8 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         // bar) is a hard conflict shown as an error that also disables the row;
         // `installed` (present but inactive) is a softer warning. When it is no
         // longer installed the whole banner (and its Remove button) hides.
-        const applyHtbStatus = () => {
-            const {enabled, installed} = this._hideTopBarStatus();
+        const applyHtbStatus = async () => {
+            const {enabled, installed} = await this._hideTopBarStatus();
             warn.visible = installed;
             warn.title = enabled
                 ? 'Hide Top Bar is enabled'
@@ -403,11 +431,11 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             this._linkButton(
                 'adw-external-link-symbolic',
                 'Open release notes',
-                () => SystemInfo.openUrl(SystemInfo.releaseNotesUrl())
+                () => this._openUrlAsync(SystemInfo.releaseNotesUrl())
             )
         );
         versionRow.connect('activated', () =>
-            SystemInfo.openUrl(SystemInfo.releaseNotesUrl())
+            this._openUrlAsync(SystemInfo.releaseNotesUrl())
         );
         aboutGroup.add(versionRow);
 
@@ -435,7 +463,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             this._aboutLinkRow(
                 'Report a bug',
                 'Opens a prefilled GitHub issue with your system information.',
-                () => SystemInfo.openUrl(SystemInfo.bugReportUrl())
+                () => this._openUrlAsync(SystemInfo.bugReportUrl())
             )
         );
 
@@ -471,6 +499,16 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         );
         row.connect('activated', () => onActivate());
         return row;
+    }
+
+    // Open a URL that is produced asynchronously (release notes / bug report
+    // build their string from async file reads). Resolves the promise, then
+    // hands the URL to the sync opener; failures are swallowed (openUrl already
+    // logs its own).
+    _openUrlAsync(urlPromise) {
+        Promise.resolve(urlPromise)
+            .then(url => SystemInfo.openUrl(url))
+            .catch(() => {});
     }
 
     _linkButton(iconName, tooltip, onClick) {

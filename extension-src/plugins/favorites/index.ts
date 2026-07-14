@@ -15,6 +15,10 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {buildButtonContent} from '../panelButtonContent.js';
 
+// Async bookmarks read keeps the GTK-bookmarks file off the Shell main loop
+// (EGO forbids synchronous file I/O there).
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
+
 const DEFAULTS = {icon: 'system-file-manager-symbolic', text: ''};
 
 // XDG user directories to list when they exist, in display order.
@@ -44,7 +48,7 @@ function basename(path) {
 
 // Parse the GTK bookmarks file: each line is a `file://` URI optionally
 // followed by a whitespace-separated display label.
-function readBookmarks() {
+async function readBookmarks() {
     const bookmarks = [];
     const file = GLib.build_filenamev([
         GLib.get_user_config_dir(),
@@ -55,9 +59,11 @@ function readBookmarks() {
         return bookmarks;
     let contents;
     try {
-        const [ok, bytes] = GLib.file_get_contents(file);
-        if (!ok)
-            return bookmarks;
+        const gfile = Gio.File.new_for_path(file);
+        // Promisified load_contents_async resolves to [contents, etag] (a
+        // Uint8Array, no leading success boolean); it throws on failure, caught
+        // below.
+        const [bytes] = await gfile.load_contents_async(null);
         contents = new TextDecoder().decode(bytes);
     } catch (error) {
         logError(error, 'favorites: failed to read GTK bookmarks');
@@ -89,6 +95,7 @@ const FavoritesButton = GObject.registerClass(
                 child: buildButtonContent(options, DEFAULTS),
             });
 
+            this._destroyed = false;
             this._menu = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
             Main.uiGroup.add_child(this._menu.actor);
             Main.panel.menuManager.addMenu(this._menu);
@@ -119,18 +126,28 @@ const FavoritesButton = GObject.registerClass(
                 addedXdg = true;
             }
 
-            const bookmarks = readBookmarks();
-            if (bookmarks.length > 0) {
-                if (addedXdg)
-                    this._menu.addMenuItem(
-                        new PopupMenu.PopupSeparatorMenuItem()
-                    );
-                for (const {uri, label} of bookmarks)
-                    this._addPlace(label, uri);
-            }
+            // The GTK bookmarks are read asynchronously and their section is
+            // appended once available, after the synchronous Home/XDG section
+            // above. Guard against the button being destroyed before the read
+            // completes (the menu would be gone).
+            readBookmarks()
+                .then(bookmarks => {
+                    if (this._destroyed || bookmarks.length === 0)
+                        return;
+                    if (addedXdg)
+                        this._menu.addMenuItem(
+                            new PopupMenu.PopupSeparatorMenuItem()
+                        );
+                    for (const {uri, label} of bookmarks)
+                        this._addPlace(label, uri);
+                })
+                .catch(error =>
+                    logError(error, 'favorites: failed to append GTK bookmarks')
+                );
         }
 
         destroy() {
+            this._destroyed = true;
             if (this._menu) {
                 this._menu.destroy();
                 this._menu = null;

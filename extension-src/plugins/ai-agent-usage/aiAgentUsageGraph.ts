@@ -331,7 +331,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             );
         }
 
-        _startClaudeHttpHook() {
+        async _startClaudeHttpHook() {
             if (!ClaudeHook.isClaudeInstalled())
                 return;
 
@@ -354,9 +354,20 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 // endpoint so Claude's status line and lifecycle events fan
                 // out to it (alongside any other running panel instances on
                 // their own ports).
-                ClaudeHook.installHook();
-                ClaudeHook.installEventHooks();
-                ClaudeHook.registerPort(this._claudePort, this._claudeSecret);
+                await ClaudeHook.installHook();
+                await ClaudeHook.installEventHooks();
+                await ClaudeHook.registerPort(this._claudePort, this._claudeSecret);
+                // The widget may have been destroyed while the async hook I/O
+                // was in flight; if so, undo the registration and drop the
+                // server instead of leaving a stale endpoint behind.
+                if (this._destroyed) {
+                    ClaudeHook.deregisterPort(this._claudePort).catch(() => {});
+                    if (this._server) {
+                        this._server.disconnect();
+                        this._server = null;
+                    }
+                    return;
+                }
                 this._claudeRegistered = true;
             } catch (error) {
                 logError(error, 'GNOME Widget Panel Claude hook failed');
@@ -459,11 +470,11 @@ export const AiAgentUsageGraph = GObject.registerClass(
 
         _stopClaudeHttpHook() {
             if (this._claudeRegistered) {
-                try {
-                    ClaudeHook.deregisterPort(this._claudePort);
-                } catch (error) {
-                    logError(error, 'GNOME Widget Panel Claude deregister failed');
-                }
+                // Best-effort, fire-and-forget: destroy() cannot await, so let
+                // the async deregistration run detached and just log failures.
+                ClaudeHook.deregisterPort(this._claudePort).catch(
+                    (error) => logError(error, 'GNOME Widget Panel Claude deregister failed')
+                );
                 this._claudeRegistered = false;
             }
             if (this._server) {

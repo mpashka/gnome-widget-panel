@@ -3,6 +3,7 @@
 'use strict';
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -12,6 +13,10 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {hexToRgb, toNumber} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
+
+// Async file reads keep the periodic /proc/stat and thermal-zone sampling off
+// the Shell main loop (EGO forbids synchronous file I/O there).
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 
 const WIDTH = 32;
 const HEIGHT = 16;
@@ -84,7 +89,24 @@ export const CpuGraph = GObject.registerClass(
             // rather than recolouring the whole graph by the current temperature.
             this._samples = Array.from({length: width}, () => ({load: 0, temp: null}));
             this._previous = null;
-            this._temperaturePath = this._findCpuTemperaturePath();
+            // Guards for async continuations that may resolve after destroy().
+            this._destroyed = false;
+            // Re-entrancy guard so a slow sample cannot overlap the next tick.
+            this._sampling = false;
+            // Temperature discovery reads sysfs; it runs async and stores the
+            // resolved path when ready. First ticks with a null path are fine.
+            this._temperaturePath = null;
+            this._findCpuTemperaturePath()
+                .then(path => {
+                    if (!this._destroyed)
+                        this._temperaturePath = path;
+                })
+                .catch(error =>
+                    logError(
+                        error,
+                        'Floating Mini Panel CPU temperature discovery'
+                    )
+                );
             this._temperature = null;
             this._lastLoad = 0;
             this._tooltip = new St.Label({
@@ -105,11 +127,12 @@ export const CpuGraph = GObject.registerClass(
             );
         }
 
-        _readCpuCounters() {
+        async _readCpuCounters() {
             try {
-                const [ok, contents] = GLib.file_get_contents('/proc/stat');
-                if (!ok)
-                    return null;
+                const file = Gio.File.new_for_path('/proc/stat');
+                // load_contents_async resolves to [contents, etag] (Uint8Array,
+                // no leading boolean); throws on failure, caught below.
+                const [contents] = await file.load_contents_async(null);
 
                 const line = new TextDecoder().decode(contents).split('\n')[0];
                 const fields = line.trim().split(/\s+/).slice(1).map(Number);
@@ -125,17 +148,18 @@ export const CpuGraph = GObject.registerClass(
             }
         }
 
-        _readText(path) {
-            const [ok, contents] = GLib.file_get_contents(path);
-            return ok ? new TextDecoder().decode(contents).trim() : null;
+        async _readText(path) {
+            const file = Gio.File.new_for_path(path);
+            const [contents] = await file.load_contents_async(null);
+            return new TextDecoder().decode(contents).trim();
         }
 
-        _findCpuTemperaturePath() {
+        async _findCpuTemperaturePath() {
             try {
                 let fallback = null;
                 for (let index = 0; index < 32; index++) {
                     const base = `/sys/class/thermal/thermal_zone${index}`;
-                    const type = this._readText(`${base}/type`);
+                    const type = await this._readText(`${base}/type`);
                     if (type === 'x86_pkg_temp')
                         return `${base}/temp`;
                     if (type === 'TCPU')
@@ -148,11 +172,11 @@ export const CpuGraph = GObject.registerClass(
             }
         }
 
-        _readCpuTemperature() {
+        async _readCpuTemperature() {
             if (!this._temperaturePath)
                 return null;
             try {
-                const value = Number(this._readText(this._temperaturePath));
+                const value = Number(await this._readText(this._temperaturePath));
                 return Number.isFinite(value) ? value / 1000 : null;
             } catch (error) {
                 logError(error, 'Floating Mini Panel CPU temperature');
@@ -160,9 +184,29 @@ export const CpuGraph = GObject.registerClass(
             }
         }
 
+        // Fire-and-forget sample entry point for the timeout/constructor. It
+        // never awaits (the Shell timeout callback must return immediately) and
+        // skips if a prior sample is still in flight (re-entrancy guard).
         _sample() {
-            const current = this._readCpuCounters();
-            this._temperature = this._readCpuTemperature();
+            if (this._sampling || this._destroyed)
+                return;
+            this._sampling = true;
+            this._doSample()
+                .catch(error =>
+                    logError(error, 'Floating Mini Panel CPU sample')
+                )
+                .finally(() => {
+                    this._sampling = false;
+                });
+        }
+
+        async _doSample() {
+            const current = await this._readCpuCounters();
+            if (this._destroyed)
+                return;
+            this._temperature = await this._readCpuTemperature();
+            if (this._destroyed)
+                return;
             if (current && this._previous) {
                 const totalDelta = current.total - this._previous.total;
                 const idleDelta = current.idle - this._previous.idle;
@@ -323,6 +367,8 @@ export const CpuGraph = GObject.registerClass(
         }
 
         destroy() {
+            // Bail out of any async sample continuation still in flight.
+            this._destroyed = true;
             if (this._timeoutId) {
                 GLib.Source.remove(this._timeoutId);
                 this._timeoutId = null;

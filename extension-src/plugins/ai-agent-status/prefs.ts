@@ -104,16 +104,16 @@ export function fillWidgetPreferences(context) {
         label: 'Configure',
         valign: Gtk.Align.CENTER,
     });
-    const refreshClaude = () => setStatus(claudeStatus, ClaudeHook.eventHooksStatus());
-    configure.connect('clicked', () => {
+    const refreshClaude = async () => setStatus(claudeStatus, await ClaudeHook.eventHooksStatus());
+    configure.connect('clicked', async () => {
         try {
             if (!current.secret)
                 current.secret = GLib.uuid_string_random();
             const port = Number(current.port) || DEFAULT_PORT;
             // Install the port-independent event hooks and register this
             // endpoint so they reach a widget that has not reloaded yet.
-            ClaudeHook.installEventHooks();
-            ClaudeHook.registerPort(port, current.secret);
+            await ClaudeHook.installEventHooks();
+            await ClaudeHook.registerPort(port, current.secret);
             commit();
         } catch (error) {
             logError(error, 'Cannot configure Claude Code event hooks');

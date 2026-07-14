@@ -174,6 +174,36 @@ typed value. Remove `// @ts-nocheck` incrementally from files whose relevant
 boundaries have become typed. Update [`TODO.md`](TODO.md) when a contract is
 completed, split, or newly discovered.
 
+## Code formatting
+
+The EGO reviewers read the **generated** `extension/*.js`, so it must be
+readable, not a wall of code. Separate top-level declarations with blank lines:
+
+- **Two blank lines between functions.**
+- **Three blank lines between classes** (including `GObject.registerClass(...)`
+  class assignments).
+- **Separate the import block from the rest of the code** with a blank line;
+  keep import statements grouped together.
+
+Apply this to the TypeScript source you touch. But note `tsc` **strips blank
+lines when it emits JS**, so source spacing alone never reaches the shipped
+extension. The build therefore runs a **post-processor after `tsc`** (see
+`build.sh`) that reinserts these blank lines into every generated
+`extension/**/*.js`; that step is what actually satisfies the reviewer. When you
+change the build or the emitted-JS layout, keep that post-processor working and
+verify the built `extension/*.js` still has the spacing above.
+
+## Asynchronous I/O (no sync file access on the Shell thread)
+
+EGO forbids synchronous I/O on the GNOME Shell main loop. Never call synchronous
+file APIs (`GLib.file_get_contents`/`file_set_contents`, `Gio.File`
+`load_contents`/`replace_contents`, `query_exists`, sync `enumerate_children`,
+`GLib.spawn_command_line_sync`, …) from code the Shell loads. Use the async
+variants (promisified via `Gio._promisify`, then `await`), and keep long or
+blocking work in the out-of-process subprocess helpers (`helpers/*.ts`, embedded
+hook scripts), which run off the Shell thread and may use sync calls. `destroy()`
+cannot `await`; fire best-effort async cleanup and do not block teardown.
+
 ## Documentation: LLM wiki
 
 End-user documentation is separate: it lives in [`user-guide/`](user-guide/index.md)

@@ -10,6 +10,10 @@ import GLib from 'gi://GLib';
 
 import {READ_STDIN_FN} from './hookStdin.js';
 
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
+Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
+Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
+
 export const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 export const EVENT_HOOK_NAME = 'gnome-widget-panel-agent-event-hook.js';
 export const PORTS_NAME = 'gnome-widget-panel-ports.json';
@@ -157,10 +161,28 @@ for (const endpoint of readEndpoints()) {
 `;
 }
 
-function atomicWrite(path, contents, mode) {
+// Serialize read-modify-write file operations on the shared ~/.claude files.
+// GJS is single-threaded, but the `await` between reading a JSON file and
+// writing it back lets concurrent calls interleave and lose updates — e.g. the
+// ai-agent-usage and ai-agent-status widgets both register their port in the
+// shared ports registry at panel start, or two installs merge settings.json.
+// Chaining every mutating operation on one promise restores the atomicity the
+// previous synchronous code had (and preserves call order, so a start's
+// registerPort always completes before a destroy's deregisterPort).
+let _ioLock = Promise.resolve();
+function withIoLock(fn) {
+    const run = _ioLock.then(fn, fn);
+    _ioLock = run.then(
+        () => undefined,
+        () => undefined
+    );
+    return run;
+}
+
+async function atomicWrite(path, contents, mode) {
     const file = Gio.File.new_for_path(path);
-    file.replace_contents(
-        new TextEncoder().encode(contents),
+    await file.replace_contents_bytes_async(
+        GLib.Bytes.new(new TextEncoder().encode(contents)),
         null,
         false,
         Gio.FileCreateFlags.REPLACE_DESTINATION,
@@ -176,25 +198,29 @@ function atomicWrite(path, contents, mode) {
 // Write the (port-independent) hook script and point Claude's statusLine at it.
 // Idempotent: repeated calls from multiple instances write identical content.
 // Returns true on success. Throws on unexpected I/O errors so callers can report.
-export function installHook() {
-    GLib.mkdir_with_parents(claudeDir(), 0o700);
-    atomicWrite(hookPath(), hookScript(), 0o700);
+export async function installHook() {
+    return withIoLock(async () => {
+        GLib.mkdir_with_parents(claudeDir(), 0o700);
+        await atomicWrite(hookPath(), hookScript(), 0o700);
 
-    let settings = {};
-    const path = settingsPath();
-    if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
-        const [ok, contents] = GLib.file_get_contents(path);
-        if (ok) {
+        let settings = {};
+        const path = settingsPath();
+        if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+            const file = Gio.File.new_for_path(path);
+            // load_contents_async resolves to [contents, etag] (Uint8Array, no
+            // leading boolean); it throws on failure (the file exists, checked
+            // above).
+            const [contents] = await file.load_contents_async(null);
             try {
                 settings = JSON.parse(new TextDecoder().decode(contents));
             } catch (error) {
                 settings = {};
             }
         }
-    }
-    settings.statusLine = {type: 'command', command: hookPath()};
-    atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
-    return true;
+        settings.statusLine = {type: 'command', command: hookPath()};
+        await atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
+        return true;
+    });
 }
 
 // True when this settings.json hooks entry already runs our event hook.
@@ -210,41 +236,45 @@ function entryRunsEventHook(entry) {
 // `{hooks: [{type:'command', command: eventHookPath()}]}` (no matcher — these
 // events do not use matchers) when no entry already references our script.
 // Returns true on success. Throws on unexpected I/O errors so callers can report.
-export function installEventHooks() {
-    GLib.mkdir_with_parents(claudeDir(), 0o700);
-    atomicWrite(eventHookPath(), eventHookScript(), 0o700);
+export async function installEventHooks() {
+    return withIoLock(async () => {
+        GLib.mkdir_with_parents(claudeDir(), 0o700);
+        await atomicWrite(eventHookPath(), eventHookScript(), 0o700);
 
-    let settings = {};
-    const path = settingsPath();
-    if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
-        const [ok, contents] = GLib.file_get_contents(path);
-        if (ok) {
+        let settings = {};
+        const path = settingsPath();
+        if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+            const file = Gio.File.new_for_path(path);
+            // load_contents_async resolves to [contents, etag] (Uint8Array, no
+            // leading boolean); it throws on failure (the file exists, checked
+            // above).
+            const [contents] = await file.load_contents_async(null);
             try {
                 settings = JSON.parse(new TextDecoder().decode(contents));
             } catch (error) {
                 settings = {};
             }
         }
-    }
-    if (typeof settings !== 'object' || settings === null || Array.isArray(settings))
-        settings = {};
-    if (typeof settings.hooks !== 'object' || settings.hooks === null || Array.isArray(settings.hooks))
-        settings.hooks = {};
-    for (const event of EVENT_HOOK_EVENTS) {
-        const entries = Array.isArray(settings.hooks[event])
-            ? settings.hooks[event]
-            : [];
-        if (!entries.some(entryRunsEventHook))
-            entries.push({hooks: [{type: 'command', command: eventHookPath()}]});
-        settings.hooks[event] = entries;
-    }
-    atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
-    return true;
+        if (typeof settings !== 'object' || settings === null || Array.isArray(settings))
+            settings = {};
+        if (typeof settings.hooks !== 'object' || settings.hooks === null || Array.isArray(settings.hooks))
+            settings.hooks = {};
+        for (const event of EVENT_HOOK_EVENTS) {
+            const entries = Array.isArray(settings.hooks[event])
+                ? settings.hooks[event]
+                : [];
+            if (!entries.some(entryRunsEventHook))
+                entries.push({hooks: [{type: 'command', command: eventHookPath()}]});
+            settings.hooks[event] = entries;
+        }
+        await atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
+        return true;
+    });
 }
 
 // 'not-installed' | 'unconfigured' | 'ok' — like configStatus(), but for the
 // lifecycle-event hooks used by the ai-agent-status widget.
-export function eventHooksStatus() {
+export async function eventHooksStatus() {
     if (!isClaudeInstalled())
         return 'not-installed';
     if (!GLib.file_test(eventHookPath(), GLib.FileTest.EXISTS))
@@ -252,10 +282,9 @@ export function eventHooksStatus() {
     const path = settingsPath();
     if (!GLib.file_test(path, GLib.FileTest.EXISTS))
         return 'unconfigured';
-    const [ok, contents] = GLib.file_get_contents(path);
-    if (!ok)
-        return 'unconfigured';
+    const file = Gio.File.new_for_path(path);
     try {
+        const [contents] = await file.load_contents_async(null);
         const settings = JSON.parse(new TextDecoder().decode(contents));
         const hooks = settings?.hooks;
         const configured = EVENT_HOOK_EVENTS.every(
@@ -270,14 +299,13 @@ export function eventHooksStatus() {
     return 'unconfigured';
 }
 
-function readRegistry() {
+async function readRegistry() {
     const path = portsRegistryPath();
     if (!GLib.file_test(path, GLib.FileTest.EXISTS))
         return [];
     try {
-        const [ok, contents] = GLib.file_get_contents(path);
-        if (!ok)
-            return [];
+        const file = Gio.File.new_for_path(path);
+        const [contents] = await file.load_contents_async(null);
         const data = JSON.parse(new TextDecoder().decode(contents));
         return Array.isArray(data) ? data : [];
     } catch (error) {
@@ -285,9 +313,9 @@ function readRegistry() {
     }
 }
 
-function writeRegistry(entries) {
+async function writeRegistry(entries) {
     GLib.mkdir_with_parents(claudeDir(), 0o700);
-    atomicWrite(
+    await atomicWrite(
         portsRegistryPath(),
         `${JSON.stringify(entries, null, 2)}\n`,
         0o600
@@ -296,24 +324,28 @@ function writeRegistry(entries) {
 
 // Register this instance's endpoint (deduping by port) so the hook fans out to
 // it. Best-effort read-modify-write; called when a widget starts its server.
-export function registerPort(port, secret) {
-    const entries = readRegistry().filter(
-        (entry) => Number(entry?.port) !== Number(port)
-    );
-    entries.push({port: Number(port), secret: String(secret)});
-    writeRegistry(entries);
+export async function registerPort(port, secret) {
+    return withIoLock(async () => {
+        const entries = (await readRegistry()).filter(
+            (entry) => Number(entry?.port) !== Number(port)
+        );
+        entries.push({port: Number(port), secret: String(secret)});
+        await writeRegistry(entries);
+    });
 }
 
 // Remove this instance's endpoint from the registry (called on destroy).
-export function deregisterPort(port) {
-    const entries = readRegistry().filter(
-        (entry) => Number(entry?.port) !== Number(port)
-    );
-    writeRegistry(entries);
+export async function deregisterPort(port) {
+    return withIoLock(async () => {
+        const entries = (await readRegistry()).filter(
+            (entry) => Number(entry?.port) !== Number(port)
+        );
+        await writeRegistry(entries);
+    });
 }
 
 // 'not-installed' | 'unconfigured' | 'ok'
-export function configStatus() {
+export async function configStatus() {
     if (!isClaudeInstalled())
         return 'not-installed';
     if (!GLib.file_test(hookPath(), GLib.FileTest.EXISTS))
@@ -321,10 +353,9 @@ export function configStatus() {
     const path = settingsPath();
     if (!GLib.file_test(path, GLib.FileTest.EXISTS))
         return 'unconfigured';
-    const [ok, contents] = GLib.file_get_contents(path);
-    if (!ok)
-        return 'unconfigured';
+    const file = Gio.File.new_for_path(path);
     try {
+        const [contents] = await file.load_contents_async(null);
         const settings = JSON.parse(new TextDecoder().decode(contents));
         if (settings?.statusLine?.command === hookPath())
             return 'ok';
