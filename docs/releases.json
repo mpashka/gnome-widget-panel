@@ -2,6 +2,28 @@
   "schema": 1,
   "releases": [
     {
+      "version": "0.1.2",
+      "code": 3,
+      "date": "2026-07-14",
+      "shellVersions": [
+        "46",
+        "47",
+        "48",
+        "49",
+        "50"
+      ],
+      "url": "https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.2",
+      "milestone": "v0.1.2",
+      "issues": [
+        {
+          "number": 25,
+          "title": "EGO review feedback: async file I/O + blank-line readability in generated JS",
+          "url": "https://github.com/mpashka/gnome-widget-panel/issues/25",
+          "category": "features"
+        }
+      ]
+    },
+    {
       "version": "0.1.1",
       "code": 2,
       "date": "2026-07-13",

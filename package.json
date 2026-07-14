@@ -1,6 +1,6 @@
 {
   "name": "gnome-widget-panel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Configurable GNOME Shell floating panel with TypeScript-built GJS widgets",
   "type": "module",
   "private": true,
