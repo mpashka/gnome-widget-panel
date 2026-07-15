@@ -272,6 +272,13 @@ locations. Keep `docs/tags.md` current when tags are added, renamed or removed.
 How work is filed, fixed and reviewed. Read the relevant page before the
 matching task:
 
+- **Before filing any issue, search the existing ones first.** Before opening a
+  new bug report or feature request, review the existing GitHub issues — **open
+  and closed**. If a matching one already exists, add a **comment** to it instead
+  of creating a duplicate; **reopen** a closed bug or feature request when it
+  recurs or is worth reconsidering, rather than filing a fresh one. Keeping each
+  concern in a single issue makes it easier to judge demand for it, decide
+  whether to implement it, and prioritise the backlog.
 - **Filing bugs:** [`docs/bug-report-howto.md`](docs/bug-report-howto.md) — every
   bug report must include the configuration and a screenshot/screencast. The
   GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml))
