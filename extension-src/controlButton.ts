@@ -407,6 +407,15 @@ export const ControlButton = GObject.registerClass(
                 })
             );
 
+            // Opens the GitHub feature-request form. featureRequestUrl builds no
+            // system info (no file I/O), so it is synchronous — open directly.
+            // Mirrors the About group's "Suggest a feature" row (same label/URL).
+            this.menu.addMenuItem(
+                new MenuItem('Suggest a feature', '', () => {
+                    SystemInfo.openUrl(SystemInfo.featureRequestUrl());
+                })
+            );
+
             this.menu.connect('open-state-changed', () => {
                 if (this.has_style_pseudo_class('active')) {
                     this.remove_style_pseudo_class('active');

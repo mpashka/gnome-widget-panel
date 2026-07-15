@@ -103,10 +103,12 @@ the order in the config file.
 ### `ControlButton`
 
 The panel handle/menu button. It owns drag/move actions and long-press/click
-gestures. Its context menu now holds only the "Settings…" item (which opens the
-preferences window) with no separator above it; the former Auto-Position and
-Control-Functions menu sections were moved to the preferences "Panel" page, while
-the equivalent mouse gestures still work.
+gestures. Its context menu holds a non-reactive name/version header followed by
+"Settings…" (opens preferences), "Release notes", "View on extensions.gnome.org",
+"Report a bug" and "Suggest a feature" (the last two open the prefilled GitHub
+issue forms via `systemInfo`). The former Auto-Position and Control-Functions
+menu sections were moved to the preferences "Panel" page, while the equivalent
+mouse gestures still work.
 
 Gesture notes:
 
