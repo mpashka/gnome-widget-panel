@@ -2,6 +2,21 @@
   "schema": 1,
   "releases": [
     {
+      "version": "0.2.0",
+      "code": 4,
+      "date": "2026-08-29",
+      "shellVersions": [
+        "46",
+        "47",
+        "48",
+        "49",
+        "50"
+      ],
+      "url": "https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.0",
+      "milestone": "v0.2.0",
+      "issues": []
+    },
+    {
       "version": "0.1.2",
       "code": 3,
       "date": "2026-07-14",
