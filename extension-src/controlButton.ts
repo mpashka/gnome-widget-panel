@@ -61,16 +61,18 @@ const Alignment = {
     CENTER: 16,
 };
 
-// Press-and-hold threshold (ms) that distinguishes a click from a long-press
-// (orientation toggle on the middle button, temporary hide on the right
-// button). Must comfortably exceed how long an ordinary deliberate click can
-// hold the button down — 250ms was too tight: a normal (if slightly slow, e.g.
-// touchpad secondary-click) right-click routinely takes longer than that, so it
-// was misread as a long-press and fired `_tmpHide()` (hiding the whole panel
-// for 5s, see extension.ts `_tmpHide`) instead of opening the context menu —
-// see issue #3. Left-button dragging does NOT wait for this threshold: it
-// starts on the first pointer movement (see the MOTION handler), so raising it
-// never makes the widget feel "glued".
+// Press-and-hold threshold (ms) that distinguishes a click from a long-press.
+// The middle button's orientation toggle is the only long-press action left:
+// the right button's "hide the panel for 5s" was removed in favour of the
+// explicit Collapse/Expand menu item, because a hidden panel with no visible
+// trigger and no setting is not a feature a user can find or undo. Must
+// comfortably exceed how long an ordinary deliberate click can hold the button
+// down — 250ms was too tight: a normal (if slightly slow, e.g. touchpad
+// secondary-click) right-click routinely takes longer than that, so it was
+// misread as a long-press and hid the panel instead of opening the context menu
+// (issue #3). Left-button dragging does NOT wait for this threshold: it starts
+// on the first pointer movement (see the MOTION handler), so raising it never
+// makes the widget feel "glued".
 const LONGPRESS_MS = 400;
 
 const CtlActions = GObject.registerClass(
@@ -148,9 +150,6 @@ const CtlActions = GObject.registerClass(
                                     case Clutter.BUTTON_MIDDLE:
                                         this._middleBtnLongPress();
                                         break;
-                                    case Clutter.BUTTON_SECONDARY:
-                                        this._rightBtnLongPress();
-                                        break;
                                     default:
                                         break;
                                 }
@@ -217,11 +216,6 @@ const CtlActions = GObject.registerClass(
             this._actor._changeOrientation();
         }
 
-        // Right longpress action
-        _rightBtnLongPress() {
-            this._parent._tmpHide();
-        }
-
         // Left click — intentionally a no-op. A plain left click on the drag
         // handle must not open the overview / app grid (the handle is only for
         // dragging and the right-click menu; a dedicated gnome-menu widget is the
@@ -234,8 +228,10 @@ const CtlActions = GObject.registerClass(
             // Only a plain middle-click acts (toggle the indicators drawer).
             // Shift/Ctrl+middle-click alignment shortcuts were removed with the
             // right-click ones — alignment lives in the preferences window.
-            if (state === 0)
-                this._parent._indsDrawer.toggle();
+            // While collapsed the drawer is hidden with every other widget, so
+            // toggling it would silently change state the user cannot see.
+            if (state === 0 && !this._parent.isCollapsed())
+                this._parent._indsDrawer?.toggle();
         }
 
         // Right click
@@ -370,6 +366,17 @@ export const ControlButton = GObject.registerClass(
                 .catch(() => {});
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+            // Collapse / Expand. Collapsing hides every widget and leaves only
+            // this drag handle on screen — its context menu is what brings the
+            // panel back, so the action is always reversible from what stays
+            // visible. This is the explicit replacement for the removed
+            // right-button long-press that hid the whole panel for five seconds.
+            this._collapseItem = new MenuItem('Collapse', '', () => {
+                this._parent.setCollapsed(!this._parent.isCollapsed());
+            });
+            this.menu.addMenuItem(this._collapseItem);
+            this._syncCollapseLabel();
+
             this.menu.addMenuItem(
                 new MenuItem('Settings…', '', () => {
                     this._parent.openPreferences();
@@ -417,6 +424,10 @@ export const ControlButton = GObject.registerClass(
             );
 
             this.menu.connect('open-state-changed', () => {
+                // Label the item with the action it performs, read from the
+                // panel each time the menu opens so an external change to the
+                // `collapsed` key (gsettings, another session) is reflected.
+                this._syncCollapseLabel();
                 if (this.has_style_pseudo_class('active')) {
                     this.remove_style_pseudo_class('active');
                 } else {
@@ -456,6 +467,15 @@ export const ControlButton = GObject.registerClass(
             this.connect('scroll-event', (obj, event) => {
                 Main.wm.handleWorkspaceScroll(event);
             });
+        }
+
+        // "Collapse" while the panel is expanded, "Expand" once it is collapsed.
+        _syncCollapseLabel() {
+            if (!this._collapseItem?.side)
+                return;
+            this._collapseItem.side.set_text(
+                this._parent.isCollapsed() ? 'Expand' : 'Collapse'
+            );
         }
 
         _doAlign(align) {

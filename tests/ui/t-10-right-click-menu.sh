@@ -5,10 +5,11 @@
 # misclassified as a long-press. Before the fix, CtlActions used a 250ms
 # click-vs-long-press threshold; an ordinary right-click held for ~300ms
 # (routine for a touchpad secondary-click) exceeded it, so the release was
-# treated as a long-press and fired `_rightBtnLongPress()` ->
-# `FloatingMiniPanel._tmpHide()` (extension.ts), hiding the whole panel for
-# 5s instead of opening the menu (looked like the widget "flickering/
-# reloading"). See controlButton.ts LONGPRESS_MS.
+# treated as a long-press and hid the whole panel for 5s instead of opening the
+# menu (looked like the widget "flickering/reloading"). That temporary-hide has
+# since been removed in favour of the explicit Collapse/Expand menu item, so the
+# tail of this test now pins that a long right-press does nothing at all.
+# See controlButton.ts LONGPRESS_MS.
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 ui_start
 
@@ -28,17 +29,17 @@ ui_wait_js "!($CTL_BTN).menu.isOpen" \
     || fail "a quick right-click did not close the (now open) context menu"
 _ui_log "ok - a further quick right-click closes the menu again"
 
-# A genuine long-press must still trigger the (unrelated, working-as-designed)
-# temporary-hide feature, so the fix only widens the click/long-press boundary
-# rather than disabling long-press detection.
+# A long right-press must now do NOTHING. The temporary-hide it used to trigger
+# was removed: an invisible panel with no visible trigger and no setting is not
+# something a user can find or undo. Hiding the widgets is an explicit menu
+# action instead (Collapse/Expand — see t-15-collapse.sh).
 ui_click_button "$CTL_BTN" Clutter.BUTTON_SECONDARY 600 >/dev/null
-ui_wait_js "!panel.visible" \
-    || fail "a genuine long-press (600ms) no longer triggers the temporary-hide feature"
-_ui_log "ok - a genuine long-press still triggers the temporary-hide feature"
-
-ui_wait_js "panel.visible" 8 \
-    || fail "panel did not reappear after the temporary-hide timeout"
-_ui_log "ok - panel reappears after the temporary-hide timeout"
+sleep 2
+assert_true "panel.visible" \
+    "a long right-press no longer hides the panel (temporary-hide removed)"
+assert_eq "$(ui_get collapsed)" "false" \
+    "a long right-press does not collapse the panel either"
+_ui_log "ok - long right-press is inert; hiding is an explicit menu action"
 
 if grep -q "JS ERROR.*gnome-widget-panel" "$GWP_UI_TMP/shell.log"; then
     fail "extension logged a JS ERROR (see shell.log)"

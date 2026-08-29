@@ -78,6 +78,17 @@
         panel edge and its contents).
       </description>
     </key>
+    <key name="collapsed" type="b">
+      <default>false</default>
+      <summary>Panel collapsed</summary>
+      <description>
+        When true the panel shows only its drag handle (the six-dot caption) and
+        hides every widget. Toggled from the drag handle's context menu
+        ("Collapse" / "Expand"); persisted so the panel comes back collapsed
+        after a reload. This replaces the former undiscoverable right-button
+        long-press that hid the whole panel for five seconds.
+      </description>
+    </key>
     <key name="open" type="b">
       <default>false</default>
       <summary>Drawer opened</summary>

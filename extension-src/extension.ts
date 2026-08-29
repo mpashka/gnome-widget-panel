@@ -192,6 +192,26 @@ const FloatingMiniPanel = GObject.registerClass(
                 () => this._scheduleReloadPlugins()
             );
 
+            // Collapsed state ---------------------------------------------------
+            // Applied now so a panel that was collapsed when the Shell restarted
+            // comes back collapsed, and kept live so toggling the key (from the
+            // control-button menu or `gsettings`) applies without a reload.
+            this._collapsedChangedId = this._sets.connect(
+                'changed::collapsed',
+                () => {
+                    this._applyCollapsed();
+                    try {
+                        this._relocate(false);
+                    } catch (e) {
+                        logError(
+                            e,
+                            'widget-panel: relocate after collapse failed'
+                        );
+                    }
+                }
+            );
+            this._applyCollapsed();
+
             // Apply the saved alignment on startup ----------------------------
             // The constructor above only restored the raw pos-x / pos-y. The
             // stored `aligned` value (edge snapping / centering) used to be
@@ -716,6 +736,9 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._plugins.find(p => p.id === 'app-notifications')
                     ?.actor ?? null;
             this._applyPanelLayoutToPlugins();
+            // The rebuilt actors are visible by default; re-hide them when the
+            // panel is collapsed, or a settings edit would silently expand it.
+            this._applyCollapsed();
 
             // Widget set changed, so the panel size likely changed; keep the
             // saved alignment applied. Guarded so it can never throw here.
@@ -824,27 +847,34 @@ const FloatingMiniPanel = GObject.registerClass(
         }
         // END CODE VERTICAL
 
-        _tmpHide() {
-            // Hide this for 5 sec.
-            this.hide();
-            if (this._timeoutId2) {
-                GLib.Source.remove(this._timeoutId2);
-                this._timeoutId2 = null;
+        // Collapsed panel: only the drag handle (the six-dot caption) stays
+        // visible, so the panel shrinks to that handle and its context menu —
+        // which is how the user expands it again. Replaces the former
+        // `_tmpHide()`, a right-button long-press that hid the whole panel for
+        // five seconds: undiscoverable, unconfigurable, and easy to trigger by
+        // accident (issue #3). The state lives in the `collapsed` GSettings key,
+        // so it persists and can be toggled from outside the menu.
+        isCollapsed() {
+            return this._sets.get_boolean('collapsed');
+        }
+
+        setCollapsed(collapsed) {
+            this._sets.set_boolean('collapsed', !!collapsed);
+        }
+
+        // Apply the current `collapsed` value to the child actors. Every child
+        // except the control button is hidden — including the indicators drawer,
+        // whose open/closed state is its own child actor and therefore hides
+        // with it, so expanding restores exactly what was on screen before.
+        // Visibility only: the panel's size changes, so the caller relocates
+        // (startup and live reload already do, and neither may relocate before
+        // the actor is on the stage).
+        _applyCollapsed() {
+            const collapsed = this.isCollapsed();
+            for (const child of this.get_children()) {
+                if (child !== this._ctlBtn)
+                    child.visible = !collapsed;
             }
-            this._timeoutId2 = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT,
-                5000,
-                () => {
-                    if (
-                        // Bug fix v5
-                        Utils.panelBoxHidden() &&
-                        !OVERVIEW.visible
-                    )
-                        this.show();
-                    this._timeoutId2 = null;
-                    return GLib.SOURCE_REMOVE;
-                }
-            );
         }
 
         _showFloatingMiniPanel() {
@@ -1007,15 +1037,14 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._sets.disconnect(this._widgetsChangedId);
                 this._widgetsChangedId = null;
             }
+            if (this._collapsedChangedId) {
+                this._sets.disconnect(this._collapsedChangedId);
+                this._collapsedChangedId = null;
+            }
 
             if (this._timeoutId1) {
                 GLib.Source.remove(this._timeoutId1);
                 this._timeoutId1 = null;
-            }
-
-            if (this._timeoutId2) {
-                GLib.Source.remove(this._timeoutId2);
-                this._timeoutId2 = null;
             }
 
             if (this._initRelocateId) {

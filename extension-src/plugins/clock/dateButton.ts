@@ -32,6 +32,8 @@ import St from 'gi://St';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {hasMarkup, stripMarkup} from './clockMarkup.js';
+
 const PANELBOX = Main.layoutManager.panelBox;
 const DATEMENU = Main.panel.statusArea['dateMenu'];
 const DATESOURCEACTOR = DATEMENU.menu.sourceActor;
@@ -81,13 +83,37 @@ const TimeDrawer = GObject.registerClass(
             this.queue_repaint();
         }
 
+        // Put the formatted time into a Pango layout, as markup when the format
+        // template uses the supported subset (<b>, <i>, <span foreground="…">,
+        // …). Invalid markup must never cost the user their clock, so a template
+        // Pango rejects is drawn with its tags stripped instead. Both the size
+        // request and the drawing go through here: measuring the plain text
+        // while drawing bold/big markup clipped the time.
+        _applyText(layout) {
+            const value = this._text || ' ';
+            if (hasMarkup(value)) {
+                try {
+                    // set_markup() itself only warns on malformed input, so
+                    // validate first — parse_markup throws and lets us fall back.
+                    Pango.parse_markup(value, -1, '\0');
+                    layout.set_markup(value, -1);
+                    return;
+                } catch (_error) {
+                    layout.set_text(stripMarkup(value), -1);
+                    return;
+                }
+            }
+            layout.set_text(value, -1);
+        }
+
         // Request natural text size, swapped when rotated. Needs the theme node,
         // so it only runs once the actor is on the stage.
         _updateSize() {
             if (!this.get_stage())
                 return;
             try {
-                const layout = this.create_pango_layout(this._text || ' ');
+                const layout = this.create_pango_layout(null);
+                this._applyText(layout);
                 const [tw, th] = layout.get_pixel_size();
                 if (this._rotated)
                     this.set_size(th, tw);
@@ -123,7 +149,9 @@ const TimeDrawer = GObject.registerClass(
                 const font = themeNode.get_font();
                 if (font)
                     layout.set_font_description(font);
-                layout.set_text(this._text, -1);
+                // Markup-aware: any <span foreground="…"> in the template paints
+                // over the theme colour set above, the rest inherits it.
+                this._applyText(layout);
                 PangoCairo.show_layout(ctx, layout);
             } catch (error) {
                 logError(error, 'GNOME Widget Panel clock draw failed');

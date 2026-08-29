@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @tag:ui-testing
 #
-# UI test harness library for GNOME Widget Panel. See docs/ui-testing.md.
+# UI test harness library for GNOME Widget Panel. See docs/testing/ui-testing.md.
 #
 # A test sources this file and calls `ui_start`; the harness then re-executes
 # the test inside its own `dbus-run-session`, boots a fully isolated headless
@@ -102,7 +102,13 @@ ui_start() {
         fail "extension/ not built; run npm run build (or tests/ui/run.sh)"
     rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gnome-shell-disable-extensions"
 
-    # Reset every panel setting the tests rely on (the db persists across runs).
+    # The throwaway dconf db persists across tests AND across runs, so every
+    # panel key must start from a known state. Reset the whole schema rather
+    # than listing keys: an enumerated reset silently goes stale when a key is
+    # added, and one test then inherits another's state (a leaked `collapsed`
+    # left later tests with an invisible, unclickable panel).
+    gsettings reset-recursively "$GWP_SCHEMA"
+
     gsettings set org.gnome.shell disable-user-extensions false
     gsettings set org.gnome.shell disable-extension-version-validation true \
         2>/dev/null || true
@@ -110,6 +116,8 @@ ui_start() {
         "['$GWP_UUID','$GWP_DRIVER_UUID']"
     gsettings set org.gnome.shell welcome-dialog-last-shown-version '"999"' \
         2>/dev/null || true
+    # Values the tests rely on that differ from the schema defaults (the reset
+    # above already restored everything else, `collapsed` included).
     ui_config_write "$config_json"
     ui_set state 1
     ui_set orientation horizontal
