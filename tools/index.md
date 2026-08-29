@@ -12,6 +12,11 @@ Developer and build tooling for the GNOME Widget Panel. Parent:
   three between top-level classes including `GObject.registerClass(...)`
   assignments, one blank line separating the import block, comments kept attached
   to the declaration below them). Idempotent.
+- [`wiki-screenshots.sh`](wiki-screenshots.sh) — regenerates the published
+  screenshots (panel, collapsed panel, settings window) headlessly on top of the
+  UI test harness, so refreshing the wiki assets needs no human clicking and
+  touches nothing in the user's session. Output lands in
+  `dist/wiki-screenshots/`; see [`../docs/process/promotion.md`](../docs/process/promotion.md).
 
 ## Directories
 

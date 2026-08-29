@@ -27,6 +27,9 @@ the relevant page **before** the matching task.
   (reproduce → analyse → fix → regression test → verify → code review), the
   subagent roles that drive it and the debugging methods for Shell-only bugs
   (`@tag:process`).
+- [`promotion.md`](promotion.md) — the public presence: the GitHub wiki, the
+  extensions.gnome.org listing, how the published screenshots are regenerated
+  and how a release is uploaded to the store by hand (`@tag:process`).
 - [`code-quality.md`](code-quality.md) — modularity, uniform naming across the
   codebase and per-widget documentation: the rules that keep the cost of change
   from growing (`@tag:process`).

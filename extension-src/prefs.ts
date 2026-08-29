@@ -450,9 +450,14 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
 
         // All releases + the GNOME Shell support matrix (which plugin version to
         // install for a given GNOME version).
+        // No "&" in these titles: `_aboutLinkRow` puts the same string into an
+        // Adw.ActionRow title (parsed as Pango markup) and into a Gtk tooltip
+        // (plain text), so neither the raw nor the escaped form is right in both.
+        // A raw "&" made GTK reject the markup and drop the title entirely,
+        // leaving a row with a subtitle and no name.
         aboutGroup.add(
             this._aboutLinkRow(
-                'All releases & GNOME support',
+                'All releases and GNOME support',
                 'Every release, with a GNOME Shell version → plugin version table.',
                 () => SystemInfo.openUrl(SystemInfo.changelogUrl)
             )
