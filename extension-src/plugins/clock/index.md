@@ -22,6 +22,12 @@ configurable strftime/`date` template.
   the template rather than in separate bold/italic/colour switches for exactly
   that reason. Markup Pango rejects is drawn with its tags stripped: a typo
   costs the styling, never the clock.
+  The **default weight is plain**: the clock paints with the font of its own
+  theme node, and the shell theme puts `font-weight: bold` on `.button` (the
+  style class of every panel widget button), so
+  [`../../stylesheet.css`](../../stylesheet.css) resets it for `.clock-time`.
+  Bold is something the template asks for with `<b>`, not something the clock
+  starts with.
 
 ## Source files
 

@@ -20,6 +20,14 @@ ui_wait_js "plugin('clock') !== null && $CLOCK_W > 0" \
 plain_w="$(ui_eval "$CLOCK_W")"
 _ui_log "ok - plain '18:88' measures ${plain_w}px"
 
+# --- the default weight is plain, not the theme's bold --------------------
+# The clock paints with the font of its own theme node, and the shell theme puts
+# `font-weight: bold` on `.button`, the style class of every panel widget. The
+# stylesheet resets it for `.clock-time`: a default clock must be plain, and a
+# template that wants bold asks for it with <b>. Pango weight: 400 = normal.
+weight="$(ui_eval "plugin('clock')._dateLabel.get_theme_node().get_font().get_weight()")"
+assert_eq "$weight" "400" "default clock weight is normal (not the theme's bold)"
+
 # --- bold markup widens the measured size --------------------------------
 ui_config_write '{"schema":1,"plugins":[
   {"id":"clock","enabled":true,"options":{"format":"<b>18:88</b>"}}]}'

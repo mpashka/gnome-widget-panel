@@ -93,6 +93,15 @@
   text-align: center;
 }
 
+/* The clock paints its own text with the font of its theme node, so it is not
+   covered by the StLabel rule above and inherits the bold weight the shell
+   theme puts on `.button` (the style class of every panel widget button). The
+   default clock must be a plain weight; a template that wants bold says so with
+   <b> in the format itself. */
+#FloatingMiniPanel .clock-time {
+  font-weight: normal;
+}
+
 .popup-menu.panel-menu {
   margin-bottom: 0;
 }
