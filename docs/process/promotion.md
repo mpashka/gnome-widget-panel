@@ -52,12 +52,32 @@ Copy the PNGs into the wiki repository's `images/` and push.
 
 ## Releasing to the store
 
-The Release workflow's EGO step is best-effort and drives the website's forms;
-treat the GitHub Release as the reliable artifact and expect to upload by hand:
+The Release workflow's EGO step drives the site the way a browser does. It
+reported success while uploading nothing for two releases; both causes are fixed
+in [`../../.github/scripts/ego-upload.py`](../../.github/scripts/ego-upload.py):
+
+- the login form field is **`username`**, not the django-allauth `login` the
+  script used to send, so the POST never authenticated;
+- `/upload/` is no longer the upload endpoint. It serves a JS uploader whose
+  target is announced in the page as `data-upload-api-url`
+  (currently `POST /api/v1/extensions`, multipart, CSRF in the `X-CSRFToken`
+  header). POSTing the form to `/upload/` answers **405**.
+
+A failed login or upload now exits non-zero, so the workflow step goes red
+instead of green. Verify credentials and the endpoint without queueing a
+submission:
+
+```bash
+. ~/.profile
+python3 .github/scripts/ego-upload.py --dry-run dist/*.shell-extension.zip
+```
+
+To upload by hand — the GitHub Release stays the reliable artifact:
 
 1. Take `gnome-widget-panel@mpashka.github.com.shell-extension.zip` from the
    GitHub Release (or rebuild it with `npm run pack` — the same bytes).
-2. Upload it at <https://extensions.gnome.org/upload/>.
+2. `python3 .github/scripts/ego-upload.py dist/*.shell-extension.zip`, or use the
+   form at <https://extensions.gnome.org/upload/> in a browser.
 3. EGO requires the integer `version` in `metadata.json` to strictly increase,
    and reviewers read the **generated** `extension/*.js` — see
    [`release.md`](release.md) and the "Code formatting" section of
