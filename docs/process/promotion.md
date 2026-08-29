@@ -17,8 +17,12 @@ Where users meet the project, and how to keep those places current. Back to the
 - **extensions.gnome.org (EGO)** —
   <https://extensions.gnome.org/extension/10381/gnome-widget-panel/> — the store
   listing. The homepage link shown there comes from the `url` field of
-  [`../../extension-src/metadata.json`](../../extension-src/metadata.json), so
-  changing where users should land means changing that field, not just the site.
+  [`../../extension-src/metadata.json`](../../extension-src/metadata.json) and is
+  re-applied on every upload, so editing it only on the site does not stick —
+  change the field. It points at the **wiki**, which is the page users should
+  land on. `.github/scripts/release-notes.mjs` falls back to parsing the
+  owner/repo out of this same field when `GITHUB_REPOSITORY` is unset; the
+  `/wiki` suffix leaves that parse intact.
 - **The user guide in this repository** —
   [`../specification/`](../specification/index.md) — the authoritative
   description. Wiki pages summarise it and link to it; they must not contradict
