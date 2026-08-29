@@ -65,3 +65,19 @@ treat the GitHub Release as the reliable artifact and expect to upload by hand:
 
 A listing in **"Waiting for author"** means a reviewer expects a new upload from
 you; uploading the next version is how that state is cleared.
+
+## Checking the review state
+
+[`../../tools/ego-status.py`](../../tools/ego-status.py) answers "is it approved
+yet?" without credentials: `/extension-info/?uuid=<uuid>` returns 404 while the
+extension is unpublished and JSON once it is live (exit code 10 vs 0), so it can
+be polled from a watcher. With `EGO_USERNAME`/`EGO_PASSWORD` in the environment
+it additionally logs in and returns the author-visible context for the listing —
+that half is written from the upload script's login flow and has not been run
+against a live account; treat a parse failure as *unknown*, never as approved,
+and re-fix the selectors from `--dump-html` output rather than guessing.
+
+Reviewer feedback itself arrives by **email** to the EGO account owner, not
+through any endpoint. Fixing a review comment always means a new release: EGO
+requires the integer `version` to strictly increase, so the loop is
+fix → `bump=patch` release → upload the new zip.
