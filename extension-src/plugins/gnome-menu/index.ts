@@ -10,6 +10,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 import Shell from 'gi://Shell';
 
@@ -42,6 +43,20 @@ const CATEGORY_MAP = [
 const OTHER_CATEGORY = 'Other';
 const FAVORITES_CATEGORY = 'Favorites';
 const FALLBACK_ICON = 'application-x-executable-symbolic';
+
+// Fixed popup geometry, in actor pixels: the two panes' widths, and the range
+// the one height picked by _updateMenuHeight may fall in. The menu is
+// deliberately the SAME size for every category. The height is what the panel's
+// monitor can spare, capped at PREFERRED so a tall screen does not get a
+// full-height column of applications; MIN keeps it usable on a short screen even
+// though rows then scroll.
+const CATEGORIES_WIDTH = 150;
+const APPS_WIDTH = 320;
+const PREFERRED_HEIGHT = 500;
+const MIN_HEIGHT = 240;
+// Room left for the panel itself and the boxpointer's arrow and shadow, so the
+// popup never reaches the edge of the work area.
+const SCREEN_MARGIN = 140;
 
 // Resolve an app's display category from its `Categories` string (a possibly
 // null, `;`-separated list). Returns the first matching mapped label by
@@ -202,6 +217,14 @@ const GnomeMenuButton = GObject.registerClass(
             this._menu.actor.hide();
             this._buildContent();
 
+            // The available height depends on the monitor and on where the
+            // panel was dragged, both of which change while the extension runs,
+            // so the size is recomputed every time the menu opens.
+            this._menu.connect('open-state-changed', (_menu, open) => {
+                if (open)
+                    this._updateMenuHeight();
+            });
+
             this.connect('clicked', () => this._menu.toggle());
         }
 
@@ -227,38 +250,47 @@ const GnomeMenuButton = GObject.registerClass(
                 return;
             }
 
-            const hbox = new St.BoxLayout({
+            // Both panes scroll and both have a fixed width, so the popup keeps
+            // the size _updateMenuHeight gives it no matter which category is
+            // selected or how many applications that category holds.
+            this._content = new St.BoxLayout({
                 style_class: 'gnome-menu-content',
-                style: 'spacing: 6px; min-height: 400px;',
-                x_expand: true,
-                y_expand: true,
+                style: 'spacing: 6px;',
             });
 
             // LEFT pane: vertical column of category buttons.
             this._leftBox = new St.BoxLayout({
                 orientation: Clutter.Orientation.VERTICAL,
-                style_class: 'gnome-menu-categories',
-                style: 'min-width: 150px;',
                 y_expand: true,
             });
+            const categoriesScroll = new St.ScrollView({
+                style_class: 'gnome-menu-categories',
+                width: CATEGORIES_WIDTH,
+                y_expand: true,
+            });
+            categoriesScroll.set_policy(
+                St.PolicyType.NEVER,
+                St.PolicyType.AUTOMATIC
+            );
+            categoriesScroll.set_child(this._leftBox);
 
             // RIGHT pane: a vertical, scrollable column of app buttons.
             this._rightBox = new St.BoxLayout({
                 orientation: Clutter.Orientation.VERTICAL,
                 y_expand: true,
             });
-            const scroll = new St.ScrollView({
+            const appsScroll = new St.ScrollView({
                 style_class: 'gnome-menu-apps',
-                style: 'min-width: 300px; max-height: 500px;',
-                x_expand: true,
+                width: APPS_WIDTH,
                 y_expand: true,
             });
-            scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
-            scroll.set_child(this._rightBox);
+            appsScroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+            appsScroll.set_child(this._rightBox);
 
-            hbox.add_child(this._leftBox);
-            hbox.add_child(scroll);
-            this._menu.box.add_child(hbox);
+            this._content.add_child(categoriesScroll);
+            this._content.add_child(appsScroll);
+            this._menu.box.add_child(this._content);
+            this._updateMenuHeight();
 
             // One category button per category; clicking or hovering selects it.
             this._categoryButtons = [];
@@ -288,6 +320,32 @@ const GnomeMenuButton = GObject.registerClass(
 
             // Initial selection: the first category (Favorites when present).
             this._selectCategory(categories[0]);
+        }
+
+        // Give the popup one fixed height, chosen from the space the panel's
+        // monitor has. The menu MUST NOT resize when the selection changes: it
+        // is anchored to the panel, so a popup that grows with the selected
+        // category pushes its own category rows out from under the pointer, the
+        // pointer lands on the neighbouring category, that one resizes it back —
+        // and the menu shakes (worst with the panel at the bottom, where the
+        // popup grows upwards and a long category such as "Internet" also ran
+        // off the top of the screen).
+        _updateMenuHeight() {
+            if (!this._content)
+                return;
+            const monitor =
+                Main.layoutManager.findMonitorForActor(this) ??
+                Main.layoutManager.primaryMonitor;
+            const workArea = monitor
+                ? Main.layoutManager.getWorkAreaForMonitor(monitor.index)
+                : null;
+            const available = workArea
+                ? workArea.height - SCREEN_MARGIN
+                : PREFERRED_HEIGHT;
+            this._content.height = Math.max(
+                MIN_HEIGHT,
+                Math.min(PREFERRED_HEIGHT, available)
+            );
         }
 
         // Show a category's apps in the right pane and mark its button active.
@@ -321,14 +379,16 @@ const GnomeMenuButton = GObject.registerClass(
                         : {icon_name: FALLBACK_ICON, icon_size: 24}
                 )
             );
-            row.add_child(
-                new St.Label({
-                    text: app.name,
-                    x_expand: true,
-                    x_align: Clutter.ActorAlign.START,
-                    y_align: Clutter.ActorAlign.CENTER,
-                })
-            );
+            const label = new St.Label({
+                text: app.name,
+                x_expand: true,
+                x_align: Clutter.ActorAlign.START,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            // The pane has a fixed width (see _updateMenuHeight), so a long
+            // application name is ellipsized instead of widening the popup.
+            label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            row.add_child(label);
 
             const button = new St.Button({
                 style_class: 'popup-menu-item',
@@ -354,6 +414,7 @@ const GnomeMenuButton = GObject.registerClass(
                 this._menu.destroy();
                 this._menu = null;
             }
+            this._content = null;
             this._leftBox = null;
             this._rightBox = null;
             this._categoryButtons = null;

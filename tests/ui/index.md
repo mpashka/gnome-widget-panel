@@ -44,9 +44,14 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   the handle stays visible, its menu still opens (the only way back), the state
   persists in the `collapsed` key, expanding restores every widget, and a widget
   live-reload does not silently expand a collapsed panel.
-- `t-16-clock-markup.sh` — the clock's markup subset: bold widens the **size
-  request** (measuring plain text would clip it), a colour span is accepted, and
-  invalid markup falls back to the plain time instead of blanking the widget.
+- `t-16-clock-markup.sh` — the clock's markup subset: the default weight is
+  plain (the shell theme's bold on `.button` must not reach the clock), bold
+  widens the **size request** (measuring plain text would clip it), a colour span
+  is accepted, and invalid markup falls back to the plain time instead of
+  blanking the widget.
+- `t-17-menu-size-stable.sh` — the gnome-menu popup asks for the same size for
+  every category and fits the monitor work area; a popup that grew with the
+  selection moved its own rows out from under the pointer and shook.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
