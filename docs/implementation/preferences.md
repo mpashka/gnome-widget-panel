@@ -125,26 +125,34 @@ It is applied **live** by the `MainPanelController` (the panel listens on
 Bar** extension (see [`object-model.md`](object-model.md)). Because both would
 fight over `panelBox`, the group also detects Hide Top Bar
 (`hidetopbar@mathieu.bidon.ca`) from the preferences process — which has no
-`ExtensionManager` — by reading `org.gnome.shell`'s `enabled-extensions` /
-`disabled-extensions` / `disable-user-extensions` keys plus the extension
-directories (`_hideTopBarStatus`):
+`ExtensionManager` — in `_hideTopBarStatus`:
 
-- **enabled** (actively controlling the bar): shows an `error`-styled warning row
-  and **disables** the combo (our controller stands down while it runs, so the
-  setting is meaningless);
-- **installed but disabled**: shows a softer `warning` row noting it can be
-  removed, and leaves the combo usable.
+- **installed** — its directory exists in one of the places GNOME Shell loads
+  extensions from (`GLib.get_user_data_dir()` and `GLib.get_system_data_dirs()`,
+  each `+ /gnome-shell/extensions/<uuid>`). Only the files count: a UUID stays in
+  `org.gnome.shell`'s `enabled-extensions` / `disabled-extensions` list after the
+  extension is uninstalled, and such a leftover used to raise this banner — with
+  a Remove button that could not work — for an extension no longer on the machine;
+- **enabled** — installed *and* switched on (in `enabled-extensions`, not in
+  `disabled-extensions`, `disable-user-extensions` off), i.e. actively
+  controlling the bar. Shows an `error`-styled row and **disables** the combo
+  (our controller stands down while it runs, so the setting is meaningless);
+  installed but disabled shows a softer `warning` row and leaves the combo usable.
 
 The warning row carries a **Remove…** button (`destructive-action`). It opens an
 `Adw.AlertDialog` confirmation, then uninstalls Hide Top Bar through the Shell's
 own `org.gnome.Shell.Extensions.UninstallExtension` D-Bus method — the same call
 the Extensions app makes (`_confirmRemoveHideTopBar` / `_uninstallHideTopBar`).
-That method only removes a user-installed copy (`~/.local/share`); a system copy
-under `/usr/share` returns `false`, and we toast that it must be removed manually.
+What that method **returns** is not the outcome: it answers `false` both when it
+refuses (a system copy under `/usr/share`) and when the shell does not know the
+UUID at all, so the extension directory afterwards is what decides. The uninstall
+therefore reports whatever `applyHtbStatus` finds when it repaints the banner: a
+short `Adw.Toast` on success, and on failure an `Adw.AlertDialog` — a toast title
+is a single ellipsized line, which cut the actionable half off the message.
 The banner (title/subtitle/`error`↔`warning` class, the combo's sensitivity and
 the whole row's visibility) is driven by a single `applyHtbStatus` closure that
-re-runs after an uninstall, so the UI updates in place without reopening
-preferences.
+re-runs after an uninstall and returns the status it rendered, so the UI updates
+in place without reopening preferences.
 
 ## About and GitHub issue integration
 

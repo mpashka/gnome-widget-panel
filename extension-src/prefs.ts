@@ -24,8 +24,10 @@ import * as SystemInfo from './systemInfo.js';
 import {RELEASE_CHANNEL} from './version.js';
 
 // Async existence check (query_info) keeps the Hide-Top-Bar on-disk probe off
-// the main loop (EGO forbids synchronous file I/O there).
+// the main loop (EGO forbids synchronous file I/O there); the promisified
+// D-Bus call keeps the uninstall off it too.
 Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
+Gio._promisify(Gio.DBusConnection.prototype, 'call', 'call_finish');
 
 // Panel alignment bitfield, mirrored from controlButton.ts / extension.ts.
 const Alignment = {
@@ -41,6 +43,14 @@ const Alignment = {
 // control reimplements it, so the two must not run at once (see
 // _addMainPanelGroup / mainPanel.ts).
 const HIDE_TOP_BAR_UUID = 'hidetopbar@mathieu.bidon.ca';
+
+// Every directory GNOME Shell loads extensions from, in the order it searches
+// them: the user's data dir first, then the system ones.
+function extensionDirs(uuid) {
+    return [GLib.get_user_data_dir(), ...GLib.get_system_data_dirs()].map(
+        (dir) => GLib.build_filenamev([dir, 'gnome-shell', 'extensions', uuid])
+    );
+}
 
 // The `main-panel` enum, in nick order (index == enum value). Short labels show
 // in the collapsed combo row; the long descriptions only in the open dropdown.
@@ -128,12 +138,26 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         this._addAboutGroup(page);
     }
 
-    // Detect the standalone "Hide Top Bar" extension. `enabled` means it is
-    // actively controlling the top bar right now (real conflict); `installed`
-    // means it is still present on disk (user should remove it). Read from the
-    // shell's own GSettings + the extension directories, since the preferences
-    // process has no ExtensionManager.
+    // Detect the standalone "Hide Top Bar" extension. `installed` means its
+    // files are really on disk; `enabled` means it is additionally switched on
+    // and therefore controlling the top bar right now (the real conflict).
+    //
+    // Only the files decide whether it is installed. The shell's
+    // `enabled-extensions` / `disabled-extensions` lists are not evidence: a
+    // UUID stays in them after the extension is uninstalled, and such a leftover
+    // entry used to raise this banner — with a Remove button that could not
+    // work — for an extension that no longer exists on the machine.
     async _hideTopBarStatus() {
+        let installed = false;
+        for (const path of extensionDirs(HIDE_TOP_BAR_UUID)) {
+            if (await this._pathExists(path)) {
+                installed = true;
+                break;
+            }
+        }
+        if (!installed)
+            return {enabled: false, installed: false};
+
         let enabledList = [];
         let disabledList = [];
         let masterOff = false;
@@ -143,32 +167,12 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             disabledList = shell.get_strv('disabled-extensions');
             masterOff = shell.get_boolean('disable-user-extensions');
         } catch (e) {
-            // org.gnome.shell schema unavailable; treat as not present.
+            // org.gnome.shell schema unavailable; treat as not enabled.
         }
-        const diskPaths = [
-            GLib.build_filenamev([
-                GLib.get_home_dir(),
-                '.local/share/gnome-shell/extensions',
-                HIDE_TOP_BAR_UUID,
-            ]),
-            `/usr/share/gnome-shell/extensions/${HIDE_TOP_BAR_UUID}`,
-        ];
-        let onDisk = false;
-        for (const p of diskPaths) {
-            if (await this._pathExists(p)) {
-                onDisk = true;
-                break;
-            }
-        }
-
         const enabled =
             !masterOff &&
             enabledList.includes(HIDE_TOP_BAR_UUID) &&
             !disabledList.includes(HIDE_TOP_BAR_UUID);
-        const installed =
-            onDisk ||
-            enabledList.includes(HIDE_TOP_BAR_UUID) ||
-            disabledList.includes(HIDE_TOP_BAR_UUID);
         return {enabled, installed};
     }
 
@@ -251,8 +255,11 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         // bar) is a hard conflict shown as an error that also disables the row;
         // `installed` (present but inactive) is a softer warning. When it is no
         // longer installed the whole banner (and its Remove button) hides.
+        // Returns the status it has just rendered, so the uninstall can report
+        // the outcome without probing the disk a second time.
         const applyHtbStatus = async () => {
-            const {enabled, installed} = await this._hideTopBarStatus();
+            const status = await this._hideTopBarStatus();
+            const {enabled, installed} = status;
             warn.visible = installed;
             warn.title = enabled
                 ? 'Hide Top Bar is enabled'
@@ -268,6 +275,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             // While Hide Top Bar is actively controlling the bar, our setting is
             // meaningless (the controller stands down), so disable the row.
             row.sensitive = !enabled;
+            return status;
         };
         applyHtbStatus();
 
@@ -312,9 +320,10 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
 
     // Confirm before uninstalling the standalone "Hide Top Bar" extension.
     // Removal is reversible (reinstallable from EGO) but still surprising, so we
-    // gate the D-Bus uninstall behind a destructive AlertDialog. `onDone` re-runs
-    // `applyHtbStatus` to refresh the banner in place.
-    _confirmRemoveHideTopBar(window, onDone) {
+    // gate the D-Bus uninstall behind a destructive AlertDialog. `refreshStatus`
+    // re-runs `applyHtbStatus`, refreshing the banner in place and reporting the
+    // state it now shows.
+    _confirmRemoveHideTopBar(window, refreshStatus) {
         const dialog = new Adw.AlertDialog({
             heading: 'Remove Hide Top Bar?',
             body:
@@ -332,7 +341,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         dialog.set_close_response('cancel');
         dialog.connect('response', (_d, response) => {
             if (response === 'remove')
-                this._uninstallHideTopBar(window, onDone);
+                this._uninstallHideTopBar(window, refreshStatus);
         });
         dialog.present(window);
     }
@@ -340,20 +349,19 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     // Uninstall "Hide Top Bar" through the Shell's own D-Bus interface
     // (`org.gnome.Shell.Extensions.UninstallExtension`) — the same call the
     // Extensions app makes. It only removes user-installed extensions
-    // (`~/.local/share`); a system copy under `/usr/share` cannot be removed
-    // this way, in which case the call returns false and we tell the user to
-    // remove it manually. Runs asynchronously; on completion we toast the result
-    // and refresh the banner via `onDone`.
-    _uninstallHideTopBar(window, onDone) {
-        const toast = (title) => {
-            try {
-                window?.add_toast(new Adw.Toast({title}));
-            } catch (_e) {
-                // Window may not support toasts; the banner refresh still runs.
-            }
-        };
+    // (`~/.local/share`); a system copy under `/usr/share` stays.
+    //
+    // What the call returns is not the outcome: the shell answers `false` both
+    // when it refuses and when it simply does not know the UUID, so the state of
+    // the extension directory afterwards is what decides. `refreshStatus`
+    // re-reads it and repaints the banner, and its answer is what we report.
+    //
+    // A toast title is a single ellipsized line, so it carries the short good
+    // news only; the failure needs a sentence about what to do instead and gets
+    // a dialog, where it is fully readable.
+    async _uninstallHideTopBar(window, refreshStatus) {
         try {
-            Gio.DBus.session.call(
+            await Gio.DBus.session.call(
                 'org.gnome.Shell.Extensions',
                 '/org/gnome/Shell/Extensions',
                 'org.gnome.Shell.Extensions',
@@ -362,28 +370,34 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                 new GLib.VariantType('(b)'),
                 Gio.DBusCallFlags.NONE,
                 -1,
-                null,
-                (source, res) => {
-                    let ok = false;
-                    try {
-                        ok = source.call_finish(res).deepUnpack()[0];
-                    } catch (e) {
-                        logError(e, 'widget-panel: UninstallExtension failed');
-                    }
-                    toast(
-                        ok
-                            ? 'Hide Top Bar removed.'
-                            : 'Could not remove Hide Top Bar automatically — ' +
-                                  'remove it from the Extensions app.'
-                    );
-                    onDone();
-                }
+                null
             );
         } catch (e) {
-            logError(e, 'widget-panel: UninstallExtension call failed');
-            toast('Could not remove Hide Top Bar — remove it manually.');
-            onDone();
+            logError(e, 'widget-panel: UninstallExtension failed');
         }
+
+        const {installed} = await refreshStatus();
+        if (!installed) {
+            try {
+                window?.add_toast(new Adw.Toast({title: 'Hide Top Bar removed'}));
+            } catch (_e) {
+                // Window may not support toasts; the banner already refreshed.
+            }
+            return;
+        }
+
+        const failure = new Adw.AlertDialog({
+            heading: 'Could not remove Hide Top Bar',
+            body:
+                `The shell refused to uninstall ${HIDE_TOP_BAR_UUID}. That ` +
+                'happens when it is installed system-wide rather than for ' +
+                'your user. Remove it from the Extensions app, or disable it ' +
+                'there — this panel’s top-bar setting works either way.',
+        });
+        failure.add_response('close', 'Close');
+        failure.set_default_response('close');
+        failure.set_close_response('close');
+        failure.present(window);
     }
 
     // "About" group at the bottom of the main page: extension name + version
