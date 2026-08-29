@@ -104,11 +104,11 @@ has more room), or above/below when horizontal.
   switch, work-interval and break-duration `Adw.SpinRow`s, two
   `Gtk.ColorDialogButton`s), a width row, and the tooltip
   show-switch/template editor with live preview. See
-  [`../../../docs/preferences.md`](../../../docs/preferences.md).
+  [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 
 Not added to the default widget config; add it manually from preferences.
 
 ## Related docs
 
-- [Object model](../../../docs/object-model.md)
-- [Architecture](../../../docs/architecture.md)
+- [Object model](../../../docs/implementation/object-model.md)
+- [Architecture](../../../docs/implementation/architecture.md)

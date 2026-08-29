@@ -20,7 +20,7 @@ body:
           is worth far more than a description. Drag the file into the
           Screenshot field.
 
-        See [bug-report-howto.md](https://github.com/mpashka/gnome-widget-panel/blob/main/docs/bug-report-howto.md)
+        See [bug-report-howto.md](https://github.com/mpashka/gnome-widget-panel/blob/main/docs/process/bug-report-howto.md)
         for what a good report looks like.
   - type: textarea
     id: what-happened

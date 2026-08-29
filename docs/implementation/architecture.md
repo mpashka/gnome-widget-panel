@@ -94,4 +94,4 @@ server/rate-limit usage.
 ## Roadmap
 
 The maintained backlog, including incremental TypeScript contract typing and
-future panel features, lives in [`../TODO.md`](../TODO.md).
+future panel features, lives in [`../roadmap/backlog.md`](../roadmap/backlog.md).

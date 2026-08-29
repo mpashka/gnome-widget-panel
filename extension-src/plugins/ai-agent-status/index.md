@@ -23,7 +23,7 @@ fallback); with none open the widget shows a dim grey placeholder (`no-sessions`
 The single dot shows the **most-urgent** state across every session —
 priority **waiting > idle > thinking > no-sessions** — and the hover tooltip
 carries the per-session breakdown (which agent is in which state). See the
-[user guide](../../../user-guide/widgets.md#ai-agent-status--ai-agent-status--optional)
+[user guide](../../../docs/specification/widgets.md#ai-agent-status--ai-agent-status--optional)
 for the end-user framing.
 
 Not in the default config; add it via the panel preferences.
@@ -37,7 +37,7 @@ Not in the default config; add it via the panel preferences.
 - `prefs.ts` — widget settings UI: Claude hooks status dot + Configure button,
   port/expire rows, the three state colours, pulse switch and the tooltip
   template editor with live preview. See
-  [`../../../docs/preferences.md`](../../../docs/preferences.md).
+  [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 
 ## Hook mechanism
 
@@ -157,5 +157,5 @@ follow-up could poll session-file mtimes (`~/.codex/sessions`,
 
 ## Related docs
 
-- [Object model](../../../docs/object-model.md)
-- [Architecture](../../../docs/architecture.md)
+- [Object model](../../../docs/implementation/object-model.md)
+- [Architecture](../../../docs/implementation/architecture.md)

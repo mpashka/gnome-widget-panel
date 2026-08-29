@@ -78,6 +78,13 @@ widgets are optional — add them from preferences.
 - **Interactions:** click toggles the calendar popup.
 - **Settings:** **format** — a strftime-style string, default `%H:%M` (e.g.
   `%a %d %b %H:%M`).
+- **Font styling:** the same format field accepts a small HTML-like subset for
+  styling, so part of the time can look different from the rest:
+  `<b>bold</b>`, `<i>italic</i>`, `<u>underline</u>`, `<small>`/`<big>` and
+  `<span foreground="#ff8800">colour</span>`. Example:
+  `<b>%H:%M</b><small>:%S</small>`. The settings page previews the result live
+  and reports invalid markup; if invalid markup reaches the panel anyway, the
+  time is shown unstyled rather than disappearing.
 
 ### CPU Load — `cpu-load-monitor`
 - **Icon:** a self-drawn **bar graph** (no icon). Each column is coloured by CPU
@@ -188,4 +195,4 @@ widgets are optional — add them from preferences.
 ---
 
 Back to the [user guide](index.md) · developer notes live under
-[`../docs/`](../docs/index.md).
+[`../index.md`](../index.md).

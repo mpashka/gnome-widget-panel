@@ -9,8 +9,5 @@ node_modules
 .idea/
 # throwaway feature-debug UI test scripts (copies of tests/ui/feature-debug.stub.sh)
 tests/ui/local-*
-# Local planning scratch notes (not part of the repo)
-docs/TODO-in.md.txt
-
-# Local, non-git debug/investigation archive (per-bug context + debug scripts)
-.archive/
+# Per-task working files live in docs/requests/<task-name>/ and are excluded
+# locally via .git/info/exclude (see AGENTS.md, "Documentation: LLM wiki").

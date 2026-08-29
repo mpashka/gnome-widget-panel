@@ -1,7 +1,7 @@
 // @tag:ui-testing
 //
 // Test-only driver extension for the UI test harness (see ../../lib.sh and
-// ../../../../docs/ui-testing.md). It exports org.gwp.TestDriver with a single
+// ../../../../docs/testing/ui-testing.md). It exports org.gwp.TestDriver with a single
 // Eval(script) -> (success, json) method on the session bus, replacing
 // org.gnome.Shell.Eval, which GNOME Shell 50 no longer offers (the
 // --unsafe-mode switch was removed).

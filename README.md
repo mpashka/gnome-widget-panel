@@ -4,7 +4,7 @@ Compact floating panel for Ubuntu/GNOME, inspired by XFCE panel widgets.
 Independent widget repositories provide a manifest and GJS renderer. The first
 integration target is `ai-agent-usage-widget`.
 
-> 📖 **New here? Read the [User Guide](user-guide/index.md)** — what each widget
+> 📖 **New here? Read the [User Guide](docs/specification/index.md)** — what each widget
 > does, its icon and settings, plus a walkthrough of the AI agent usage graph.
 > The sections below are for building, installing and developing the extension.
 
@@ -28,7 +28,7 @@ Plugin order, enabled state and per-widget options are configured in the
 `widgets` GSettings key (schema
 `org.gnome.shell.extensions.floating-mini-panel`); an empty key falls back to
 the built-in default configuration. Changes apply live, no reload needed (see
-[`docs/preferences.md`](docs/preferences.md)).
+[`docs/implementation/preferences.md`](docs/implementation/preferences.md)).
 
 ## Configure widgets
 
@@ -41,7 +41,7 @@ gnome-extensions prefs gnome-widget-panel@mpashka.github.com
 Widgets that have their own settings (currently `ai-agent-usage`) show a settings
 button that opens the widget's own settings dialog. The UI edits the same
 `widgets` GSettings key; you can also edit it by hand with `gsettings`. See
-[`docs/preferences.md`](docs/preferences.md).
+[`docs/implementation/preferences.md`](docs/implementation/preferences.md).
 
 ## Install from extensions.gnome.org
 
@@ -77,7 +77,7 @@ Releases are cut manually from the GitHub **Actions → Release** workflow, whic
 bumps the version, packs a `…shell-extension.zip` (build it locally with
 `npm run pack`), publishes a **GitHub Release** with the zip, and best-effort
 submits it to **extensions.gnome.org** for manual review. See
-[`docs/release.md`](docs/release.md) for the versioning scheme and details.
+[`docs/process/release.md`](docs/process/release.md) for the versioning scheme and details.
 
 ## Reload without logout (developer install)
 
@@ -95,7 +95,7 @@ Edit sources, close the nested window (or press `Ctrl+C`), and rerun
 the extension in your main session, then runs an interactive nested GNOME Shell
 in a window (`gnome-shell --devkit`) with the extension enabled in an isolated
 dconf profile, and tails the log. See
-[`docs/development.md`](docs/development.md) for details and alternatives.
+[`docs/process/development.md`](docs/process/development.md) for details and alternatives.
 
 ## Development build
 

@@ -2,7 +2,7 @@
 
 `@tag:process`
 
-Back to the [documentation index](index.md) and [working rules](../AGENTS.md).
+Back to the [documentation index](../index.md) and [working rules](../../AGENTS.md).
 
 The standard sequence for turning a bug report into a merged fix. It is written
 for an AI agent driving the work with **subagents**, but a human follows the same
@@ -88,8 +88,8 @@ conditions.
 Reproduce the bug from the report before touching code. Load the reporter's
 configuration into a dev profile ([`development.md`](development.md),
 `./dev-run.sh`). Prefer a **failing automated repro**: extend the headless UI
-suite ([`ui-testing.md`](ui-testing.md), `npm run test:ui`) or a pure-logic test
-([`../tests/index.md`](../tests/index.md)) so the failure is a red test, not a
+suite ([`ui-testing.md`](../testing/ui-testing.md), `npm run test:ui`) or a pure-logic test
+([`../../tests/index.md`](../../tests/index.md)) so the failure is a red test, not a
 screenshot.
 
 **Exit:** you can trigger the bug on demand, and (ideally) a test fails because
@@ -170,8 +170,9 @@ When the root cause is not obvious from reading the code:
 ### B. Scripted scenario the user walks through
 
 The preferred way to exercise a manual repro. The agent produces **one script
-with sub-commands** plus a numbered **use-case** (in `MANUAL-TESTING.md`,
-git-excluded via `.git/info/exclude`); the user runs the steps and ticks each one
+with sub-commands** plus a numbered **use-case** (in
+`docs/requests/<task-name>/manual-testing.md`, git-excluded via
+`.git/info/exclude`); the user runs the steps and ticks each one
 `done / worked` or `couldn't do`. Design the script to **minimise manual steps**:
 
 - **Self-state (drive the plan from a state file):** persist progress and any
@@ -179,7 +180,7 @@ git-excluded via `.git/info/exclude`); the user runs the steps and ticks each on
   (and the live system state), **works out which numbered step is next, and runs
   it** — so the user just re-runs the same script to advance instead of copying
   different commands per step. Keep the state file in sync with the numbered
-  steps in `MANUAL-TESTING.md`.
+  steps in `manual-testing.md`.
 - **Self-driving where possible:** install the handlers the scenario needs
   (e.g. screen lock/unlock hooks), trigger the actions it can (`loginctl
   lock-session`, set a short idle timeout to lock by timeout), and start/stop its
@@ -201,7 +202,7 @@ later automated test ([stage 4](#4-regression-test-create-or-update)) encodes.
 - **Squash-merge the branch into `main`** so `main` has exactly one commit for the
   issue; end the message with `Fixes #N` so it closes on merge; delete the branch
   (see [Branch & merge policy](#branch--merge-policy)).
-- Update [`TODO.md`](../TODO.md) if the fix completed/split a tracked contract.
+- Update [`../roadmap/backlog.md`](../roadmap/backlog.md) if the fix completed/split a tracked contract.
 - Add a regression note only if the root cause is subtle enough that a future
   agent would re-introduce it.
 

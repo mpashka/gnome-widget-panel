@@ -8,7 +8,7 @@
 # gschema.xml source and compiles schemas itself, and a stale compiled blob is
 # just dead weight in the upload.
 #
-# Output: dist/<uuid>.shell-extension.zip. See ../../docs/release.md.
+# Output: dist/<uuid>.shell-extension.zip. See ../../docs/process/release.md.
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -2,8 +2,8 @@
 
 `@tag:ui-testing`
 
-Back to the [docs index](index.md). Harness code lives in
-[`../tests/ui/`](../tests/ui/index.md).
+Back to the [docs index](../index.md). Harness code lives in
+[`../../tests/ui/index.md`](../../tests/ui/index.md).
 
 UI tests serve two distinct purposes with different lifecycles:
 
@@ -19,12 +19,12 @@ UI tests serve two distinct purposes with different lifecycles:
 | Approach | Verdict | Why |
 | --- | --- | --- |
 | `org.gnome.Shell.Eval` D-Bus (+ `--unsafe-mode`) | ✗ unavailable | GNOME Shell 50 removed the `--unsafe-mode` switch; `Eval` returns `(false, '')` and `org.gnome.Mutter.DebugControl` exposes no unsafe-mode toggle (verified empirically). |
-| **Test-driver extension** (own `Eval` via D-Bus) | ✓ **chosen** | 90-line test-only extension ([`../tests/ui/driver/`](../tests/ui/driver/)) exports `org.gwp.TestDriver.Eval(script)`; runs only inside the isolated test session; version-proof; awaits Promise results so async shell APIs work. |
+| **Test-driver extension** (own `Eval` via D-Bus) | ✓ **chosen** | 90-line test-only extension ([`../../tests/ui/driver`](../../tests/ui/driver)) exports `org.gwp.TestDriver.Eval(script)`; runs only inside the isolated test session; version-proof; awaits Promise results so async shell APIs work. |
 | **Headless shell** (`gnome-shell --headless --virtual-monitor`) | ✓ **chosen** | Real compositor + real rendering (llvmpipe) with no window; the same mechanism `dev-run.sh` uses. Each test boots a throwaway, fully isolated session (own bus / extensions dir / dconf profile, so its own `widgets` GSettings key). |
 | **Virtual pointer** (`Clutter.VirtualInputDevice`) | ✓ **chosen** | Real input events through the whole picking/reactive path — clicks verified to open the overview headless. Preferred over `actor.emit('clicked')`, which bypasses picking (emit also works and is fine for quick debug). |
 | **Actor introspection asserts** | ✓ **chosen** | Most assertions read actor state via `Eval` (position, size, orientation, style, children) — robust, fast, precise failure messages. The primary assertion style. |
 | Screenshots — smoke test | ✓ chosen (t-07) | `Shell.Screenshot.screenshot_stage_to_content` + `composite_to_stream` writes a stage PNG headless; the committed test only asserts a non-uniform render. |
-| Screenshots — golden-image comparison | ✗ not committed | Pixel-exact references break on theme/font/GPU-rasterizer changes and bloat the repo. Use locally for feature work: capture with `ui_screenshot`, eyeball or diff with [`../tests/ui/png-stats.js`](../tests/ui/png-stats.js). Revisit (with masks + tolerances, e.g. openQA-style) only if visual regressions become frequent. |
+| Screenshots — golden-image comparison | ✗ not committed | Pixel-exact references break on theme/font/GPU-rasterizer changes and bloat the repo. Use locally for feature work: capture with `ui_screenshot`, eyeball or diff with [`../../tests/ui/png-stats.js`](../../tests/ui/png-stats.js). Revisit (with masks + tolerances, e.g. openQA-style) only if visual regressions become frequent. |
 | AT-SPI / dogtail | ✗ not now | Would drive the GTK **preferences** window via accessibility; heavier deps. Prefs pages are covered cheaper by GJS harness scripts (construct `fillWidgetPreferences` in plain GJS). A future option for full prefs-window interaction tests. |
 | GNOME Shell perf framework / openQA | ✗ not now | Aimed at shell-internal performance and distro-level QA respectively; too heavy for an extension. |
 
@@ -70,7 +70,7 @@ stays Node-only and CI-cheap).
 
 ## Writing a regression test
 
-Copy the shape of [`../tests/ui/t-02-orientation-live.sh`](../tests/ui/t-02-orientation-live.sh):
+Copy the shape of [`../../tests/ui/t-02-orientation-live.sh`](../../tests/ui/t-02-orientation-live.sh):
 source `lib.sh`, `ui_start [config-json]`, then assert. In `ui_eval` scripts
 the prelude defines `find(actor, pred)`, `panel` (the FloatingMiniPanel actor)
 and `plugin(id)` (a widget's actor, via `_panelPluginId`); the last expression
@@ -83,5 +83,5 @@ assertion inside `ui_wait_js`.
 away. The stub shows all the tools: boot with a custom widget set, introspect
 actors, poke GSettings live, click with the virtual pointer, screenshot the
 stage and read the shell log. For *visual/interactive* debugging use
-[`development.md`](development.md) (`./dev-run.sh`, a real nested window)
+[`development.md`](../process/development.md) (`./dev-run.sh`, a real nested window)
 instead — the headless harness is for scripted checks.

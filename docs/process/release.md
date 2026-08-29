@@ -3,11 +3,11 @@
 @tag:versioning
 
 How the extension is versioned, where the version is shown, and how a release is
-built, tested and published. Back to the [documentation index](index.md).
+built, tested and published. Back to the [documentation index](../index.md).
 
 ## Version fields
 
-Two version fields live in [`../extension-src/metadata.json`](../extension-src/metadata.json)
+Two version fields live in [`../../extension-src/metadata.json`](../../extension-src/metadata.json)
 and always move together (the release workflow bumps both):
 
 - **`version`** — an **integer**, the extensions.gnome.org (EGO) version *code*.
@@ -16,7 +16,7 @@ and always move together (the release workflow bumps both):
 - **`version-name`** — a human-readable **semver** string `A.B.C` (currently
   `"0.1.0"`). This is what users see.
 
-[`../package.json`](../package.json) `version` is kept in sync with
+[`../../package.json`](../../package.json) `version` is kept in sync with
 `version-name`.
 
 ### Release channel badge
@@ -24,7 +24,7 @@ and always move together (the release workflow bumps both):
 The current release is **alpha** (pre-publication / early testing). The alpha
 status is a separate *channel*, not part of the semver number, so it is not
 encoded in `version-name`. It lives in
-[`../extension-src/version.ts`](../extension-src/version.ts) as the
+[`../../extension-src/version.ts`](../../extension-src/version.ts) as the
 `RELEASE_CHANNEL` constant and is rendered as a badge next to the version:
 
 - `RELEASE_CHANNEL = 'alpha'` → shown as `0.1.0 (alpha)` in the menu and an
@@ -33,7 +33,7 @@ encoded in `version-name`. It lives in
 
 `version.ts` is a gi-free pure module (loads in both the Shell and preferences
 processes) and is unit tested in
-[`../tests/version.test.mjs`](../tests/version.test.mjs).
+[`../../tests/version.test.mjs`](../../tests/version.test.mjs).
 
 ### Release policy
 
@@ -47,11 +47,11 @@ processes) and is unit tested in
 - **Control-button menu** — a non-reactive header row at the top of the menu
   shows `GNOME Widget Panel` with `0.1.0 (alpha)` right-aligned, plus a **Release
   notes** item, built in
-  [`../extension-src/controlButton.ts`](../extension-src/controlButton.ts) from
+  [`../../extension-src/controlButton.ts`](../../extension-src/controlButton.ts) from
   `systemInfo.versionDisplay()` / `systemInfo.releaseNotesUrl()`.
 - **Preferences → About** — the name/version row shows `Version 0.1.0` with an
   `alpha` badge suffix, plus an **All releases & GNOME support** row (see
-  [`preferences.md`](preferences.md)).
+  [`preferences.md`](../implementation/preferences.md)).
 - **Bug reports** — `collectSystemInfo()` reports `Extension version: 0.1.0
   (alpha)`.
 
@@ -114,8 +114,8 @@ and links are derived automatically.
 
 ## GitHub Actions
 
-Two workflows live in [`../.github/workflows/`](../.github/workflows/index.md);
-their helper scripts live in [`../.github/scripts/`](../.github/scripts).
+Two workflows live in [`../../.github/workflows/index.md`](../../.github/workflows/index.md);
+their helper scripts live in [`../../.github/scripts`](../../.github/scripts).
 
 ### CI (`ci.yml`)
 
@@ -143,10 +143,10 @@ because EGO requires the integer code to strictly increase. Steps:
    `gschemas.compiled`.
 4. **Release notes** — `.github/scripts/release-notes.mjs` collects the release
    milestone's closed issues, writes `dist/release-notes.md` and regenerates
-   `CHANGELOG.md` + `docs/releases.json` (see
+   `CHANGELOG.md` + `docs/process/releases.json` (see
    [Release notes from issues](#release-notes-from-issues)).
 5. **Commit + tag** — commits the version bump *and the regenerated
-   `CHANGELOG.md` / `docs/releases.json`* to `main` and pushes tag `vA.B.C`.
+   `CHANGELOG.md` / `docs/process/releases.json`* to `main` and pushes tag `vA.B.C`.
 6. **GitHub Release** — publishes the tag with the issue-based notes body + the
    zip attached (`softprops/action-gh-release`). The reliable, automated
    artifact.

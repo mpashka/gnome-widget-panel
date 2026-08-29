@@ -10,7 +10,7 @@
 // and the preferences process (prefs.ts), so it never imports Shell-only
 // modules and guards every read — it must never throw.
 //
-// See ../docs/preferences.md (About section).
+// See ../docs/implementation/preferences.md (About section).
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';

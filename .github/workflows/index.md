@@ -4,7 +4,7 @@
 
 Continuous integration and release automation. Full details, the versioning
 scheme and required secrets are in
-[`../../docs/release.md`](../../docs/release.md).
+[`../../docs/process/release.md`](../../docs/process/release.md).
 
 ## Files
 
@@ -15,7 +15,7 @@ scheme and required secrets are in
   tags the bump, publishes a GitHub Release and best-effort submits to
   extensions.gnome.org.
 
-## Helper scripts ([`../scripts/`](../scripts))
+## Helper scripts ([`../scripts`](../scripts))
 
 - `bump-version.mjs` — increment `version-name` (A.B.C) and the integer EGO
   `version` in `metadata.json`, sync `package.json`, export the new version to
@@ -25,7 +25,7 @@ scheme and required secrets are in
   also runnable locally via `npm run pack`.
 - `release-notes.mjs` — collect the release milestone's closed issues into
   `dist/release-notes.md` (the GitHub Release body) and regenerate `CHANGELOG.md`
-  + `docs/releases.json` (the GNOME support matrix / overview).
+  + `docs/process/releases.json` (the GNOME support matrix / overview).
 - `ego-upload.py` — best-effort upload of the zip to extensions.gnome.org for
   manual review (no official API; see the caveat in `release.md`).
 

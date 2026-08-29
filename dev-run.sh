@@ -58,7 +58,7 @@ Environment knobs:
 Panel settings (orientation, content padding, position) apply live only from a
 preferences window on the dev shell's bus: use the panel's own Settings... item
 inside the dev window, or ./dev-gsettings-diagnose.sh open-prefs.
-See docs/development.md and docs/ui-testing.md.
+See docs/process/development.md and docs/testing/ui-testing.md.
 EOF
 }
 

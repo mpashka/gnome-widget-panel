@@ -16,7 +16,7 @@ and Gemini CLI.
   status dot + Configure button, per-indicator show/hide + colour, widget
   width/update-interval, tooltip and advanced options; edits the widget
   `options` in `widgets.json`. See
-  [`../../../docs/preferences.md`](../../../docs/preferences.md).
+  [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
   `isClaudeInstalled`), usable from both the shell and preferences processes.
   It also owns the lifecycle **event** hooks (`installEventHooks`,
@@ -66,7 +66,7 @@ The graph implements `setPanelLayout({vertical, rotation})`, called by the panel
 host. When the panel is vertical it swaps its actor size and rotates the drawing
 90° (direction from the panel `orientation` setting) so the token history,
 request markers and indicator bars run along the vertical strip. See
-[preferences](../../../docs/preferences.md).
+[preferences](../../../docs/implementation/preferences.md).
 
 In a vertical panel the hover tooltip is placed to the side of the widget (left
 when the widget is in the right half of the monitor, otherwise right), vertically
@@ -184,7 +184,7 @@ the hook scripts use, so reading it directly is always `undefined` and throws.
 
 ## Related docs
 
-- [Reading the graph (user guide)](../../../user-guide/ai-agent-usage.md) — plain-language
+- [Reading the graph (user guide)](../../../docs/specification/ai-agent-usage.md) — plain-language
   explanation + interactive preview of the token columns and request markers (issue #6).
-- [Object model](../../../docs/object-model.md)
-- [Architecture](../../../docs/architecture.md)
+- [Object model](../../../docs/implementation/object-model.md)
+- [Architecture](../../../docs/implementation/architecture.md)

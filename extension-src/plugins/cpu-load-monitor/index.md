@@ -35,7 +35,7 @@ render empty. The settings page shows a live preview of the rendered template.
 - `cpuGraph.ts` — `St.DrawingArea` implementation; reads `/proc/stat`, detects
   CPU temperature thermal zone and paints the graph.
 - `prefs.ts` — widget settings UI. See
-  [`../../../docs/preferences.md`](../../../docs/preferences.md).
+  [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 
 ## Options
 
@@ -60,7 +60,7 @@ The graph implements `setPanelLayout({vertical, rotation})`, called by the panel
 host. When the panel is vertical it swaps its actor size (tall/narrow) and rotates
 the Cairo drawing 90° so the time axis runs along the strip; `rotation` (`left` /
 `right`, from the panel `orientation` setting) picks the direction. See
-[preferences](../../../docs/preferences.md).
+[preferences](../../../docs/implementation/preferences.md).
 
 In a vertical panel the hover tooltip is placed to the side of the widget (left
 when the widget is in the right half of the monitor, otherwise right), vertically
@@ -74,5 +74,5 @@ state is used.
 
 ## Related docs
 
-- [Object model](../../../docs/object-model.md)
-- [Architecture](../../../docs/architecture.md)
+- [Object model](../../../docs/implementation/object-model.md)
+- [Architecture](../../../docs/implementation/architecture.md)

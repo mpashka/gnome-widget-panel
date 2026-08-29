@@ -2,7 +2,7 @@
 
 `@tag:dev`
 
-Reinstalling with [`install.sh`](../install.sh) copies files and then needs a
+Reinstalling with [`install.sh`](../../install.sh) copies files and then needs a
 logout/login on Wayland to take effect. That is because **GNOME Shell caches an
 extension's ES module for the life of the `gnome-shell` process**: disabling and
 re-enabling the extension re-runs `enable()`/`disable()` but reuses the already
@@ -75,7 +75,7 @@ the terminal shows only extension/error lines.
 While running, `dev-run.sh` also writes `.dev/session-env` with the nested
 shell's `DBUS_SESSION_BUS_ADDRESS`, `DCONF_PROFILE`, `GSETTINGS_SCHEMA_DIR` and
 `XDG_DATA_HOME`. Use
-[`../dev-gsettings-diagnose.sh`](../dev-gsettings-diagnose.sh) to inspect or poke
+[`../../dev-gsettings-diagnose.sh`](../../dev-gsettings-diagnose.sh) to inspect or poke
 panel GSettings on that same dev session bus; writing the dev dconf profile from
 the main GNOME session does not reliably deliver live GSettings notifications to
 the nested shell.
@@ -141,7 +141,7 @@ tools/dev-screenshot/gwp-shot uninstall # remove when the debug session is done
 ```
 
 It is **not part of the product** (lives under `tools/`, never packed into a
-release). Full details in [`../tools/dev-screenshot/README.md`](../tools/dev-screenshot/README.md).
+release). Full details in [`../../tools/dev-screenshot/README.md`](../../tools/dev-screenshot/README.md).
 For anything reproducible without the real session, prefer the headless harness's
 `ui_screenshot` (`tests/ui/lib.sh`), which uses the same API.
 
@@ -154,9 +154,9 @@ For anything reproducible without the real session, prefer the headless harness'
   script, status file) live under `.dev/` and are gitignored.
 - The dev extensions dir is separate from your main session, so dev work never
   installs, enables, or disables the widget in your main session. For a real
-  main-session install use [`install.sh`](../install.sh) (copies into
+  main-session install use [`install.sh`](../../install.sh) (copies into
   `~/.local/share/gnome-shell/extensions/`) + logout/login — independent of the
   dev setup. Do NOT use `install.sh` for iterating; it copies (freezing the code)
   and needs a logout/login each time.
 
-Back to the [docs index](index.md) and [architecture](architecture.md).
+Back to the [docs index](../index.md) and [architecture](../implementation/architecture.md).

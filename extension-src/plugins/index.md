@@ -9,7 +9,7 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
 
 - `registry.ts` — process-independent metadata (label, description,
   `hasPreferences`, lazy preferences loader) used by the preferences UI; see
-  [`../../docs/preferences.md`](../../docs/preferences.md).
+  [`../../docs/implementation/preferences.md`](../../docs/implementation/preferences.md).
 - `panelButtonContent.ts` — shared helper that builds the icon/label child for
   the clickable panel-button widgets (`gnome-menu`, `gnome-action`, `favorites`,
   `printscreen`, `launch`).
@@ -53,7 +53,7 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   activity-based rest-reminder progress bars (not in the default config).
 
 Further per-widget settings work is tracked in
-[`../../TODO.md`](../../TODO.md).
+[`../../docs/roadmap/backlog.md`](../../docs/roadmap/backlog.md).
 
 Back to [`extension-src`](../index.md) and
-[`object model`](../../docs/object-model.md).
+[`object model`](../../docs/implementation/object-model.md).

@@ -12,12 +12,12 @@
 // the control-button menu and the preferences About group, plus the helper that
 // formats the two together. Set `RELEASE_CHANNEL` to `''` for a stable release.
 //
-// See ../docs/release.md.
+// See ../docs/process/release.md.
 
 /**
  * Pre-release channel shown as a badge next to the version. Empty string means a
  * stable release (no badge). Currently `alpha` (pre-publication / early
- * testing); see the release policy in ../docs/release.md.
+ * testing); see the release policy in ../docs/process/release.md.
  */
 export const RELEASE_CHANNEL: string = 'alpha';
 

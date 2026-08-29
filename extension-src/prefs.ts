@@ -7,7 +7,7 @@
 // key (a JSON document) through `configStore` (the single source of truth) and
 // never keeps a second settings model. Adding a widget and configuring a widget both open in-window subpages
 // (`push_subpage`/`pop_subpage`) rather than dialogs or popovers.
-// See ../docs/preferences.md.
+// See ../docs/implementation/preferences.md.
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';

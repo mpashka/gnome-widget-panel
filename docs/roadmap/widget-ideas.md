@@ -10,13 +10,13 @@ plugins). This is a planning reference only — no code is prescribed here.
 Each candidate is assessed against **this project's architecture**: a plugin is
 `extension-src/plugins/<id>/index.ts` exporting `create(parent, options)` that
 returns an St/Clutter actor with `destroy()`, registered in
-[`../extension-src/plugins/registry.ts`](../extension-src/plugins/registry.ts);
+[`../../extension-src/plugins/registry.ts`](../../extension-src/plugins/registry.ts);
 menus use `PopupMenu`; anything heavy or blocking runs **out of process** like
-the Codex helper (see [`architecture.md`](architecture.md)). GNOME/Ubuntu data
+the Codex helper (see [`architecture.md`](../implementation/architecture.md)). GNOME/Ubuntu data
 comes from D-Bus, `/proc`/`/sys`, GLib/Gio, or GSettings.
 
 See the current widgets in
-[`../extension-src/plugins/index.md`](../extension-src/plugins/index.md).
+[`../../extension-src/plugins/index.md`](../../extension-src/plugins/index.md).
 
 ## Already covered (do not duplicate)
 
@@ -24,14 +24,14 @@ These XFCE plugins already have an equivalent here, so they are out of scope:
 
 | XFCE plugin | Covered by |
 | --- | --- |
-| Applications menu / Whisker menu | [`gnome-menu`](../extension-src/plugins/gnome-menu/index.md) |
-| Places | [`favorites`](../extension-src/plugins/favorites/index.md) |
-| Keyboard layouts | [`keyboard-layout`](../extension-src/plugins/keyboard-layout/index.md) |
-| Notification area / systray | [`app-notifications`](../extension-src/plugins/app-notifications/index.md) |
-| CPU graph / system-load (CPU) | [`cpu-load-monitor`](../extension-src/plugins/cpu-load-monitor/index.md) |
-| Clock / Orage / DateTime | [`clock`](../extension-src/plugins/clock/index.md) |
-| PulseAudio/volume, battery/power, brightness, netload (status) | [`ubuntu-system-status`](../extension-src/plugins/ubuntu-system-status/index.md) |
-| Show desktop / overview | partly [`activities`](../extension-src/plugins/activities/index.md) |
+| Applications menu / Whisker menu | [`gnome-menu`](../../extension-src/plugins/gnome-menu/index.md) |
+| Places | [`favorites`](../../extension-src/plugins/favorites/index.md) |
+| Keyboard layouts | [`keyboard-layout`](../../extension-src/plugins/keyboard-layout/index.md) |
+| Notification area / systray | [`app-notifications`](../../extension-src/plugins/app-notifications/index.md) |
+| CPU graph / system-load (CPU) | [`cpu-load-monitor`](../../extension-src/plugins/cpu-load-monitor/index.md) |
+| Clock / Orage / DateTime | [`clock`](../../extension-src/plugins/clock/index.md) |
+| PulseAudio/volume, battery/power, brightness, netload (status) | [`ubuntu-system-status`](../../extension-src/plugins/ubuntu-system-status/index.md) |
+| Show desktop / overview | partly [`gnome-action`](../../extension-src/plugins/gnome-action/index.md) |
 | Screenshooter | planned `printscreen` |
 | Launcher | planned `launch` |
 
@@ -89,7 +89,7 @@ Overlaps to note: **screenshooter** is the planned `printscreen`; **launcher**
 in `ubuntu-system-status`; applications menu, places and keyboard layouts are
 already `gnome-menu`, `favorites` and `keyboard-layout`.
 
-Back to the [documentation index](index.md) and working rules in
-[`../AGENTS.md`](../AGENTS.md).
+Back to the [documentation index](../index.md) and working rules in
+[`../../AGENTS.md`](../../AGENTS.md).
 </content>
 </invoke>

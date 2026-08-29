@@ -62,7 +62,7 @@ A single **Panel layout** `Adw.PreferencesGroup` on the same page exposes the
 panel-level settings that used to live in the control-button context menu (which
 now keeps a non-reactive **version header** (`GNOME Widget Panel` + the version
 and release channel, e.g. `0.1.0 (alpha)`, from `systemInfo.versionDisplay()` —
-see [`release.md`](release.md)), then **Settings…**, **Release notes** (this
+see [`release.md`](../process/release.md)), then **Settings…**, **Release notes** (this
 version's GitHub Release page) and **Report a bug**; all other panel control is
 via mouse gestures on the panel handle). It edits the panel `GSettings`
 (`this.getSettings()`) directly, using its own keys (not the `widgets` key), and
@@ -100,10 +100,12 @@ is applied **live** to the running panel — no reload needed. It has these rows
   written explicitly on `notify::value`, rounded to whole pixels, and external
   `changed::content-padding` updates sync the row back to the stored value.
 
-Gestures on the panel handle stay the primary interaction and keep working
-exactly as before (left = app grid, middle = drawer toggle, right = menu;
-Shift/Ctrl click variants snap alignment; long-press moves / toggles orientation
-/ hides for 5 s).
+Gestures on the panel handle stay the primary interaction: left = drag, middle
+= drawer toggle, right = menu, middle long-press = orientation. The right-button
+long-press that hid the panel for 5 s was removed — hiding the widgets is now the
+explicit "Collapse" menu item, backed by the `collapsed` key (see
+[`object-model.md`](object-model.md)). The Shift/Ctrl click variants that snapped
+alignment were dropped earlier; alignment lives in this window.
 
 ## Main panel (top bar)
 
@@ -151,7 +153,7 @@ An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added b
 
 - **Name + version** (`this.metadata.name` / the human-readable
   `this.metadata['version-name'] ?? this.metadata.version`, so it shows `0.1.0`
-  rather than the integer EGO version code — see [`release.md`](release.md)),
+  rather than the integer EGO version code — see [`release.md`](../process/release.md)),
   with an `alpha` accent-pill badge suffix when `RELEASE_CHANNEL` is set
   (`extension-src/version.ts`) and an external-link button opening
   `systemInfo.releaseNotesUrl()` — the GitHub Release notes for the running
@@ -174,13 +176,13 @@ An **About** `Adw.PreferencesGroup` sits at the bottom of the main page (added b
   (`…/issues?q=is%3Aissue+label%3Aroadmap`); voting is via GitHub reactions.
 
 All of this is built by the shared
-[`../extension-src/systemInfo.ts`](../extension-src/systemInfo.ts), which runs in
+[`../../extension-src/systemInfo.ts`](../../extension-src/systemInfo.ts), which runs in
 the preferences process too. `collectSystemInfo()` is best-effort and never
 throws: extension version (from `metadata.json`), GNOME Shell version
 (`Config.PACKAGE_VERSION` in the Shell, else `gnome-shell --version`), OS/distro
 (`/etc/os-release` `PRETTY_NAME`), kernel (`uname -sr` / `/proc/sys/kernel/osrelease`),
 session type (`XDG_SESSION_TYPE`) and Wayland/X11. The issue forms live in
-[`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE) (`bug_report.yml`,
+[`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE) (`bug_report.yml`,
 `feature_request.yml`, `widget_request.yml`, `config.yml`); the `template=<file>`
 names in `systemInfo.ts` match those filenames.
 
@@ -192,13 +194,13 @@ Note: GitHub issue forms cannot pre-attach an image via URL — the bug form has
 Preferences run in a separate process from GNOME Shell, so they cannot import
 the Shell-only plugin modules. The pieces:
 
-- [`../extension-src/contracts.ts`](../extension-src/contracts.ts) — typed
+- [`../../extension-src/contracts.ts`](../../extension-src/contracts.ts) — typed
   contracts: `WidgetConfig`, `PluginConfig`, `PluginDescriptor`,
   `PluginPreferencesModule`, `WidgetPreferencesContext`.
-- [`../extension-src/configStore.ts`](../extension-src/configStore.ts) — the only
+- [`../../extension-src/configStore.ts`](../../extension-src/configStore.ts) — the only
   place that reads and writes the `widgets` GSettings key (parsing/validation
   lives in the gi-free `widgetConfig.ts`).
-- [`../extension-src/plugins/registry.ts`](../extension-src/plugins/registry.ts)
+- [`../../extension-src/plugins/registry.ts`](../../extension-src/plugins/registry.ts)
   — process-independent metadata (label, description, `hasPreferences`) plus a
   lazy `loadPreferences()` importer. It imports no `gi://`/`resource://` module.
 - A widget with settings provides `plugins/<id>/prefs.ts` exporting
@@ -230,7 +232,7 @@ graph-colour button:
   not found on this system.
 - **Claude Code** has a **Configure** button. Because preferences run outside the
   Shell, the shared
-  [`plugins/ai-agent-usage/claudeHook.ts`](../extension-src/plugins/ai-agent-usage/claudeHook.ts)
+  [`plugins/ai-agent-usage/claudeHook.ts`](../../extension-src/plugins/ai-agent-usage/claudeHook.ts)
   performs the file operations from either process: Configure writes the hook and
   points `~/.claude/settings.json` at it, persisting a hook secret and port into
   the widget options so the running widget (after reload) uses the same secret.
@@ -251,12 +253,12 @@ Shell. Invalid Pango markup shows an inline error hint instead of crashing.
 
 The template is a string with `{token}` placeholders; each widget substitutes
 ready-built coloured markup fragments for its tokens via the shared
-[`../extension-src/tooltipTemplate.ts`](../extension-src/tooltipTemplate.ts)
+[`../../extension-src/tooltipTemplate.ts`](../../extension-src/tooltipTemplate.ts)
 `renderTemplate` (no `gi://` import, so it runs in both processes). Literal text
 between tokens is Pango-escaped, `\n` is a line break, and unknown tokens render
 empty. Tokens per widget are listed in each widget's `index.md`
-([cpu-load-monitor](../extension-src/plugins/cpu-load-monitor/index.md),
-[ai-agent-usage](../extension-src/plugins/ai-agent-usage/index.md)); the template
+([cpu-load-monitor](../../extension-src/plugins/cpu-load-monitor/index.md),
+[ai-agent-usage](../../extension-src/plugins/ai-agent-usage/index.md)); the template
 persists to the widget's `options.template`. Other tooltip toggles still apply at
 render time (cpu "Show tooltip"; ai "Show recent requests" / "Request preview
 length" drive the `{requests}` token).
@@ -274,7 +276,7 @@ the grid stays empty until at least two characters are typed and renders at most
 the first 300 matches. A custom-name entry still lets you type an arbitrary icon
 name (themes differ), applied on activate. Picking updates the row preview,
 persists `options.icon` and closes the dialog. Implemented in the shared
-[`../extension-src/plugins/iconPicker.ts`](../extension-src/plugins/iconPicker.ts).
+[`../../extension-src/plugins/iconPicker.ts`](../../extension-src/plugins/iconPicker.ts).
 
-Back to the [docs index](index.md) and
+Back to the [docs index](../index.md) and
 [architecture](architecture.md).

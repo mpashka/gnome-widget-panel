@@ -12,7 +12,7 @@
 //
 // The new version-name is written to $GITHUB_OUTPUT as `version` (without a
 // leading `v`) so later workflow steps can tag and name the release. See
-// ../../docs/release.md.
+// ../../docs/process/release.md.
 
 import {readFileSync, writeFileSync, appendFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';

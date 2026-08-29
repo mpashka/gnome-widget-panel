@@ -16,5 +16,5 @@ panel.
 
 ## Related docs
 
-- [Object model](../../../docs/object-model.md)
-- [Architecture](../../../docs/architecture.md)
+- [Object model](../../../docs/implementation/object-model.md)
+- [Architecture](../../../docs/implementation/architecture.md)

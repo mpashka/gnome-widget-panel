@@ -67,7 +67,7 @@ Every timer, signal, child actor and compositor override must be released in
 
 Owns the GNOME Shell top bar (`Main.layoutManager.panelBox`, the "main panel")
 independently of the floating mini panel. Lives in
-[`../extension-src/mainPanel.ts`](../extension-src/mainPanel.ts) and is driven by
+[`../../extension-src/mainPanel.ts`](../../extension-src/mainPanel.ts) and is driven by
 the `main-panel` GSettings enum via `FloatingMiniPanel`
 (`_getMainPanelMode()` + `changed::main-panel`). Three modes:
 
@@ -104,11 +104,11 @@ the order in the config file.
 
 The panel handle/menu button. It owns drag/move actions and long-press/click
 gestures. Its context menu holds a non-reactive name/version header followed by
-"Settings…" (opens preferences), "Release notes", "View on extensions.gnome.org",
-"Report a bug" and "Suggest a feature" (the last two open the prefilled GitHub
-issue forms via `systemInfo`). The former Auto-Position and Control-Functions
-menu sections were moved to the preferences "Panel" page, while the equivalent
-mouse gestures still work.
+"Collapse"/"Expand", "Settings…" (opens preferences), "Release notes",
+"View on extensions.gnome.org", "Report a bug" and "Suggest a feature" (the last
+two open the prefilled GitHub issue forms via `systemInfo`). The former
+Auto-Position and Control-Functions menu sections were moved to the preferences
+"Panel" page, while the equivalent mouse gestures still work.
 
 Gesture notes:
 
@@ -118,6 +118,25 @@ Gesture notes:
   snapshots the menu's open state on button press and toggles from that snapshot,
   avoiding a race with the panel menu-manager's `ClickGesture`, which closes an
   open menu on the same release.
+- A **long** right-press does nothing. It used to hide the whole panel for five
+  seconds (`_tmpHide`); that was removed — a panel that vanishes with no visible
+  trigger and no setting cannot be found or undone by the user. Collapsing is an
+  explicit menu action instead.
+- The middle button still toggles orientation on long-press and the indicator
+  drawer on click; the drawer toggle is inert while the panel is collapsed,
+  since the drawer is hidden with every other widget.
+
+#### Collapsed state
+
+`collapsed` (boolean, GSettings) is the single source of truth. The panel's
+`_applyCollapsed()` hides every child except the `ControlButton`, so what remains
+on screen is the handle and its menu — the only way back. It is applied at
+startup, on `changed::collapsed` (so `gsettings` or a second session applies
+live) and again after a widget live-reload, because rebuilt plugin actors start
+visible. `_applyCollapsed()` changes visibility only; callers relocate, since the
+panel's size changed and startup must not relocate before the actor is on the
+stage. The menu item's label is read from the panel each time the menu opens, so
+it always names the action it will perform.
 
 ### `IndicatorsDrawer`
 

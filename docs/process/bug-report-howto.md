@@ -2,7 +2,7 @@
 
 `@tag:process`
 
-Back to the [documentation index](index.md) and [working rules](../AGENTS.md).
+Back to the [documentation index](../index.md) and [working rules](../../AGENTS.md).
 
 A bug is only fixable if a maintainer (or an AI agent) can **reproduce** it. Two
 attachments do most of that work; a report without them usually stalls on
@@ -43,7 +43,7 @@ this repository.
 
 ## Template
 
-The GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](../.github/ISSUE_TEMPLATE/bug_report.yml))
+The GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml))
 already has these sections and prompts for them. When filing from the CLI or as
 an agent, mirror the same sections and leave an explicit
 `_TODO: attach screenshot/screencast_` placeholder if you cannot capture the
@@ -59,4 +59,4 @@ media yourself, so the reporter knows what is still needed.
 - If you cannot capture a screenshot (e.g. Wayland blocks programmatic capture
   and no capable tool is installed), say so and leave the placeholder rather than
   omitting the section — do not silently drop it.
-- Use English, matching the repository language rule in [`../AGENTS.md`](../AGENTS.md).
+- Use English, matching the repository language rule in [`../../AGENTS.md`](../../AGENTS.md).

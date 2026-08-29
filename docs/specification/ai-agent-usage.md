@@ -3,7 +3,7 @@
 `@tag:widget-ai-agent-usage`
 
 Back to the [user guide](index.md) · [all widgets](widgets.md). Developer notes
-and data model: [`../extension-src/plugins/ai-agent-usage/index.md`](../extension-src/plugins/ai-agent-usage/index.md).
+and data model: [`../../extension-src/plugins/ai-agent-usage/index.md`](../../extension-src/plugins/ai-agent-usage/index.md).
 
 The **AI agent usage** widget (`ai-agent-usage`) shows a compact live graph of
 how much your AI coding agents — Claude Code, Codex and Gemini CLI — are

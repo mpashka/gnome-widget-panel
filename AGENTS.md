@@ -27,11 +27,11 @@ truth, avoid overlapping writes, and run the verification required by the
 affected area. The orchestrator must pass these constraints and explicit
 file/component ownership to every delegated agent.
 
-Store durable orchestration state under `.ai/tasks/<task-id>/` only when the
-task is substantial enough to need it. Treat those files as temporary
-agent-facing work state unless the user explicitly asks to commit them; do not
-add them to the LLM documentation tree or directory indexes. Project
-documentation and the integrated code remain the final source of truth.
+Store durable orchestration state under `docs/requests/<task-name>/` — the same
+per-task directory every other kind of task file uses — and only when the task is
+substantial enough to need it. Treat those files as temporary agent-facing work
+state unless the user explicitly asks to commit them. Project documentation and
+the integrated code remain the final source of truth.
 
 ## Plan files for complex work
 
@@ -44,10 +44,14 @@ source of truth for progress, so work survives a context reset or handoff.
 
 - Use a checkbox/legend the file states up front (e.g. `[ ]` todo · `[~]` in
   progress · `[X]` done · `[!]` blocked). Update the marker as the item moves.
+- **Every task file lives in that task's own directory**,
+  `docs/requests/<task-name>/` — never in the repository root. A plan is
+  `plan.md`, the task as given is `request.md`, per-bug manual test steps are
+  `manual-testing.md`, debug scripts are `debug.sh`/`repro.sh`. See
+  [`docs/requests/index.md`](docs/requests/index.md).
 - These plan files are **temporary, agent-facing work state**: keep them out of
-  git (git-exclude via `.git/info/exclude`, like `MANUAL-TESTING.md`) unless the
-  user explicitly asks to commit one. A release plan lives in e.g.
-  `RELEASE-PLAN.md`; per-bug manual test steps live in `MANUAL-TESTING.md`.
+  git (git-exclude the task directory via `.git/info/exclude`) unless the user
+  explicitly asks to commit one.
 - Trivial one-step changes don't need a plan file — this is for work whose scope
   or length would otherwise lose track of what's done vs pending.
 
@@ -70,7 +74,7 @@ Never execute unreviewed generated code.
 npm run build       # build.sh: copy assets + tsc extension-src -> extension
 npm run typecheck   # tsc --noEmit
 npm test            # build, then node --test on gi-free pure-logic modules
-npm run test:ui     # headless GNOME Shell UI regression suite (docs/ui-testing.md)
+npm run test:ui     # headless GNOME Shell UI regression suite (docs/testing/ui-testing.md)
 ./install.sh        # build + compile schemas + copy to extensions dir (needs logout to apply)
 ./dev-install.sh    # one-time: symlink the build tree into the extensions dir
 ./dev-run.sh        # rebuild + run a restartable nested GNOME Shell window (no logout)
@@ -79,7 +83,7 @@ npm run test:ui     # headless GNOME Shell UI regression suite (docs/ui-testing.
 Tests (`npm test`, Node's built-in runner) cover only the **gi-free** pure-logic
 modules (`tooltipTemplate.ts`, `widgetConfig.ts`); see [`tests/`](tests/index.md).
 UI behaviour (panel layout, live-apply settings, clicks) is covered by the
-headless UI suite `npm run test:ui` — see [`docs/ui-testing.md`](docs/ui-testing.md).
+headless UI suite `npm run test:ui` — see [`docs/testing/ui-testing.md`](docs/testing/ui-testing.md).
 Prefer extracting pure logic into a gi-free module and testing it there over
 loading Shell-only code. Most of the extension is dynamic GJS/Shell code and is
 verified by running it (see below). A plain `./install.sh` needs a logout/login on Wayland to
@@ -89,7 +93,7 @@ apply, because GNOME Shell caches an extension's ES module for the life of the
 disables the extension in the main session and runs an interactive nested shell
 window (`gnome-shell --devkit`) with the extension enabled in an isolated dconf
 profile, tailing the log (mutter 50 dropped the `--nested` flag; `GWP_HEADLESS=1`
-gives a log-only fallback). See [`docs/development.md`](docs/development.md). UUID is
+gives a log-only fallback). See [`docs/process/development.md`](docs/process/development.md). UUID is
 `gnome-widget-panel@mpashka.github.com`; it installs alongside the original
 Floating Mini Panel.
 
@@ -171,7 +175,7 @@ do not postpone newly exposed contract typing:
 Put shared contract types in dedicated source modules rather than duplicating
 inline object shapes. Validate untrusted JSON at runtime before treating it as a
 typed value. Remove `// @ts-nocheck` incrementally from files whose relevant
-boundaries have become typed. Update [`TODO.md`](TODO.md) when a contract is
+boundaries have become typed. Update [`docs/roadmap/backlog.md`](docs/roadmap/backlog.md) when a contract is
 completed, split, or newly discovered.
 
 ## Code formatting
@@ -204,68 +208,61 @@ blocking work in the out-of-process subprocess helpers (`helpers/*.ts`, embedded
 hook scripts), which run off the Shell thread and may use sync calls. `destroy()`
 cannot `await`; fire best-effort async cleanup and do not block teardown.
 
-## Documentation: LLM wiki
+## Documentation: llm-wiki-tags
 
-End-user documentation is separate: it lives in [`user-guide/`](user-guide/index.md)
-(what each widget is, its icon, what it does, its settings, and the AI-graph
-walkthrough), written for people *using* the extension. When you change a
-widget's user-visible behaviour, icon, or options, update the
-[widgets catalog](user-guide/widgets.md) — and the relevant per-widget page — in
-the same change, just like the developer docs below. README links to the user
-guide.
+This repository follows the **llm-wiki-tags** convention: an LLM-readable wiki of
+`index.md` files, plus `@tag:<slug>` tokens that link code and documentation.
 
-Documentation for AI agents lives in `docs/` and beside the code it describes. It
-is a tree: **every meaningful directory must have an `index.md`** that gives a
-one-line description of each file and each sub-directory in that folder, and
-links to parent and child pages. Keep index entries short (one line) and link to
-deeper pages instead of expanding them.
+The rules live in [`.claude/rules/llm-wiki-tags/`](.claude/rules/llm-wiki-tags/)
+— Claude Code loads them automatically; other agents must read them there. The
+tag registry is [`docs/tags.md`](docs/tags.md). In short:
 
-Imperative — read before you act, update as you go:
+- **All documentation lives under [`docs/`](docs/index.md)**, split into
+  [`specification/`](docs/specification/index.md) (how the extension looks to its
+  users — the end-user guide README links to),
+  [`implementation/`](docs/implementation/index.md) (how it is built inside),
+  [`testing/`](docs/testing/index.md) (test cases),
+  [`process/`](docs/process/index.md) (how work is done) and
+  [`roadmap/`](docs/roadmap/index.md) (planned, not built). Each tree is organised
+  by tag and is hierarchical. Local detail stays next to the code it describes.
+- **Working files of one task go to `docs/requests/<task-name>/`**
+  ([index](docs/requests/index.md)) — `request.md`, `plan.md`,
+  `manual-testing.md`, debug scripts, reports — never to the repository root,
+  which keeps only the entry documents, the licence, `index.md`, `CHANGELOG.md`,
+  the build/install scripts and what tooling requires there.
+- **Every meaningful directory has an `index.md`** with a one-line description of
+  each file and sub-directory, linked to its parent and children.
+- **Read before you act**: follow `index.md` files from the nearest directory
+  down to the code you will touch.
+- **Update as you go**: documentation, indexes and tags change in the *same*
+  commit as the code. Documentation that no longer matches the code is a defect.
+- **Tag cross-cutting concepts**: register the tag in `docs/tags.md` and place
+  `@tag:<slug>` on both the code and the documentation.
 
-1. **Before every task**, read the relevant part of the documentation by
-   following `index.md` files from the nearest directory down to the code you
-   will touch.
-2. **During or after the task**, update the affected documentation and every
-   `index.md` whose one-line descriptions changed (files added, moved, removed,
-   or repurposed), in the same change.
-
-Further rules:
-
-- Index files describe directories and stable concepts, not changelogs. Prefer
-  many small pages over one large document; put local plugin/object details next
-  to the code they describe.
-- Keep bidirectional navigation: parent indexes link to child pages; child pages
-  link back to the parent index and to related architecture docs.
-- When code moves, update the nearest `index.md`, `docs/object-model.md`, and any
-  plugin-level description in the same change.
-- One page owns a detail; other pages link to it — do not duplicate.
-- For generated output, author docs in `extension-src/` so `npm run build`
-  copies them into `extension/`.
+When you change a widget's user-visible behaviour, icon or options, update the
+[widgets catalog](docs/specification/widgets.md) and that widget's own page in the
+same change. When code moves, update the nearest `index.md` and
+[`docs/implementation/object-model.md`](docs/implementation/object-model.md).
 
 ## Tags
 
-Tags cross-link code and documentation beyond directory `index.md` navigation,
-so a concept that spans several files and folders can be found in one search. A
-tag is a short kebab-case slug written as the token `@tag:<slug>`.
+A tag is a short kebab-case slug written as the token `@tag:<slug>`, placed on
+**both** the code and the documentation so one search returns the whole concept.
+Full rules: [`.claude/rules/llm-wiki-tags/tags.md`](.claude/rules/llm-wiki-tags/tags.md);
+registry: [`docs/tags.md`](docs/tags.md).
 
-- **Tag a documentation file or directory:** add a `@tag:<slug>` line near the
-  top of the `.md` file; for a directory, put it in that directory's `index.md`.
-- **Tag a code file or directory:** add a `// @tag:<slug>` comment near the top
-  of the file; for a directory, put it in the leading comment of its main module
-  (or in the directory's `index.md`).
-- **Register every tag** in [`docs/tags.md`](docs/tags.md) with a one-line
-  description of the concept it links.
-
-Quick search — list every code and doc location carrying a tag:
+- **Documentation:** a `@tag:<slug>` line near the top of the `.md` file; for a
+  directory, in its `index.md`.
+- **Code:** a `// @tag:<slug>` comment near the top of the file; for a directory,
+  in the leading comment of its main module.
+- **Register every tag** in `docs/tags.md`, and keep it current when tags are
+  added, renamed or removed. Tags are hierarchical — group families under a
+  common prefix (`widget-<id>`, `prefs-<area>`).
 
 ```bash
 grep -rn "@tag:<slug>" extension-src docs tests   # one tag
-grep -rn "@tag:" extension-src docs tests         # all tags
+grep -rhoE "@tag:[a-z0-9/-]+" . | sort -u         # every tag in the repo
 ```
-
-Imperative: when a concept spans both code and docs, create a tag, register it in
-`docs/tags.md`, and place `@tag:<slug>` on the relevant code and documentation
-locations. Keep `docs/tags.md` current when tags are added, renamed or removed.
 
 ## Process
 
@@ -279,11 +276,11 @@ matching task:
   recurs or is worth reconsidering, rather than filing a fresh one. Keeping each
   concern in a single issue makes it easier to judge demand for it, decide
   whether to implement it, and prioritise the backlog.
-- **Filing bugs:** [`docs/bug-report-howto.md`](docs/bug-report-howto.md) — every
+- **Filing bugs:** [`docs/process/bug-report-howto.md`](docs/process/bug-report-howto.md) — every
   bug report must include the configuration and a screenshot/screencast. The
   GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml))
   prompts for both.
-- **Fixing bugs:** [`docs/bug-fixing-workflow.md`](docs/bug-fixing-workflow.md) —
+- **Fixing bugs:** [`docs/process/bug-fixing-workflow.md`](docs/process/bug-fixing-workflow.md) —
   the staged workflow (reproduce → analyse → fix → regression test → verify →
   code review) and the subagent roles that drive it. **Dev before prod:** always
   reproduce and fix in the dev environment first (`npm run test:ui`, `./dev-run.sh`)
@@ -295,11 +292,11 @@ matching task:
   **Run reproduction and bug-hunting loops in a subagent** — those context-hungry,
   noisy cycles return only their conclusion, keeping the main thread clean.
 - **Debugging a Shell-only bug (local, with the user):**
-  [`Debugging methods`](docs/bug-fixing-workflow.md#debugging-methods). For any
+  [`Debugging methods`](docs/process/bug-fixing-workflow.md#debugging-methods). For any
   bug that only reproduces in a running GNOME Shell, follow this loop:
-  1. **Always write the plan in `MANUAL-TESTING.md`** (git-excluded via
-     `.git/info/exclude`) as **numbered steps**. The user walks them in order and
-     ticks each `done/worked` or `couldn't do`. `MANUAL-TESTING.md` is a
+  1. **Always write the plan in `docs/requests/<task-name>/manual-testing.md`**
+     (git-excluded via `.git/info/exclude`) as **numbered steps**. The user walks
+     them in order and ticks each `done/worked` or `couldn't do`. It is a
      **temporary, per-session file**: **recreate it from scratch for each new
      manual-testing task** (it holds only the current test) instead of
      accumulating past runs — those live in issues/commits.
@@ -316,11 +313,11 @@ matching task:
   4. After the user reports a run, the **agent reads the logs itself and cleans up**
      the script's artifacts — installed handlers, log capture, changed settings
      (e.g. restore the idle timeout) and the state file.
-- **Code quality:** [`docs/code-quality.md`](docs/code-quality.md) — modularity,
+- **Code quality:** [`docs/process/code-quality.md`](docs/process/code-quality.md) — modularity,
   uniform naming across the whole codebase, and per-widget documentation, so that
   adding a feature or fixing a bug never gets harder over time.
 
 ## Roadmap
 
 The maintained backlog, including incremental TypeScript contract typing and
-future panel features, lives in [`TODO.md`](TODO.md).
+future panel features, lives in [`docs/roadmap/backlog.md`](docs/roadmap/backlog.md).

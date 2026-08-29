@@ -18,7 +18,7 @@ Credentials come from the environment (GitHub secrets):
 
 Usage: ego-upload.py <path-to.shell-extension.zip>
 
-See ../../docs/release.md.
+See ../../docs/process/release.md.
 """
 
 import os

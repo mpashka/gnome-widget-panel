@@ -3,7 +3,7 @@
 // Stable, process-independent contracts shared by the panel host, the plugin
 // registry and the preferences UI. Keep runtime-validating parsers (see
 // `configStore.ts`) as the only place untrusted JSON becomes one of these
-// types. See ../docs/preferences.md and ../docs/object-model.md.
+// types. See ../docs/implementation/preferences.md and ../docs/implementation/object-model.md.
 
 /** Only schema version understood by this build of the widget configuration. */
 export const WIDGET_CONFIG_SCHEMA = 1 as const;

@@ -2,7 +2,7 @@
 # @tag:ui-testing
 # Regression (smoke): the headless stage renders real content and can be
 # captured to a PNG. Asserts the image is non-trivial (not a uniform fill).
-# Deliberately NOT a golden-image comparison — see docs/ui-testing.md for why
+# Deliberately NOT a golden-image comparison — see docs/testing/ui-testing.md for why
 # committed reference screenshots are avoided (theme/font brittleness).
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 ui_start

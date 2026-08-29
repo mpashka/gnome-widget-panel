@@ -15,6 +15,13 @@ configurable strftime/`date` template.
 - `format` — strftime-style template rendered by
   `GLib.DateTime.get_now_local().format(...)`, e.g. `%H:%M` or
   `%a %d %b %H:%M:%S`. Defaults to `%H:%M`. Edited in `prefs.ts`.
+  The same string also carries the **font styling**: a small HTML-like subset
+  (Pango markup) — `<b>`, `<i>`, `<u>`, `<s>`, `<big>`, `<small>`, `<tt>` and
+  `<span foreground="#rrggbb">` — so one part of the time can be styled
+  differently from another (`<b>%H:%M</b><small>:%S</small>`). Styling lives in
+  the template rather than in separate bold/italic/colour switches for exactly
+  that reason. Markup Pango rejects is drawn with its tags stripped: a typo
+  costs the styling, never the clock.
 
 ## Source files
 
@@ -25,10 +32,19 @@ configurable strftime/`date` template.
   `setPanelLayout({vertical, rotation})`: in a vertical panel it rotates the time
   label actor 90° (`rotation` `left`/`right` picks the direction) around its
   centre so the time reads vertically; horizontal mode restores
-  `rotation_angle_z = 0`.
-- `prefs.ts` — per-widget settings UI: an `Adw.EntryRow` editing `format`.
+  `rotation_angle_z = 0`. `_applyText()` feeds the Pango layout as markup when
+  the template uses the supported subset — for the **size request as well as the
+  drawing**, since measuring plain text while drawing bold/big markup clips the
+  time.
+- `clockMarkup.ts` — gi-free helpers (`hasMarkup`, `stripMarkup`) deciding
+  whether a formatted time should go through Pango's markup parser and how to
+  salvage it when it does not parse. Unit-tested in
+  [`tests/clockMarkup.test.mjs`](../../../tests/index.md).
+- `prefs.ts` — per-widget settings UI: an `Adw.EntryRow` editing `format`, the
+  supported-markup hint, and a live preview of the current time through the
+  entered template that reports invalid markup before it reaches the panel.
 
 ## Related docs
 
-- [Object model](../../../docs/object-model.md)
-- [Architecture](../../../docs/architecture.md)
+- [Object model](../../../docs/implementation/object-model.md)
+- [Architecture](../../../docs/implementation/architecture.md)

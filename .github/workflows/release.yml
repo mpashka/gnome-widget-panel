@@ -1,9 +1,9 @@
 # Release: manually triggered from the Actions tab. Bumps the version, builds
 # and tests, generates release notes from the release's GitHub issues, packs an
 # extensions.gnome.org-ready zip, commits + tags the bump (with the regenerated
-# CHANGELOG.md + docs/releases.json), publishes a GitHub Release with the notes
+# CHANGELOG.md + docs/process/releases.json), publishes a GitHub Release with the notes
 # and zip, closes the release milestone, and (best-effort) submits the zip to
-# extensions.gnome.org for manual review. See ../../docs/release.md.
+# extensions.gnome.org for manual review. See ../../docs/process/release.md.
 name: Release
 
 on:
@@ -68,7 +68,7 @@ jobs:
         run: npm run pack
 
       # Collect the release milestone's closed issues into dist/release-notes.md
-      # and regenerate CHANGELOG.md + docs/releases.json. Uses the job token to
+      # and regenerate CHANGELOG.md + docs/process/releases.json. Uses the job token to
       # read issues; degrades to auto-only notes when no milestone matches.
       - name: Generate release notes
         id: notes
@@ -84,7 +84,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add extension-src/metadata.json package.json CHANGELOG.md docs/releases.json
+          git add extension-src/metadata.json package.json CHANGELOG.md docs/process/releases.json
           git commit -m "release: v${{ steps.bump.outputs.version }}"
           git tag "v${{ steps.bump.outputs.version }}"
           git push origin HEAD:${{ github.ref_name }} --follow-tags

@@ -7,7 +7,7 @@ Two test layers:
 - **Unit tests** (this directory, `*.test.mjs`) — the panel's **gi-free**
   pure-logic modules, run with Node's built-in test runner.
 - **UI tests** ([`ui/`](ui/index.md)) — headless GNOME Shell regression tests
-  and feature-debug tooling; see [`../docs/ui-testing.md`](../docs/ui-testing.md).
+  and feature-debug tooling; see [`../docs/testing/ui-testing.md`](../docs/testing/ui-testing.md).
 
 ## Running
 
@@ -40,6 +40,11 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   token/context/rate-limit mapping (including the null-`current_usage` and
   missing-`rate_limits` cases) and `UserPromptSubmit` → request-marker
   extraction (`@tag:widget-ai-agent-usage`, issue #6).
+- `clockMarkup.test.mjs` — `hasMarkup`/`stripMarkup` from
+  [`../extension-src/plugins/clock/clockMarkup.ts`](../extension-src/plugins/clock/clockMarkup.ts):
+  which formatted times count as markup (a literal `&` or `<` does not), which
+  tags belong to the supported subset, and salvaging the time from markup Pango
+  rejects (`@tag:widget-clock`).
 - `props.test.mjs` — `definedProps` from
   [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
   keys from a GObject initializer (regression for the cpu-load-monitor settings

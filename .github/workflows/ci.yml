@@ -1,7 +1,7 @@
 # Continuous integration: build the TypeScript source, type-check and run the
 # gi-free unit test suite on every push and pull request. UI tests (npm run
 # test:ui) need a live GNOME Shell host and are not run here. See
-# ../../docs/release.md.
+# ../../docs/process/release.md.
 name: CI
 
 on:

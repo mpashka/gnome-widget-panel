@@ -3,7 +3,7 @@
 `@tag:ui-testing`
 
 Back to [tests](../index.md). Concept, options analysis and how-to:
-[`../../docs/ui-testing.md`](../../docs/ui-testing.md).
+[`../../docs/testing/ui-testing.md`](../../docs/testing/ui-testing.md).
 
 ## Files
 
@@ -26,9 +26,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   server across a live config reload (the port-bind race).
 - `t-10-right-click-menu.sh` — a right-click on the drag handle (`ctlBtn`) held
   slightly longer than an instant tap still opens/closes its context menu
-  instead of misfiring the long-press temporary-hide (issue #3,
-  `controlButton.ts` `LONGPRESS_MS`); a genuine long-press still hides the
-  panel.
+  (issue #3, `controlButton.ts` `LONGPRESS_MS`), and a genuine long right-press
+  now does nothing at all: the temporary-hide it used to fire was replaced by the
+  explicit Collapse/Expand item (`t-15-collapse.sh`).
 - `t-11-drag-starts-immediately.sh` — dragging the drag handle starts on the
   first pointer movement, not after the `LONGPRESS_MS` timer, so raising that
   threshold for right-click does not make the widget feel "glued" (issue #3
@@ -40,6 +40,13 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   one dot showing the most-urgent state (priority `waiting > idle > thinking`),
   statusline activity never demotes `waiting`, and the placeholder returns when
   empty.
+- `t-15-collapse.sh` — the Collapse/Expand menu item on the drag handle: only
+  the handle stays visible, its menu still opens (the only way back), the state
+  persists in the `collapsed` key, expanding restores every widget, and a widget
+  live-reload does not silently expand a collapsed panel.
+- `t-16-clock-markup.sh` — the clock's markup subset: bold widens the **size
+  request** (measuring plain text would clip it), a colour span is accepted, and
+  invalid markup falls back to the plain time instead of blanking the widget.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +

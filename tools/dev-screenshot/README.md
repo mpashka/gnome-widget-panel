@@ -2,8 +2,8 @@
 
 `@tag:dev-screenshot`
 
-Back to [development](../../docs/development.md) ·
-[bug-fixing workflow](../../docs/bug-fixing-workflow.md).
+Back to [development](../../docs/process/development.md) ·
+[bug-fixing workflow](../../docs/process/bug-fixing-workflow.md).
 
 A **dev-only** way for an agent to screenshot the real GNOME session while
 debugging a UI bug. It is **not part of the product**: it lives here under
@@ -58,4 +58,4 @@ stays enabled and captures with no further relogins.
 `ui_screenshot`, which uses the same `Shell.Screenshot`) for anything
 reproducible without the real session; reach for this tool only when you must see
 the user's actual prod session. See the "dev before prod" and "minimise human
-interaction" rules in [`bug-fixing-workflow.md`](../../docs/bug-fixing-workflow.md).
+interaction" rules in [`bug-fixing-workflow.md`](../../docs/process/bug-fixing-workflow.md).

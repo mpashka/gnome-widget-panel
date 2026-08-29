@@ -2,7 +2,7 @@
 
 `@tag:process`
 
-Back to the [documentation index](index.md) and [working rules](../AGENTS.md).
+Back to the [documentation index](../index.md) and [working rules](../../AGENTS.md).
 
 The one goal behind every rule here: **adding a feature or fixing a bug must not
 get harder as the project grows.** A codebase decays when each change makes the
@@ -67,7 +67,7 @@ change. Each plugin under `extension-src/plugins/<id>/` **must** have an
 
 When you change a widget's behaviour or options, update its `index.md` in the
 same change (AGENTS.md documentation rule). Cross-file concepts also get a
-`@tag:<slug>` registered in [`tags.md`](tags.md).
+`@tag:<slug>` registered in [`tags.md`](../tags.md).
 
 ## 4. Typing at the boundaries
 

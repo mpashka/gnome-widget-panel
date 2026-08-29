@@ -36,7 +36,7 @@ that change, not a separate cleanup task.
 
 ## Versioning
 
-Canonical docs: [`docs/release.md`](docs/release.md). Summary:
+Canonical docs: [`docs/process/release.md`](../process/release.md). Summary:
 
 - `version` (integer EGO code, +1 per release) and `version-name` (semver
   `A.B.C`, currently `"0.1.0"`) in `extension-src/metadata.json`; `package.json`
@@ -58,7 +58,7 @@ Done:
 - [x] Issue-based release notes: milestone (one per release) → grouped GitHub
   Release body (hand-editable, version in URL), plus a generated `CHANGELOG.md`
   with a GNOME Shell version → plugin version support matrix
-  (`.github/scripts/release-notes.mjs`, `docs/releases.json`). About links point
+  (`.github/scripts/release-notes.mjs`, `docs/process/releases.json`). About links point
   to the running version's release notes.
 
 ## Panel roadmap

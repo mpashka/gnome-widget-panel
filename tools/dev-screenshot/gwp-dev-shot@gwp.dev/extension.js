@@ -10,7 +10,7 @@
 // SCOPE: this is NOT part of the product. It lives under tools/ (outside the
 // packed extension/ tree) and is never shipped in a release. An agent installs
 // and enables it for a debug session and removes it afterwards; see
-// tools/dev-screenshot/README.md and docs/development.md.
+// tools/dev-screenshot/README.md and docs/process/development.md.
 //
 // A fresh install can be enabled live (`gnome-extensions enable`) without a
 // logout — the relogin tax only applies to reloading an already-cached module.

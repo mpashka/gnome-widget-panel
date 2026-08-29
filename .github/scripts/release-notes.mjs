@@ -9,7 +9,7 @@
 //       per-version release-notes page; the version is in its URL). It stays
 //       hand-editable on GitHub after publication, and the workflow lets GitHub
 //       append its auto-generated "What's Changed" section below it.
-//   - docs/releases.json     — a machine-readable ledger (one entry per release)
+//   - docs/process/releases.json     — a machine-readable ledger (one entry per release)
 //       that also records the GNOME Shell versions each release supported.
 //   - CHANGELOG.md           — regenerated from the ledger: a GNOME Shell
 //       support matrix (which plugin version to install for a given GNOME
@@ -28,7 +28,7 @@
 //   env GITHUB_OUTPUT  step outputs sink (milestone_number, notes_url)
 //
 // Never throws out to the workflow over a GitHub API hiccup: issue collection is
-// best-effort and degrades to "no tracked issues". See ../../docs/release.md.
+// best-effort and degrades to "no tracked issues". See ../../docs/process/release.md.
 
 import {readFileSync, writeFileSync, appendFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
@@ -202,7 +202,7 @@ function buildReleaseBody(issues) {
 function loadLedger() {
     try {
         const data = JSON.parse(
-            readFileSync(join(repoRoot, 'docs', 'releases.json'), 'utf8')
+            readFileSync(join(repoRoot, 'docs', 'process', 'releases.json'), 'utf8')
         );
         if (Array.isArray(data.releases))
             return data;
@@ -228,9 +228,9 @@ function renderChangelog(ledger) {
     out.push('');
     out.push(
         'Every released version of GNOME Widget Panel. This file is generated ' +
-            'from `docs/releases.json` by the release workflow; each version ' +
+            'from `docs/process/releases.json` by the release workflow; each version ' +
             'links to its full, hand-editable release notes on GitHub. See ' +
-            '[`docs/release.md`](docs/release.md) for the process.'
+            '[`docs/process/release.md`](docs/process/release.md) for the process.'
     );
     out.push('');
 
@@ -315,7 +315,7 @@ const ledger = upsertLedger(loadLedger(), {
     issues,
 });
 writeFileSync(
-    join(repoRoot, 'docs', 'releases.json'),
+    join(repoRoot, 'docs', 'process', 'releases.json'),
     JSON.stringify(ledger, null, 2) + '\n'
 );
 writeFileSync(join(repoRoot, 'CHANGELOG.md'), renderChangelog(ledger));

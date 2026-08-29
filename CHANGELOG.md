@@ -1,6 +1,6 @@
 # Changelog
 
-Every released version of GNOME Widget Panel. This file is generated from `docs/releases.json` by the release workflow; each version links to its full, hand-editable release notes on GitHub. See [`docs/release.md`](docs/release.md) for the process.
+Every released version of GNOME Widget Panel. This file is generated from `docs/process/releases.json` by the release workflow; each version links to its full, hand-editable release notes on GitHub. See [`docs/process/release.md`](docs/process/release.md) for the process.
 
 ## GNOME Shell support matrix
 
