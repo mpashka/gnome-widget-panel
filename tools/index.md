@@ -13,10 +13,12 @@ Developer and build tooling for the GNOME Widget Panel. Parent:
   assignments, one blank line separating the import block, comments kept attached
   to the declaration below them). Idempotent.
 - [`ego-status.py`](ego-status.py) — reports where the extension stands on
-  extensions.gnome.org: `/extension-info/?uuid=…` answers 404 until a version is
-  published, which is the credential-free "approved yet?" signal (exit 10 = not
-  published, 0 = published); with `EGO_USERNAME`/`EGO_PASSWORD` it also logs in
-  and returns the author-visible review context. See
+  extensions.gnome.org: the credential-free `/extension-info/?uuid=…` probe
+  (404 until published) plus, with `EGO_USERNAME`/`EGO_LOGIN` and
+  `EGO_PASSWORD`, the author-visible per-version status table, the **reviewer's
+  comments** and the **Shexli** findings for every submitted version.
+  `--state FILE` diffs against the previous run and exits 20 on any change, so a
+  watcher can poll it. See
   [`../docs/process/promotion.md`](../docs/process/promotion.md).
 - [`wiki-screenshots.sh`](wiki-screenshots.sh) — regenerates the published
   screenshots (panel, collapsed panel, settings window) headlessly on top of the

@@ -70,14 +70,33 @@ you; uploading the next version is how that state is cleared.
 
 [`../../tools/ego-status.py`](../../tools/ego-status.py) answers "is it approved
 yet?" without credentials: `/extension-info/?uuid=<uuid>` returns 404 while the
-extension is unpublished and JSON once it is live (exit code 10 vs 0), so it can
-be polled from a watcher. With `EGO_USERNAME`/`EGO_PASSWORD` in the environment
-it additionally logs in and returns the author-visible context for the listing —
-that half is written from the upload script's login flow and has not been run
-against a live account; treat a parse failure as *unknown*, never as approved,
-and re-fix the selectors from `--dump-html` output rather than guessing.
+extension is unpublished and JSON once it is live (exit code 10 vs 0).
 
-Reviewer feedback itself arrives by **email** to the EGO account owner, not
-through any endpoint. Fixing a review comment always means a new release: EGO
-requires the integer `version` to strictly increase, so the loop is
-fix → `bump=patch` release → upload the new zip.
+Logged in — `EGO_USERNAME` or `EGO_LOGIN`, plus `EGO_PASSWORD` — it also reads
+the pages the public gets a 404 for:
+
+- `/extension/<id>/` — the per-version table: version → status (Unreviewed,
+  Rejected, Active, Inactive) with a link to each version's review;
+- `/review/<pk>/` — the **reviewer's comments** on that version and the findings
+  of **Shexli**, EGO's automated checker: rule code, severity, the rule text and
+  every file:line it hit.
+
+```bash
+. ~/.profile                       # EGO_LOGIN / EGO_PASSWORD live there
+tools/ego-status.py                                  # human-readable
+tools/ego-status.py --state ~/.cache/gwp-ego.json    # exit 20 when anything changed
+tools/ego-status.py --dump-html /tmp/ego             # keep the HTML when parsing fails
+```
+
+`--state` is what a watcher polls: it stores the comparable part of the result
+and exits **20** the moment a status, a comment or a Shexli finding changes.
+
+The page markup is unversioned and changes without notice, so an unparsed page is
+reported as an error, never as "nothing to see"; re-fix the selectors from
+`--dump-html` output instead of guessing.
+
+Reviewer feedback also arrives by **email** to the account owner. Fixing a review
+comment always means a new release: EGO requires the integer `version` to
+strictly increase, so the loop is fix → `bump=patch` release → upload the new zip.
+Uploading a new version **auto-rejects** the previous one ("Auto-rejected because
+of new version … was uploaded") — that is bookkeeping, not a verdict.
