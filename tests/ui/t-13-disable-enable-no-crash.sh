@@ -27,6 +27,21 @@ ui_wait_js "$CTL" \
     || fail "control button did not come back after disable/enable (extension likely stuck in ERROR)"
 _ui_log "ok - extension re-enabled and the panel returned"
 
+# Same path, but with a relocate pending: a resize schedules an idle source that
+# calls _relocate() on the next tick. That source used to be untracked, so a
+# disable landing in between ran it against a destroyed panel (EGO-L-004; the
+# failure class behind this very issue). Force the schedule, then disable in the
+# SAME tick so the source is still pending when the panel goes away.
+ui_eval "panel._scheduleRelocate(); panel._relocateIdleId !== 0" >/dev/null \
+    || fail "_scheduleRelocate did not arm an idle source"
+ui_eval "panel._scheduleRelocate(); Main.extensionManager.disableExtension('$GWP_UUID'); 'disabled'" >/dev/null
+ui_eval "Main.extensionManager.enableExtension('$GWP_UUID'); 'enabled'" >/dev/null
+ui_wait_js "$CTL" \
+    || fail "panel did not come back after disable with a relocate pending"
+assert_true "panel._relocateIdleId === 0" \
+    "the rebuilt panel starts with no pending relocate source"
+_ui_log "ok - disabling with a relocate pending leaves no orphaned idle source"
+
 # The specific crash this guards against.
 if grep -q "super.destroy is not a function" "$GWP_UI_TMP/shell.log"; then
     fail "CtlActions.destroy() threw 'super.destroy is not a function' (issue #7 regression)"

@@ -20,6 +20,11 @@ import {formatVersionLabel} from './version.js';
 // Async file reads keep the (best-effort) system-report and metadata reads off
 // the Shell main loop (EGO forbids synchronous file I/O there).
 Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
+Gio._promisify(
+    Gio.Subprocess.prototype,
+    'communicate_utf8_async',
+    'communicate_utf8_finish'
+);
 
 // The canonical repository URL. Kept as a constant so callers link to a single
 // source.
@@ -62,13 +67,23 @@ async function readTextFile(path) {
     }
 }
 
-// Best-effort synchronous command run, returning trimmed stdout or '' on failure.
-function runCommand(commandLine) {
+// Best-effort command run, returning trimmed stdout or '' on failure.
+//
+// Asynchronous on purpose: this module is loaded by the Shell process, where a
+// synchronous spawn blocks the compositor's main loop for the lifetime of the
+// child. The synchronous GLib spawn that used to be here was flagged as
+// EGO-X-002 by the store's automated review and violated the "no synchronous
+// I/O on the Shell thread" rule in AGENTS.md. `Gio.Subprocess` with
+// `communicate_utf8_async` is the sanctioned equivalent, and is what the
+// plugin's out-of-process collectors already use.
+async function runCommand(argv) {
     try {
-        const [ok, stdout] = GLib.spawn_command_line_sync(commandLine);
-        if (!ok || !stdout)
-            return '';
-        return new TextDecoder('utf-8').decode(stdout).trim();
+        const proc = Gio.Subprocess.new(
+            argv,
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
+        );
+        const [stdout] = await proc.communicate_utf8_async(null, null);
+        return (stdout || '').trim();
     } catch (_e) {
         return '';
     }
@@ -150,7 +165,7 @@ export async function releaseNotesUrl(): Promise<string> {
 
 // GNOME Shell version. Inside the Shell process the config resource is present;
 // in the prefs process it is not, so fall back to `gnome-shell --version`.
-function gnomeShellVersion() {
+async function gnomeShellVersion() {
     try {
         // Only importable inside the gnome-shell process.
         // eslint-disable-next-line no-undef
@@ -160,7 +175,7 @@ function gnomeShellVersion() {
     } catch (_e) {
         // Not in the Shell process (or legacy imports unavailable).
     }
-    const out = runCommand('gnome-shell --version');
+    const out = await runCommand(['gnome-shell', '--version']);
     if (out) {
         // e.g. "GNOME Shell 50.0" -> "50.0"
         const match = out.match(/([0-9][0-9.]*)/);
@@ -175,18 +190,18 @@ export async function collectSystemInfo(): Promise<string> {
     const lines = [];
 
     lines.push(`Extension version: ${await versionDisplay()}`);
-    lines.push(`GNOME Shell version: ${gnomeShellVersion()}`);
+    lines.push(`GNOME Shell version: ${await gnomeShellVersion()}`);
 
     const osRelease = await readTextFile('/etc/os-release');
     const distro = osRelease ? parseKeyValue(osRelease, 'PRETTY_NAME') : '';
     lines.push(`OS / distro: ${distro || 'unknown'}`);
 
-    let kernel = runCommand('uname -sr');
-    if (!kernel) {
-        const osrel = (await readTextFile('/proc/sys/kernel/osrelease')).trim();
-        kernel = osrel ? `Linux ${osrel}` : '';
-    }
-    lines.push(`Kernel: ${kernel || 'unknown'}`);
+    // Read the kernel from /proc rather than spawning `uname`: the same two
+    // fields, no child process, and the file read is already async.
+    const ostype = (await readTextFile('/proc/sys/kernel/ostype')).trim();
+    const osrelease = (await readTextFile('/proc/sys/kernel/osrelease')).trim();
+    const kernel = [ostype || 'Linux', osrelease].filter(Boolean).join(' ').trim();
+    lines.push(`Kernel: ${osrelease ? kernel : 'unknown'}`);
 
     const sessionType = GLib.getenv('XDG_SESSION_TYPE') || 'unknown';
     lines.push(`Session type: ${sessionType}`);

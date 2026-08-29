@@ -36,7 +36,14 @@ Main panel actor. It owns:
   `pos-x`/`pos-y` and then calls `_relocate(false)` so the saved `aligned`
   preset (edge snapping / centering) is re-applied after a reload. When
   `aligned === NONE` the panel keeps its exact stored (floating) position across
-  restarts; only out-of-bounds positions are clamped back on screen;
+  restarts; only out-of-bounds positions are clamped back on screen. A resize
+  relocates through `_scheduleRelocate()`, which keeps the id of its idle source
+  in `_relocateIdleId` and drops it in `destroy()`: the callback returns
+  `SOURCE_REMOVE`, so it removes itself only *after* running, and a `disable()`
+  landing in between would run it against a destroyed panel (the failure class
+  behind issue #7; EGO flags the untracked form as EGO-L-004). Holding one id
+  also collapses the `notify::width` and `notify::height` a single resize emits
+  into one relocate;
 - auto/permanent/off state;
 - top-panel hiding integration (legacy Permanent-mode `panelBox` hiding, now
   gated by `_topBarManagedExternally()` — see `MainPanelController`);

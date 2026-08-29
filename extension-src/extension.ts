@@ -187,6 +187,7 @@ const FloatingMiniPanel = GObject.registerClass(
             // without a full GNOME Shell reload. A short debounce coalesces
             // bursts of writes (e.g. a spin button being held).
             this._reloadTimeoutId = null;
+            this._relocateIdleId = 0;
             this._widgetsChangedId = this._sets.connect(
                 'changed::widgets',
                 () => this._scheduleReloadPlugins()
@@ -404,19 +405,13 @@ const FloatingMiniPanel = GObject.registerClass(
             this.connect_object(
                 'notify::width',
                 () => {
-                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                        if (this.visible) this._relocate(false);
-                        return GLib.SOURCE_REMOVE;
-                    });
+                    this._scheduleRelocate();
                     return Clutter.Event_STOP;
                 },
                 // START CODE VERTICAL
                 'notify::height',
                 () => {
-                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                        if (this.visible) this._relocate(false);
-                        return GLib.SOURCE_REMOVE;
-                    });
+                    this._scheduleRelocate();
                     return Clutter.Event_STOP;
                 },
                 // END CODE VERTICAL
@@ -862,6 +857,27 @@ const FloatingMiniPanel = GObject.registerClass(
             this._sets.set_boolean('collapsed', !!collapsed);
         }
 
+        // Relocate on the next idle, once, after a resize.
+        //
+        // The source id is kept so `destroy()` can drop a pending tick. The
+        // callback returns `SOURCE_REMOVE`, which removes the source only
+        // *after* it has run: a `disable()` landing between the schedule and the
+        // tick would otherwise run it against a destroyed panel — the failure
+        // class behind issue #7, and what EGO's automated review flags as
+        // EGO-L-004 ("main loop sources should be removed in disable()").
+        // Holding a single id also collapses the `notify::width` and
+        // `notify::height` a single resize emits into one relocate.
+        _scheduleRelocate() {
+            if (this._relocateIdleId)
+                return;
+            this._relocateIdleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this._relocateIdleId = 0;
+                if (this.visible)
+                    this._relocate(false);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+
         // Apply the current `collapsed` value to the child actors. Every child
         // except the control button is hidden — including the indicators drawer,
         // whose open/closed state is its own child actor and therefore hides
@@ -1045,6 +1061,13 @@ const FloatingMiniPanel = GObject.registerClass(
             if (this._timeoutId1) {
                 GLib.Source.remove(this._timeoutId1);
                 this._timeoutId1 = null;
+            }
+
+            // A relocate scheduled by the last resize may still be pending; it
+            // would run against this destroyed panel (see _scheduleRelocate).
+            if (this._relocateIdleId) {
+                GLib.Source.remove(this._relocateIdleId);
+                this._relocateIdleId = 0;
             }
 
             if (this._initRelocateId) {
