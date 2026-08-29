@@ -20,7 +20,7 @@ UI tests serve two distinct purposes with different lifecycles:
 | --- | --- | --- |
 | `org.gnome.Shell.Eval` D-Bus (+ `--unsafe-mode`) | ✗ unavailable | GNOME Shell 50 removed the `--unsafe-mode` switch; `Eval` returns `(false, '')` and `org.gnome.Mutter.DebugControl` exposes no unsafe-mode toggle (verified empirically). |
 | **Test-driver extension** (own `Eval` via D-Bus) | ✓ **chosen** | 90-line test-only extension ([`../../tests/ui/driver`](../../tests/ui/driver)) exports `org.gwp.TestDriver.Eval(script)`; runs only inside the isolated test session; version-proof; awaits Promise results so async shell APIs work. |
-| **Headless shell** (`gnome-shell --headless --virtual-monitor`) | ✓ **chosen** | Real compositor + real rendering (llvmpipe) with no window; the same mechanism `dev-run.sh` uses. Each test boots a throwaway, fully isolated session (own bus / extensions dir / dconf profile, so its own `widgets` GSettings key). |
+| **Headless shell** (`gnome-shell --headless --virtual-monitor`) | ✓ **chosen** | Real compositor + real rendering (llvmpipe) with no window; the same mechanism `./gwp dev` uses. Each test boots a throwaway, fully isolated session (own bus / extensions dir / dconf profile, so its own `widgets` GSettings key). |
 | **Virtual pointer** (`Clutter.VirtualInputDevice`) | ✓ **chosen** | Real input events through the whole picking/reactive path — clicks verified to open the overview headless. Preferred over `actor.emit('clicked')`, which bypasses picking (emit also works and is fine for quick debug). |
 | **Actor introspection asserts** | ✓ **chosen** | Most assertions read actor state via `Eval` (position, size, orientation, style, children) — robust, fast, precise failure messages. The primary assertion style. |
 | Screenshots — smoke test | ✓ chosen (t-07) | `Shell.Screenshot.screenshot_stage_to_content` + `composite_to_stream` writes a stage PNG headless; the committed test only asserts a non-uniform render. |
@@ -83,5 +83,5 @@ assertion inside `ui_wait_js`.
 away. The stub shows all the tools: boot with a custom widget set, introspect
 actors, poke GSettings live, click with the virtual pointer, screenshot the
 stage and read the shell log. For *visual/interactive* debugging use
-[`development.md`](../process/development.md) (`./dev-run.sh`, a real nested window)
+[`development.md`](../process/development.md) (`./gwp dev`, a real nested window)
 instead — the headless harness is for scripted checks.

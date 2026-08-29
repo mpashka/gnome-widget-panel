@@ -11,10 +11,12 @@ JavaScript is installed into GNOME Shell.
 - `extension-src/` — source of truth for TypeScript and static extension assets.
 - `extension/` — generated install tree. Do not edit it directly; run
   `npm run build`.
-- `build.sh` — recreates `extension/`, copies static assets, then runs `tsc`.
-- `install.sh` — installs npm dependencies if needed, builds, then copies the
-  generated extension to
-  `~/.local/share/gnome-shell/extensions/gnome-widget-panel@mpashka.github.com`.
+- `gwp` — the root CLI: `build` recreates `extension/`, copying static assets
+  and then running `tsc`; `install` installs npm dependencies if needed, builds,
+  then copies the generated extension to
+  `~/.local/share/gnome-shell/extensions/gnome-widget-panel@mpashka.github.com`;
+  `dev`/`dev-install`/`dev-settings` drive the isolated dev shell
+  ([`../process/development.md`](../process/development.md)).
 
 The current migration intentionally keeps `// @ts-nocheck` in runtime files
 because the panel uses many dynamic GObject fields and private GNOME Shell

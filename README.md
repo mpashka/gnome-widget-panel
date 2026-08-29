@@ -57,13 +57,21 @@ Shell support matrix).
 
 ## Install development build
 
+Everything — building, installing, the developer shell — goes through the one
+script in the repository root. Run it with no arguments to see the current state
+and the commands available:
+
 ```bash
-./install.sh
+./gwp            # status + the list of commands
+./gwp install
 ```
 
-`install.sh` installs npm dependencies if needed, runs `npm run build`, compiles
+`./gwp install` installs npm dependencies if needed, builds, compiles
 schemas and copies the generated `extension/` tree to the user GNOME Shell
-extensions directory.
+extensions directory. It reports the version it replaced and the version it
+installed, each as `<version-name> (<commit>)` — with `-dirty` appended when the
+build came from a modified working tree, since the version-name alone only moves
+on a release.
 
 The new extension uses UUID `gnome-widget-panel@mpashka.github.com`; it can be
 tested without overwriting the previously installed Floating Mini Panel.
@@ -81,17 +89,17 @@ submits it to **extensions.gnome.org** for manual review. See
 
 ## Reload without logout (developer install)
 
-`install.sh` needs a logout/login on Wayland to take effect. For fast iteration
+`./gwp install` needs a logout/login on Wayland to take effect. For fast iteration
 use the developer workflow instead:
 
 ```bash
 sudo apt install mutter-dev-bin   # one-time: provides gnome-shell --devkit
-./dev-install.sh                  # one-time: symlink the build tree into the extensions dir
-./dev-run.sh                      # rebuild and run a nested GNOME Shell window
+./gwp dev-install                 # one-time: symlink the build tree into the extensions dir
+./gwp dev                         # rebuild and run a nested GNOME Shell window
 ```
 
 Edit sources, close the nested window (or press `Ctrl+C`), and rerun
-`./dev-run.sh` to reload — no logout of your real session. `dev-run.sh` disables
+`./gwp dev` to reload — no logout of your real session. `./gwp dev` disables
 the extension in your main session, then runs an interactive nested GNOME Shell
 in a window (`gnome-shell --devkit`) with the extension enabled in an isolated
 dconf profile, and tails the log. See

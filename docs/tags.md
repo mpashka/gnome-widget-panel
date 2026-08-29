@@ -57,7 +57,7 @@ code, user guide, internals and tests.
 | `widget-caffeine` | The `caffeine` built-in widget (manual screensaver/suspend inhibitor toggle). |
 | `widget-break-timer` | The `break-timer` built-in widget (Workrave-style micro/rest/daily activity-based rest reminders). |
 | `main-panel` | GNOME top-bar (main panel) behaviour control: hide / auto-hide / visible, the built-in Hide Top Bar replacement (`extension-src/mainPanel.ts`, `extension.ts` gating, `prefs.ts` group + conflict detection, the `main-panel` schema key, `docs/implementation/object-model.md`, `docs/implementation/preferences.md`). |
-| `dev` | Developer reload-without-logout workflow: symlink install and nested-shell runner (`dev-install.sh`, `dev-run.sh`, `docs/process/development.md`). |
+| `dev` | Developer reload-without-logout workflow: the root `gwp` CLI (build/install/dev/dev-install/dev-settings), the isolated dev shell and its dconf profile (`gwp`, `docs/process/development.md`). |
 | `ui-testing` | Headless UI test harness: isolated headless shell + test-driver extension + regression tests and feature-debug stub (`tests/ui/`, `docs/testing/ui-testing.md`). |
 | `dev-screenshot` | Dev-only in-session screenshot driver for debugging UI bugs: an internal-`Shell.Screenshot` D-Bus extension + CLI, never shipped in a release (`tools/dev-screenshot/`, `docs/process/development.md`). |
 | `prefs-template` | Templated preferences rows built from a declarative widget-options description (`extension-src/prefsTemplate.ts`). |

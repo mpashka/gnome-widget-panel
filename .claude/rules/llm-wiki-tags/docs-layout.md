@@ -38,10 +38,11 @@ docs/
 - **Local detail stays next to the code**: `extension-src/plugins/<id>/index.md`,
   `tests/ui/index.md`. `docs/` links to it instead of restating it.
 - **The repository root keeps only** `AGENTS.md`, `CLAUDE.md`, `README.md`,
-  `LICENSE`, `index.md`, `CHANGELOG.md`, the build/install entry-point scripts,
+  `LICENSE`, `index.md`, `CHANGELOG.md`, the single `gwp` entry-point script,
   and files tooling requires there (`package.json`, `package-lock.json`,
-  `tsconfig.json`, `ambient.d.ts`, `.gitignore`). Anything else you are tempted
-  to drop in the root belongs in `docs/requests/<task-name>/`.
+  `tsconfig.json`, `.gitignore`). Anything else you are tempted to drop in the
+  root belongs in `docs/requests/<task-name>/`; a new build, install or dev
+  action belongs in `gwp` as a subcommand, never in a second root script.
 - When a page moves, fix every link **and every link label** pointing at it in
   the same change. `grep -rn "<old-path>"`, including `.github/scripts/` and
   `.github/workflows/`, which read some doc paths at runtime.

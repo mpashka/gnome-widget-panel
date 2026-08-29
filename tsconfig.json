@@ -13,7 +13,6 @@
     "types": []
   },
   "include": [
-    "ambient.d.ts",
     "extension-src/**/*.ts"
   ]
 }

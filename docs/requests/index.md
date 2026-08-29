@@ -37,6 +37,9 @@ this directory is not a substitute for updating them.
 - `promotion/` — extensions.gnome.org listing, icon assets, forum research and
   the GitHub wiki pages prepared for publication.
 - `release-0.1.2/` — the release plan for v0.1.2 (per-bug workflow and status).
+- `ui-bugs-and-single-cli/` — the bold clock, the dead Hide Top Bar Remove
+  button and the shaking applications menu, plus folding the five root shell
+  scripts into the single `gwp` CLI.
 - `widget-settings-ux/` — the original request behind the GNOME-like
   menu/places/activities widgets and the live-apply settings work.
 

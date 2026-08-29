@@ -1,0 +1,622 @@
+#!/usr/bin/env python3
+# @tag:dev
+"""Single entry point for building, installing and running this extension.
+
+Run it with no arguments: it prints what is built and installed right now,
+followed by the commands you can pick from. Nothing it does without a command
+changes anything.
+
+    ./gwp                  # status + the list of commands
+    ./gwp <command> --help # what one command does and its options
+
+Replaces the former build.sh / install.sh / dev-install.sh / dev-run.sh /
+dev-gsettings-diagnose.sh. See docs/process/development.md.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+SRC = ROOT / "extension-src"
+OUT = ROOT / "extension"
+UUID = "gnome-widget-panel@mpashka.github.com"
+SCHEMA = "org.gnome.shell.extensions.floating-mini-panel"
+
+# Where a real install goes, and the label of the build that put it there
+# (written on install, read back by the next one to report what it replaces).
+SESSION_TARGET = Path.home() / ".local/share/gnome-shell/extensions" / UUID
+INSTALL_MARKER = SESSION_TARGET / ".installed-version"
+
+# The dev shell's private world: its own extensions dir (via XDG_DATA_HOME), its
+# own dconf profile and the environment file other commands reuse to talk to it.
+DEV = ROOT / ".dev"
+DEV_DATA = DEV / "data"
+DEV_TARGET = DEV_DATA / "gnome-shell/extensions" / UUID
+DEV_PROFILE = DEV / "dconf-profile"
+DEV_SESSION_ENV = DEV / "session-env"
+DEV_STATUS = DEV / "status"
+DEV_INNER = DEV / "inner.sh"
+
+DEVKIT_BIN = Path("/usr/libexec/mutter-devkit")
+DEFAULT_LOG = "/tmp/gnome-widget-panel-dev.log"
+DEFAULT_MONITOR = "1600x900"
+
+# Log lines worth showing while the dev shell runs; everything else is noise.
+LOG_FILTER = re.compile(
+    r"widget[ -]?panel|ai.agent|extension|error|exception|warning|fatal", re.I
+)
+
+
+def run(*command, **kwargs):
+    """Run a command, failing the script if it fails."""
+    return subprocess.run([str(part) for part in command], check=True, **kwargs)
+
+
+def fail(message):
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def compile_schemas(directory):
+    """Compile a GSettings schema directory when the tool is available."""
+    if directory.is_dir() and shutil.which("glib-compile-schemas"):
+        run("glib-compile-schemas", directory)
+
+
+def ensure_dependencies():
+    if not (ROOT / "node_modules/.bin/tsc").is_file():
+        run("npm", "install", cwd=ROOT)
+
+
+def link_dev_target():
+    """Point the isolated dev extensions dir at the live build tree.
+
+    A symlink rather than a copy, so every build is immediately what the dev
+    shell loads, and the widget stays out of the main session's extensions dir.
+    """
+    DEV_TARGET.parent.mkdir(parents=True, exist_ok=True)
+    if DEV_TARGET.is_symlink() or DEV_TARGET.is_file():
+        DEV_TARGET.unlink()
+    elif DEV_TARGET.is_dir():
+        shutil.rmtree(DEV_TARGET)
+    DEV_TARGET.symlink_to(OUT)
+
+
+# --- build -----------------------------------------------------------------
+
+
+def build():
+    """Regenerate extension/ from extension-src/: assets, then TypeScript."""
+    if not SRC.is_dir():
+        fail(f"Missing TypeScript source directory: {SRC}")
+    tsc = ROOT / "node_modules/.bin/tsc"
+    if not tsc.is_file():
+        fail("Missing node_modules/.bin/tsc. Run npm install first.")
+
+    # extension/ is a build artifact: recreate it, so a deleted source file can
+    # never survive as a stale generated one.
+    shutil.rmtree(OUT, ignore_errors=True)
+    shutil.copytree(SRC, OUT, ignore=shutil.ignore_patterns("*.ts"))
+
+    run(tsc, "-p", ROOT / "tsconfig.json")
+
+    for path in OUT.rglob("*"):
+        if path.suffix in {".js", ".json", ".md", ".css", ".xml"} and path.is_file():
+            text = path.read_text()
+            stripped = re.sub(r"[ \t]+$", "", text, flags=re.M)
+            if stripped != text:
+                path.write_text(stripped)
+
+    # tsc strips every blank line when it emits JS, leaving the shipped
+    # extension an unreadable wall of code — and the EGO reviewers read exactly
+    # that. Reinsert the AGENTS.md "Code formatting" spacing (idempotent).
+    run("node", ROOT / "tools/format-generated.mjs")
+
+    # Always leave an up-to-date gschemas.compiled in the built tree: the
+    # rmtree above wipes it, and the dev install exposes this very directory to
+    # the shell, so a stale or missing schema would hide new settings keys.
+    compile_schemas(OUT / "schemas")
+    print(f"Built GNOME extension into {OUT}")
+
+
+# --- install ---------------------------------------------------------------
+
+
+def build_label():
+    """version-name plus the commit it was built from.
+
+    version-name only moves on a release, so on its own it cannot tell two
+    installs of unreleased work apart.
+    """
+    version = json.loads((SRC / "metadata.json").read_text())["version-name"]
+    commit = git("rev-parse", "--short", "HEAD")
+    if commit and git("status", "--porcelain"):
+        commit += "-dirty"
+    return f"{version} ({commit})" if commit else version
+
+
+def git(*args):
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(ROOT), *args], capture_output=True, text=True
+        )
+    except OSError:
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def installed_label():
+    """The label of the installed build; installs made before the marker
+    existed only carry the metadata version-name."""
+    if INSTALL_MARKER.is_file():
+        return INSTALL_MARKER.read_text().strip()
+    metadata = SESSION_TARGET / "metadata.json"
+    if metadata.is_file():
+        return json.loads(metadata.read_text()).get("version-name", "unknown")
+    return "not installed"
+
+
+def install():
+    """Build and copy the extension into the GNOME session's extensions dir."""
+    previous = installed_label()
+    ensure_dependencies()
+    build()
+    label = build_label()
+
+    shutil.rmtree(SESSION_TARGET, ignore_errors=True)
+    shutil.copytree(OUT, SESSION_TARGET, symlinks=True)
+    compile_schemas(SESSION_TARGET / "schemas")
+    INSTALL_MARKER.write_text(label + "\n")
+
+    # All configuration (widget list/options and panel settings) lives in
+    # GSettings; a legacy ~/.config/gnome-widget-panel/widgets.json is migrated
+    # into the `widgets` key on first run. Nothing to seed here.
+    print(f"Installed {UUID}\n  was: {previous}\n  now: {label}")
+    print("Log out and log in before enabling it.")
+
+
+# --- dev install -----------------------------------------------------------
+
+
+def dev_install():
+    """Symlink the built tree into the isolated dev extensions directory.
+
+    Keeps the widget entirely out of the main session's extensions dir, so the
+    two are completely separate. After this one-time setup every build is
+    immediately live; only a dev-shell restart is needed to load it.
+    """
+    ensure_dependencies()
+    build()
+    link_dev_target()
+    print(f"Dev-installed {UUID} (isolated from your main session)")
+    print(f"  {DEV_TARGET} -> {OUT} (symlink)")
+    print("Iterate with ./gwp dev (nested GNOME Shell; no logout needed).")
+
+
+# --- dev run ---------------------------------------------------------------
+
+# Patches the dev widget's Claude port straight into the dev dconf profile.
+# GJS (the project's native stack) so it goes through Gio.Settings exactly as
+# the extension does; env comes from the inner script that invokes it.
+CLAUDE_PORT_JS = """\
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import system from 'system';
+
+const [portArg] = system.programArgs;
+const port = Number(portArg);
+const schemaDir = GLib.getenv('GSETTINGS_SCHEMA_DIR');
+const source = Gio.SettingsSchemaSource.new_from_directory(
+    schemaDir, Gio.SettingsSchemaSource.get_default(), false);
+const schema = source.lookup(
+    'org.gnome.shell.extensions.floating-mini-panel', false);
+const settings = new Gio.Settings({settings_schema: schema});
+
+let data = null;
+try {
+    const raw = settings.get_string('widgets');
+    data = raw ? JSON.parse(raw) : null;
+} catch (e) {
+    data = null;
+}
+if (!data || !Array.isArray(data.plugins))
+    data = {schema: 1, plugins: []};
+let ai = data.plugins.find(p => p.id === 'ai-agent-usage');
+if (!ai) {
+    ai = {id: 'ai-agent-usage', enabled: true};
+    data.plugins.push(ai);
+}
+ai.enabled = true;
+ai.options = {...(ai.options ?? {}), claudePort: port};
+settings.set_string('widgets', JSON.stringify(data));
+Gio.Settings.sync();
+"""
+
+# The shell has to start inside `dbus-run-session`, so the launch lives in a
+# generated bash script rather than in this process.
+INNER_SH = """\
+#!/usr/bin/env bash
+set -u
+# Isolated extensions dir so the dev shell never touches the main session's.
+export XDG_DATA_HOME="{datahome}"
+export DCONF_PROFILE="{profile}"
+export GSETTINGS_SCHEMA_DIR="{schema_dir}"
+
+# Propagate the dev environment to D-Bus-activated services. The extension
+# preferences app (org.gnome.Shell.Extensions) is D-Bus-activated with a FRESH
+# environment, so without this it runs with no DCONF_PROFILE and writes the
+# DEFAULT dconf profile while the dev shell reads the isolated one — the reason
+# preference changes never reach the running panel. This makes the prefs inherit
+# DCONF_PROFILE/XDG_DATA_HOME/GSETTINGS_SCHEMA_DIR, so its writes reach this shell.
+dbus-update-activation-environment --all 2>/dev/null || true
+
+umask 077
+cat >"{sessionenv}" <<SESSION_ENV
+export DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+export DCONF_PROFILE="{profile}"
+export GSETTINGS_SCHEMA_DIR="{schema_dir}"
+export XDG_DATA_HOME="{datahome}"
+SESSION_ENV
+rm -f "{disable_flag}"
+
+# Enable only this extension in the isolated profile.
+gsettings set org.gnome.shell disable-user-extensions false 2>/dev/null || true
+gsettings set org.gnome.shell enabled-extensions "['{uuid}']" 2>/dev/null || true
+{theme_cmd}
+{claude_port_cmd}
+
+{shell_cmd} >>"{logfile}" 2>&1 &
+shell_pid=$!
+for i in $(seq 1 60); do
+    gdbus introspect --session --dest org.gnome.Shell \\
+        --object-path /org/gnome/Shell >/dev/null 2>&1 && break
+    sleep 0.5
+done
+sleep 2
+state=$(gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \\
+    --method org.gnome.Shell.Extensions.GetExtensionInfo "{uuid}" 2>/dev/null \\
+    | grep -oE "'state': <[0-9.]+>" | grep -oE '[0-9]+' | head -1)
+echo "EXT_STATE=${{state:-?}}" >>"{statusfile}"
+
+wait $shell_pid
+"""
+
+
+def dev_run(args):
+    """Build, then run the extension in a throwaway nested GNOME Shell.
+
+    GNOME Shell caches an extension's ES module for the life of its process, so
+    changed code is only loaded by a fresh process. mutter 50 dropped the old
+    windowed "nested" flag; the supported replacement is the mutter development
+    kit (`gnome-shell --devkit`, package `mutter-dev-bin`), which runs a fully
+    interactive nested shell in a window.
+
+    The dev shell is fully separate from the main GNOME session: its own D-Bus
+    bus, its own extensions dir (XDG_DATA_HOME=.dev/data) and its own dconf
+    profile, so nothing here touches the real session and the widget need not be
+    installed there at all.
+    """
+    if not args.headless and not os.access(DEVKIT_BIN, os.X_OK):
+        fail(
+            f"Interactive mode needs the mutter development kit ({DEVKIT_BIN}).\n"
+            "Install it with:  sudo apt install mutter-dev-bin\n"
+            "Or run log-only:  ./gwp dev --headless"
+        )
+    if args.headless:
+        shell_cmd = f"gnome-shell --headless --virtual-monitor {args.monitor}"
+        mode = f"headless ({args.monitor}), log only"
+    else:
+        shell_cmd = "gnome-shell --devkit"
+        mode = "interactive devkit window"
+
+    build()
+    link_dev_target()
+
+    DEV.mkdir(parents=True, exist_ok=True)
+    DEV_PROFILE.write_text("user-db:gwpdev\n")
+    DEV_STATUS.write_text("")
+
+    theme_cmd = ""
+    if args.theme:
+        scheme = "prefer-dark" if args.theme == "dark" else "default"
+        theme_cmd = (
+            "gsettings set org.gnome.desktop.interface color-scheme "
+            f"'{scheme}' 2>/dev/null || true"
+        )
+        print(f"Dev shell theme: {args.theme} ({scheme})")
+
+    claude_port_cmd = ""
+    if args.claude_port:
+        # The widget configuration lives in the `widgets` GSettings key of the
+        # dev profile, so the port is patched right there. ~/.claude (the hook
+        # registry) stays under HOME, so Claude's status line still fans out to
+        # this instance and to a main-session install at the same time.
+        script = DEV / "patch-claude-port.js"
+        script.write_text(CLAUDE_PORT_JS)
+        claude_port_cmd = f'gjs -m "{script}" "{args.claude_port}" || true'
+        print(f"Dev widget Claude port: {args.claude_port} (in the dev profile)")
+
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    # Present after a crash, this file forces safe mode (all extensions off).
+    disable_flag = Path(runtime) / "gnome-shell-disable-extensions"
+    DEV_INNER.write_text(
+        INNER_SH.format(
+            datahome=DEV_DATA,
+            profile=DEV_PROFILE,
+            schema_dir=OUT / "schemas",
+            sessionenv=DEV_SESSION_ENV,
+            disable_flag=disable_flag,
+            uuid=UUID,
+            theme_cmd=theme_cmd,
+            claude_port_cmd=claude_port_cmd,
+            shell_cmd=shell_cmd,
+            logfile=args.log,
+            statusfile=DEV_STATUS,
+        )
+    )
+    DEV_INNER.chmod(0o755)
+
+    disable_flag.unlink(missing_ok=True)
+    Path(args.log).write_text("")
+    print(f"Starting {mode}; full log -> {args.log}")
+    shell = subprocess.Popen(["dbus-run-session", "--", str(DEV_INNER)])
+
+    try:
+        state = wait_for_extension_state(shell)
+        print()
+        if state == "1":
+            print(f"Extension {UUID}: ENABLED in the dev shell.")
+        elif state is None:
+            print(f"Extension {UUID}: state unknown (shell still starting?).")
+        else:
+            print(f"Extension {UUID}: NOT enabled (state={state}) — check the log.")
+        if not args.headless:
+            print("A nested GNOME Shell window should be open; the panel is inside it.")
+            print("To resize it: window menu -> Monitors -> Emulate monitor modes,")
+            print("then drag the window edge (the shell reflows to the new size).")
+        print(
+            "\nSettings: use the panel's own Settings... item INSIDE that window, or"
+            "\nrun  ./gwp dev-settings prefs. Those run on the dev shell's bus, so"
+            "\norientation/padding/position apply live. Preferences opened from your"
+            "\nMAIN session write a different dconf and will NOT apply here."
+            "\nFor a real install use ./gwp install + logout/login."
+        )
+        print("\nTailing extension/error log lines; Ctrl+C to stop.\n")
+        tail_log(args.log, shell)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if shell.poll() is None:
+            shell.send_signal(signal.SIGTERM)
+            shell.wait()
+        disable_flag.unlink(missing_ok=True)
+        DEV_SESSION_ENV.unlink(missing_ok=True)
+        print("\nDev shell stopped. Rerun ./gwp dev to reload.")
+
+
+def wait_for_extension_state(shell, attempts=80):
+    """Wait for the inner script to report the extension's state, or give up."""
+    for _ in range(attempts):
+        if shell.poll() is not None:
+            return None
+        match = re.search(r"^EXT_STATE=(.*)$", DEV_STATUS.read_text(), re.M)
+        if match:
+            return match.group(1).strip() or None
+        time.sleep(0.5)
+    return None
+
+
+def tail_log(path, shell):
+    """Print the interesting lines of the shell log until the shell exits."""
+    with open(path, "r") as log:
+        while shell.poll() is None:
+            line = log.readline()
+            if not line:
+                time.sleep(0.2)
+                continue
+            if LOG_FILTER.search(line):
+                print(line, end="")
+
+
+# --- dev settings ----------------------------------------------------------
+
+# Panel keys worth showing side by side when checking whether a preferences
+# change reached the dev shell.
+WATCHED_KEYS = ("orientation", "content-padding")
+
+
+def dev_env():
+    """Environment addressing the dev dconf profile (no running shell needed)."""
+    if not DEV_PROFILE.is_file():
+        fail(f"Missing {DEV_PROFILE}. Run ./gwp dev first.")
+    if not (OUT / "schemas").is_dir():
+        fail(f"Missing {OUT / 'schemas'}. Run ./gwp build or ./gwp dev first.")
+    return {
+        **os.environ,
+        "DCONF_PROFILE": str(DEV_PROFILE),
+        "GSETTINGS_SCHEMA_DIR": str(OUT / "schemas"),
+    }
+
+
+def dev_session_env():
+    """Environment addressing the *running* dev shell (its own D-Bus bus)."""
+    env = dev_env()
+    if not DEV_SESSION_ENV.is_file():
+        fail(f"Missing {DEV_SESSION_ENV}. Start ./gwp dev and keep it running.")
+    for line in DEV_SESSION_ENV.read_text().splitlines():
+        match = re.match(r'export (\w+)="?(.*?)"?$', line)
+        if match:
+            env[match.group(1)] = match.group(2)
+    return env
+
+
+def gsettings(env, *args, **kwargs):
+    return subprocess.run(
+        ["gsettings", *args], env=env, text=True, capture_output=True, **kwargs
+    ).stdout.strip()
+
+
+def dev_settings(args):
+    """Inspect and poke the GSettings the dev shell reads."""
+    if args.action == "snapshot":
+        env = dev_env()
+        main_env = {**os.environ, "GSETTINGS_SCHEMA_DIR": str(OUT / "schemas")}
+        for label, values in (("main session", main_env), ("dev profile", env)):
+            print(f"{label}:")
+            for key in WATCHED_KEYS:
+                print(f"  {key} = {gsettings(values, 'get', SCHEMA, key)}")
+    elif args.action == "monitor":
+        env = dev_session_env()
+        print(f"Monitoring the dev shell's bus for {SCHEMA}. Ctrl+C to stop.")
+        subprocess.run(["gsettings", "monitor", SCHEMA], env=env)
+    elif args.action == "poke":
+        # Write values the running dev shell must react to, then restore them:
+        # the point is to see whether a live-apply handler fires at all.
+        env = dev_session_env()
+        old = {key: gsettings(env, "get", SCHEMA, key) for key in WATCHED_KEYS}
+        new = {
+            "orientation": "horizontal" if old["orientation"] != "'horizontal'" else "right",
+            "content-padding": "13" if old["content-padding"] != "13" else "7",
+        }
+        print(f"Old dev values: {old}")
+        print(f"Writing dev values: {new}")
+        for key, value in new.items():
+            gsettings(env, "set", SCHEMA, key, value)
+        print("Sleeping 3s so the dev shell can react...")
+        time.sleep(3)
+        print("Restoring old dev values.")
+        for key, value in old.items():
+            gsettings(env, "set", SCHEMA, key, value)
+    else:
+        subprocess.run(["gnome-extensions", "prefs", UUID], env=dev_session_env())
+
+
+# --- status ----------------------------------------------------------------
+
+
+def print_status():
+    """What is built, installed and running right now. Changes nothing."""
+    print(f"gwp — {UUID}\n")
+
+    if OUT.is_dir():
+        built = time.strftime("%Y-%m-%d %H:%M", time.localtime(OUT.stat().st_mtime))
+        print(f"  build       extension/ built {built}")
+    else:
+        print("  build       extension/ not built yet — ./gwp build")
+
+    print(f"  install     session: {installed_label()}")
+
+    if DEV_TARGET.is_symlink():
+        running = " (a dev shell is running)" if DEV_SESSION_ENV.is_file() else ""
+        print(f"  dev         symlinked into .dev/data{running}")
+    else:
+        print("  dev         not set up — ./gwp dev-install")
+    print()
+
+
+COMMANDS = """\
+Commands:
+  build                 regenerate extension/ from extension-src/ (assets + tsc
+                        + compiled schema)
+  install               build, then copy into the GNOME session's extensions
+                        dir; needs a logout/login on Wayland to take effect
+  dev [options]         build and run the extension in a throwaway nested GNOME
+                        Shell, isolated from your session (no logout needed)
+  dev-install           one-time: symlink the built tree into the isolated dev
+                        extensions dir
+  dev-settings <action> snapshot | monitor | poke | prefs — inspect or poke the
+                        GSettings the dev shell reads
+
+Tests and typecheck stay npm scripts: npm test, npm run test:ui, npm run typecheck.
+Help for one command:  ./gwp <command> --help
+Development guide:     docs/process/development.md\
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="./gwp", description=__doc__, add_help=False
+    )
+    parser.add_argument("-h", "--help", action="store_true")
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("build", help="regenerate extension/", description=build.__doc__)
+    sub.add_parser("install", help="install into the session", description=install.__doc__)
+    sub.add_parser(
+        "dev-install", help="symlink into the dev dir", description=dev_install.__doc__
+    )
+
+    dev = sub.add_parser(
+        "dev",
+        help="run a nested dev shell",
+        description=dev_run.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    dev.add_argument(
+        "--theme",
+        choices=("light", "dark"),
+        help="colour scheme of the dev shell; persists in the dev profile",
+    )
+    dev.add_argument(
+        "--headless",
+        action="store_true",
+        help="no window: run headless on a virtual monitor and tail the log",
+    )
+    dev.add_argument(
+        "--monitor",
+        default=DEFAULT_MONITOR,
+        metavar="WxH",
+        help=f"headless virtual monitor size (default {DEFAULT_MONITOR})",
+    )
+    dev.add_argument(
+        "--log", default=DEFAULT_LOG, metavar="PATH", help=f"log (default {DEFAULT_LOG})"
+    )
+    dev.add_argument(
+        "--claude-port",
+        type=int,
+        metavar="N",
+        help="run the dev ai-agent-usage widget on this Claude port, so it can "
+        "run beside a main-session install without clashing on the port",
+    )
+
+    settings = sub.add_parser(
+        "dev-settings",
+        help="inspect/poke the dev shell's settings",
+        description=dev_settings.__doc__,
+    )
+    settings.add_argument(
+        "action", choices=("snapshot", "monitor", "poke", "prefs")
+    )
+
+    args = parser.parse_args()
+    if args.help or not args.command:
+        print_status()
+        print(COMMANDS)
+        return 0
+
+    if args.command == "build":
+        build()
+    elif args.command == "install":
+        install()
+    elif args.command == "dev-install":
+        dev_install()
+    elif args.command == "dev":
+        dev_run(args)
+    elif args.command == "dev-settings":
+        dev_settings(args)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except subprocess.CalledProcessError as error:
+        fail(f"Command failed: {' '.join(error.cmd)}")
