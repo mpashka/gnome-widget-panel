@@ -103,6 +103,29 @@ Grouped work items requested for the panel and widgets.
 - [x] Token-usage indicator: show/hide toggle and colour selection.
 - [x] Window-reset (time-left) indicator: show/hide toggle and colour selection.
 
+### break-timer reminders
+
+Specification: [`../specification/break-timer.md`](../specification/break-timer.md).
+
+- [x] Stage 1 — advance warning: a passive, focus-free on-screen message with a
+  live countdown, appearing half a break before the break is due (5–30 s), and
+  cancelling itself when the user goes idle long enough.
+- [x] Stage 2 — break screen: an all-monitor dimmed modal that takes input but
+  not focus, counts the break down, offers Postpone/Skip (each switchable off),
+  and stands down for fullscreen apps, an active session idle inhibitor and the
+  lock screen.
+- [x] Persist the counters across a shell restart, with the restore rules in the
+  spec (daily by boot and long absence, micro/rest by their break length).
+- [x] Daily-counter reset: the boot is the day boundary, plus a long-absence
+  reset (default 6 h), replacing the midnight-only rollover.
+- [x] Update the defaults to rest 60 min, daily 8 h, daily enabled — three bars
+  out of the box.
+- [x] Settings rows for the reminder options (mode, lead time, postpone, skip,
+  end-the-day-after).
+- [ ] Revisit the daily-counter boundary from real use: a machine left on
+  overnight leans entirely on the long-absence rule, and a midday reboot forgets
+  the morning.
+
 ### clock settings
 
 - [x] Time format template (standard Linux `date`/strftime string, `options.format`).

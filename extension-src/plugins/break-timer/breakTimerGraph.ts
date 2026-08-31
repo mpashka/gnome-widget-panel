@@ -1,29 +1,49 @@
 // @ts-nocheck
 // @tag:widget-break-timer
 //
-// Workrave-style rest reminders: an St.DrawingArea painting up to three
-// stacked progress bars (micro/rest/daily), each tracking activity time (not
-// wall-clock time) against a per-timer work interval. See index.md for the
-// activity-tracking and break-detection mechanics.
+// Workrave-style rest reminders: an St.DrawingArea painting up to three stacked
+// progress bars (micro/rest/daily), each tracking activity time (not wall-clock
+// time) against a per-timer work interval, plus the reminders those timers
+// raise. This file is the Shell-facing half — idle polling, suppression checks,
+// persistence cadence, Cairo drawing and the hover tooltip; the rules live in
+// the gi-free breakTimerState.ts and the on-screen stages in
+// breakTimerReminder.ts. See index.md.
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {hexToRgb, toNumber} from '../../colorUtils.js';
+import {hexToRgb, nowSeconds, toNumber} from '../../colorUtils.js';
+import {formatDuration} from '../../duration.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
+import {BreakReminderUi} from './breakTimerReminder.js';
+import {
+    DEFAULT_DAILY_IDLE_RESET_HOURS,
+    advance,
+    createState,
+    isSilent,
+    limitSeconds,
+    normalizeAnchor,
+    normalizeTimers,
+    pauseRemainingSeconds,
+    pauseReminders,
+    postponeReminder,
+    restoreElapsed,
+    resumeReminders,
+    serializeState,
+    skipReminder,
+} from './breakTimerState.js';
+import {loadStoredState, readBootId, saveStoredState} from './breakTimerStore.js';
 
 const WIDTH = 32;
 const HEIGHT = 16;
 const TICK_INTERVAL_SECONDS = 1;
-// Idle below this threshold counts as "the user is active" for accumulating
-// elapsed activity time; idle at/above a timer's own breakSeconds resets that
-// timer (taking the break resets it).
-const ACTIVE_IDLE_THRESHOLD_MS = 5000;
 const BAR_GAP = 1;
 
 // Default hover-tooltip template. Tokens: {micro}, {rest}, {daily}, each a
@@ -31,74 +51,37 @@ const BAR_GAP = 1;
 // disabled). See ../../tooltipTemplate.ts.
 const DEFAULT_TOOLTIP_TEMPLATE = '{micro}\n{rest}\n{daily}';
 
-const DEFAULT_TIMERS = [
-    {
-        name: 'micro',
-        enabled: true,
-        workMinutes: 10,
-        breakSeconds: 30,
-        color: '#4ca6ff',
-        overdueColor: '#f03333',
-    },
-    {
-        name: 'rest',
-        enabled: true,
-        workMinutes: 50,
-        breakSeconds: 480,
-        color: '#3dc752',
-        overdueColor: '#f03333',
-    },
-    {
-        name: 'daily',
-        enabled: false,
-        workMinutes: 360,
-        breakSeconds: 0,
-        color: '#ffb82e',
-        overdueColor: '#f03333',
-    },
+// How often the counters reach the disk, and how stale the session-inhibitor
+// answer may get. The inhibitor now silences the reminders altogether (not just
+// the break screen), so it is polled on every tick at this cadence rather than
+// once per break: turning caffeine on shortly before a break must be noticed
+// while there is still something to suppress.
+const PERSIST_INTERVAL_SECONDS = 30;
+const INHIBIT_REFRESH_SECONDS = 10;
+
+// org.gnome.SessionManager.IsInhibited(4): is anything holding the session
+// awake right now (a call, a video, the panel's own caffeine widget)? If so
+// every reminder stays silent — see the `inhibited` input of advance().
+const SESSION_BUS_NAME = 'org.gnome.SessionManager';
+const SESSION_OBJECT_PATH = '/org/gnome/SessionManager';
+const SESSION_IFACE_NAME = 'org.gnome.SessionManager';
+const FLAG_INHIBIT_IDLE = 4;
+
+// The manual pause offered by the context menu, in seconds. Every choice
+// expires on its own: a pause one can forget to end is a timer one has turned
+// off by accident.
+const PAUSE_CHOICES = [
+    {label: 'Pause for 15 minutes', seconds: 15 * 60},
+    {label: 'Pause for 1 hour', seconds: 60 * 60},
+    {label: 'Pause for 2 hours', seconds: 2 * 60 * 60},
 ];
 
-// Normalize the configured timers: fixed name/count/order (micro, rest,
-// daily); enabled/workMinutes/breakSeconds/colors are taken from the matching
-// input entry when valid, defaulted otherwise. Mirrors cpuGraph's
-// normalizeBands defensive pattern.
-function normalizeTimers(timers) {
-    const source = Array.isArray(timers) ? timers : [];
-    return DEFAULT_TIMERS.map(def => {
-        const match = source.find(t => t && t.name === def.name) ?? {};
-        const workMinutes = toNumber(match.workMinutes, NaN);
-        const breakSeconds = toNumber(match.breakSeconds, NaN);
-        return {
-            name: def.name,
-            enabled: typeof match.enabled === 'boolean' ? match.enabled : def.enabled,
-            workMinutes: Number.isFinite(workMinutes) && workMinutes > 0
-                ? workMinutes : def.workMinutes,
-            breakSeconds: Number.isFinite(breakSeconds) && breakSeconds >= 0
-                ? breakSeconds : def.breakSeconds,
-            color: typeof match.color === 'string' && match.color.length > 0
-                ? match.color : def.color,
-            overdueColor: typeof match.overdueColor === 'string' && match.overdueColor.length > 0
-                ? match.overdueColor : def.overdueColor,
-        };
-    });
-}
+// Bar opacity while the reminders are silent (paused or something keeps the
+// session awake): the counters still run, so the bars stay — dimmed.
+const SILENT_BAR_ALPHA = 0.3;
+const ACTIVE_BAR_ALPHA = 0.95;
 
-// Adaptive `H:MM:SS` (once an hour is reached) / `M:SS` duration formatter,
-// used for both the graph tooltip and the settings preview.
-function formatDuration(totalSeconds) {
-    const s = Math.max(0, Math.round(totalSeconds));
-    const hours = Math.floor(s / 3600);
-    const minutes = Math.floor((s % 3600) / 60);
-    const secs = s % 60;
-    if (hours > 0)
-        return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    return `${minutes}:${String(secs).padStart(2, '0')}`;
-}
 
-// Local calendar-day key used to detect midnight rollover for the daily timer.
-function localDayKey() {
-    return new Date().toDateString();
-}
 
 export const BreakTimerGraph = GObject.registerClass(
     class BreakTimerGraph extends St.DrawingArea {
@@ -121,15 +104,28 @@ export const BreakTimerGraph = GObject.registerClass(
             this._rotateDir = 'right';
 
             this._timers = normalizeTimers(options.timers);
+            this._dailyIdleResetSeconds = Math.max(0, Math.round(
+                toNumber(options.dailyResetHours, DEFAULT_DAILY_IDLE_RESET_HOURS) * 3600
+            ));
+            this._messageAnchor = normalizeAnchor(options.messageAnchor);
             this._showTooltip = options.showTooltip !== false;
             this._template = typeof options.template === 'string'
                 ? options.template
                 : DEFAULT_TOOLTIP_TEMPLATE;
 
-            // Activity-based elapsed seconds per timer name; in-memory only, no
-            // persistence (see index.md).
-            this._elapsed = {micro: 0, rest: 0, daily: 0};
-            this._currentDay = localDayKey();
+            this._state = createState();
+            this._reminderUi = null;
+            this._menu = null;
+            this._destroyed = false;
+            this._cancellable = new Gio.Cancellable();
+            // Reminders silenced right now, by the manual pause or by something
+            // holding the session awake. Drawn dimmed, reported in the tooltip.
+            this._silent = false;
+            this._inhibited = false;
+            this._inhibitPending = false;
+            this._inhibitCheckedAt = 0;
+            this._persistedAt = nowSeconds();
+            this._bootId = null;
 
             // Capability check: Meta.IdleMonitor may be unavailable in some Shell
             // configurations. Fall back to treating every tick as "active" so the
@@ -156,6 +152,10 @@ export const BreakTimerGraph = GObject.registerClass(
             Main.uiGroup.add_child(this._tooltip);
             this._repaintId = this.connect('repaint', () => this._draw());
             this._hoverId = this.connect('notify::hover', () => this._onHoverChanged());
+            this._pressId = this.connect(
+                'button-press-event',
+                (actor, event) => this._onButtonPress(event)
+            );
             this._timeoutId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
                 TICK_INTERVAL_SECONDS,
@@ -164,6 +164,7 @@ export const BreakTimerGraph = GObject.registerClass(
                     return GLib.SOURCE_CONTINUE;
                 }
             );
+            this._restore();
         }
 
         _readIdleMs() {
@@ -177,40 +178,262 @@ export const BreakTimerGraph = GObject.registerClass(
         }
 
         _tick() {
-            const idleMs = this._readIdleMs();
-            const idleSeconds = idleMs / 1000;
-            const active = idleMs < ACTIVE_IDLE_THRESHOLD_MS;
-
-            const today = localDayKey();
-            if (today !== this._currentDay) {
-                this._currentDay = today;
-                this._elapsed.daily = 0;
-            }
-
-            for (const timer of this._timers) {
-                if (!timer.enabled)
-                    continue;
-                // Continuous idle at/above the timer's own break length means the
-                // break was taken; reset it. A rest-length idle is also >= the
-                // (shorter) micro breakSeconds, so it resets micro too.
-                if (timer.breakSeconds > 0 && idleSeconds >= timer.breakSeconds)
-                    this._elapsed[timer.name] = 0;
-                else if (active)
-                    this._elapsed[timer.name] = (this._elapsed[timer.name] ?? 0) + TICK_INTERVAL_SECONDS;
-            }
+            const idleSeconds = this._readIdleMs() / 1000;
+            this._refreshInhibited();
+            const input = {
+                idleSeconds,
+                tickSeconds: TICK_INTERVAL_SECONDS,
+                canInterrupt: this._canInterrupt(),
+                inhibited: this._inhibited,
+                now: nowSeconds(),
+                dailyIdleResetSeconds: this._dailyIdleResetSeconds,
+            };
+            this._state = advance(this._state, this._timers, input);
+            this._silent = isSilent(this._state, input);
+            this._syncReminder();
+            this._persistPeriodically();
 
             if (this.hover)
                 this._updateTooltip();
             this.queue_repaint();
         }
 
-        _limitSeconds(timer) {
-            return timer.workMinutes * 60;
+        // --- Reminders ------------------------------------------------------
+
+        _ensureReminderUi() {
+            if (!this._reminderUi) {
+                this._reminderUi = new BreakReminderUi(
+                    {
+                        onPostpone: () => this._postpone(),
+                        onSkip: () => this._skip(),
+                    },
+                    this._messageAnchor
+                );
+            }
+            return this._reminderUi;
         }
 
+        _postpone() {
+            this._state = postponeReminder(this._state, this._timers);
+            this._syncReminder();
+        }
+
+        _skip() {
+            this._state = skipReminder(this._state, this._timers);
+            this._syncReminder();
+        }
+
+        _syncReminder() {
+            const reminder = this._state.reminder;
+            if (!reminder) {
+                this._reminderUi?.hide();
+                return;
+            }
+            const timer = this._timers.find(entry => entry.name === reminder.timer);
+            this._ensureReminderUi().sync(reminder, timer);
+        }
+
+        // Would a break *screen* right now do harm? A locked session or a
+        // fullscreen window (a film, a presentation, a shared screen) says yes;
+        // the break degrades to the passive message. A session inhibitor is a
+        // separate, stronger answer — it silences both stages — and is fed to
+        // advance() as `inhibited` rather than mixed in here.
+        _canInterrupt() {
+            try {
+                if (Main.sessionMode?.isLocked)
+                    return false;
+                const monitors = Main.layoutManager?.monitors?.length ?? 0;
+                for (let index = 0; index < monitors; index++) {
+                    if (global.display.get_monitor_in_fullscreen(index))
+                        return false;
+                }
+            } catch (error) {
+                // Shell internals moved: assume interrupting is fine.
+            }
+            return true;
+        }
+
+        // Asynchronous IsInhibited(), at most once every INHIBIT_REFRESH_SECONDS:
+        // the answer decides whether the timers may speak at all, so it is kept
+        // fresh on every tick rather than only while a reminder is up.
+        _refreshInhibited() {
+            const now = nowSeconds();
+            if (this._inhibitPending || now - this._inhibitCheckedAt < INHIBIT_REFRESH_SECONDS)
+                return;
+            this._inhibitCheckedAt = now;
+            this._inhibitPending = true;
+            try {
+                Gio.DBus.session.call(
+                    SESSION_BUS_NAME,
+                    SESSION_OBJECT_PATH,
+                    SESSION_IFACE_NAME,
+                    'IsInhibited',
+                    new GLib.Variant('(u)', [FLAG_INHIBIT_IDLE]),
+                    new GLib.VariantType('(b)'),
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    this._cancellable,
+                    (connection, result) => {
+                        this._inhibitPending = false;
+                        if (this._destroyed)
+                            return;
+                        try {
+                            const [inhibited] = connection.call_finish(result).deep_unpack();
+                            this._inhibited = inhibited;
+                        } catch (error) {
+                            // No session manager, or the call was cancelled:
+                            // assume nothing is inhibiting.
+                            this._inhibited = false;
+                        }
+                    }
+                );
+            } catch (error) {
+                this._inhibitPending = false;
+                this._inhibited = false;
+            }
+        }
+
+        // --- Context menu ---------------------------------------------------
+
+        // Right-click opens the actions the on-screen reminder cannot always
+        // offer: postponing or skipping the break that is up, and the manual
+        // pause for a meeting. The panel button itself is a stable target — it
+        // never moves out from under the pointer the way the message does.
+        _onButtonPress(event) {
+            if (event.get_button() !== Clutter.BUTTON_SECONDARY)
+                return Clutter.EVENT_PROPAGATE;
+            this._openMenu();
+            return Clutter.EVENT_STOP;
+        }
+
+        _ensureMenu() {
+            if (this._menu)
+                return this._menu;
+            this._menu = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
+            Main.uiGroup.add_child(this._menu.actor);
+            Main.panel.menuManager?.addMenu(this._menu);
+            this._menu.actor.hide();
+            return this._menu;
+        }
+
+        _addMenuItem(menu, label, onActivate) {
+            const item = new PopupMenu.PopupMenuItem(label);
+            item.connect('activate', () => onActivate());
+            menu.addMenuItem(item);
+        }
+
+        // Rebuilt on every open: what it offers depends on the reminder that is
+        // up and on whether the timers are paused.
+        _fillMenu(menu) {
+            menu.removeAll();
+            const reminder = this._state.reminder;
+            const timer = reminder
+                ? this._timers.find(entry => entry.name === reminder.timer)
+                : null;
+            if (timer?.allowPostpone) {
+                this._addMenuItem(
+                    menu,
+                    `Postpone ${timer.postponeMinutes} min`,
+                    () => this._postpone()
+                );
+            }
+            if (timer?.allowSkip)
+                this._addMenuItem(menu, 'Skip the break', () => this._skip());
+            if (menu.numMenuItems > 0)
+                menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+            const remaining = pauseRemainingSeconds(this._state, nowSeconds());
+            if (remaining > 0) {
+                this._addMenuItem(
+                    menu,
+                    `Resume (${formatDuration(remaining)} left)`,
+                    () => this._resume()
+                );
+                return;
+            }
+            for (const choice of PAUSE_CHOICES) {
+                this._addMenuItem(
+                    menu,
+                    choice.label,
+                    () => this._pause(choice.seconds)
+                );
+            }
+            // Not an action, an explanation: caffeine (or any other inhibitor)
+            // already silences the timers, so a pause would change nothing.
+            if (this._inhibited) {
+                menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+                menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                    'Silent: the screen is being kept awake',
+                    {reactive: false}
+                ));
+            }
+        }
+
+        _openMenu() {
+            const menu = this._ensureMenu();
+            this._fillMenu(menu);
+            menu.open();
+        }
+
+        _pause(seconds) {
+            this._state = pauseReminders(this._state, seconds, nowSeconds());
+            this._silent = true;
+            this._syncReminder();
+            this.queue_repaint();
+        }
+
+        _resume() {
+            this._state = resumeReminders(this._state);
+            this._silent = this._inhibited;
+            this.queue_repaint();
+        }
+
+        // --- Persistence ----------------------------------------------------
+
+        async _restore() {
+            try {
+                const bootId = await readBootId();
+                const stored = await loadStoredState();
+                if (this._destroyed)
+                    return;
+                this._bootId = bootId;
+                this._state.elapsed = restoreElapsed(stored, this._timers, {
+                    bootId,
+                    now: nowSeconds(),
+                    dailyIdleResetSeconds: this._dailyIdleResetSeconds,
+                });
+                this.queue_repaint();
+            } catch (error) {
+                logError(error, 'break-timer: could not restore the counters');
+            }
+        }
+
+        _persistPeriodically() {
+            const now = nowSeconds();
+            if (this._bootId === null || now - this._persistedAt < PERSIST_INTERVAL_SECONDS)
+                return;
+            this._persistedAt = now;
+            this._persist();
+        }
+
+        // Fire and forget: a lost write costs at most the last half minute of
+        // counting, and destroy() cannot await.
+        _persist() {
+            if (this._bootId === null)
+                return;
+            const stored = serializeState(this._state, {
+                bootId: this._bootId,
+                now: nowSeconds(),
+            });
+            saveStoredState(stored).catch(error =>
+                logError(error, 'break-timer: could not save the counters'));
+        }
+
+        // --- Tooltip --------------------------------------------------------
+
         _isOverdue(timer) {
-            const limit = this._limitSeconds(timer);
-            return limit > 0 && (this._elapsed[timer.name] ?? 0) >= limit;
+            const limit = limitSeconds(timer);
+            return limit > 0 && (this._state.elapsed[timer.name] ?? 0) >= limit;
         }
 
         // Build the coloured Pango-markup fragment for one timer's tooltip token;
@@ -218,8 +441,8 @@ export const BreakTimerGraph = GObject.registerClass(
         _timerFragment(timer) {
             if (!timer.enabled)
                 return '';
-            const elapsed = this._elapsed[timer.name] ?? 0;
-            const limit = this._limitSeconds(timer);
+            const elapsed = this._state.elapsed[timer.name] ?? 0;
+            const limit = limitSeconds(timer);
             const overdue = this._isOverdue(timer);
             const text = `${timer.name}: ${formatDuration(elapsed)}/${formatDuration(limit)}`;
             const color = overdue ? timer.overdueColor : timer.color;
@@ -234,8 +457,22 @@ export const BreakTimerGraph = GObject.registerClass(
             return fragments;
         }
 
+        // Why the timers are quiet, above the per-timer lines: the tooltip is
+        // the only place the pause is written out in full, and a paused timer
+        // that looks like a running one is a trap.
+        _statusFragment() {
+            const remaining = pauseRemainingSeconds(this._state, nowSeconds());
+            if (remaining > 0)
+                return `<i>Paused — ${formatDuration(remaining)} left</i>`;
+            if (this._inhibited)
+                return '<i>Silent — the screen is kept awake</i>';
+            return '';
+        }
+
         _tooltipMarkup() {
-            return renderTemplate(this._template, this._tooltipFragments());
+            const body = renderTemplate(this._template, this._tooltipFragments());
+            const status = this._statusFragment();
+            return status ? `${status}\n${body}` : body;
         }
 
         _onHoverChanged() {
@@ -253,6 +490,8 @@ export const BreakTimerGraph = GObject.registerClass(
             this._tooltip.clutter_text.set_markup(this._tooltipMarkup());
             positionTooltip(this);
         }
+
+        // --- Drawing --------------------------------------------------------
 
         // Rotate the vertical panel: when rotated the actor/surface is swapped
         // (see setPanelLayout); draw in the base (unrotated) coordinate space and
@@ -299,15 +538,18 @@ export const BreakTimerGraph = GObject.registerClass(
                 context.rectangle(0, y, width, sliceHeight);
                 context.fill();
 
-                const elapsed = this._elapsed[timer.name] ?? 0;
-                const limit = this._limitSeconds(timer);
+                const elapsed = this._state.elapsed[timer.name] ?? 0;
+                const limit = limitSeconds(timer);
                 const overdue = this._isOverdue(timer);
                 const fraction = limit > 0 ? Math.min(1, elapsed / limit) : 0;
                 const barWidth = overdue ? width : width * fraction;
                 if (barWidth <= 0)
                     return;
                 const [r, g, b] = hexToRgb(overdue ? timer.overdueColor : timer.color);
-                context.setSourceRGBA(r, g, b, 0.95);
+                context.setSourceRGBA(
+                    r, g, b,
+                    this._silent ? SILENT_BAR_ALPHA : ACTIVE_BAR_ALPHA
+                );
                 context.rectangle(0, y, barWidth, sliceHeight);
                 context.fill();
             });
@@ -339,6 +581,9 @@ export const BreakTimerGraph = GObject.registerClass(
         }
 
         destroy() {
+            this._destroyed = true;
+            this._persist();
+            this._cancellable.cancel();
             if (this._timeoutId) {
                 GLib.Source.remove(this._timeoutId);
                 this._timeoutId = null;
@@ -350,6 +595,18 @@ export const BreakTimerGraph = GObject.registerClass(
             if (this._hoverId) {
                 this.disconnect(this._hoverId);
                 this._hoverId = null;
+            }
+            if (this._pressId) {
+                this.disconnect(this._pressId);
+                this._pressId = null;
+            }
+            if (this._menu) {
+                this._menu.destroy();
+                this._menu = null;
+            }
+            if (this._reminderUi) {
+                this._reminderUi.destroy();
+                this._reminderUi = null;
             }
             if (this._tooltip) {
                 this._tooltip.destroy();

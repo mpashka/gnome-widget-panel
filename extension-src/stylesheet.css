@@ -120,3 +120,48 @@
 #FloatingMiniPanel .break-timer-graph {
   margin: 2px 4px;
 }
+
+/* Break reminders (see plugins/break-timer/breakTimerReminder.ts). The message
+   is chrome shown over the desktop, the screen is a modal overlay, so neither
+   is scoped to the panel. */
+.break-timer-message {
+  background-color: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 10px 18px;
+  spacing: 8px;
+  color: #ffffff;
+}
+
+.break-timer-message-text {
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.break-timer-actions {
+  spacing: 8px;
+}
+
+.break-timer-action {
+  min-width: 90px;
+  padding: 4px 14px;
+}
+
+.break-timer-screen {
+  background-color: rgba(0, 0, 0, 0.82);
+}
+
+.break-timer-screen-content {
+  spacing: 12px;
+  color: #ffffff;
+}
+
+.break-timer-screen-title {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.break-timer-screen-time {
+  font-size: 72px;
+  font-weight: 300;
+}

@@ -215,18 +215,40 @@ the Shell-only plugin modules. The pieces:
   `fillWidgetPreferences(context)`; it calls `context.window.add(page)` with its
   `Adw.PreferencesPage` and `context.save(options)` to persist its `options`
   object back into the `widgets` GSettings key. Widgets with settings today:
-  `ai-agent-usage`, `cpu-load-monitor` and `clock`.
+  `ai-agent-status`, `ai-agent-usage`, `break-timer`, `caffeine`, `clock`,
+  `cpu-load-monitor`, `favorites`, `gnome-action`, `gnome-menu`, `launch` and
+  `printscreen`.
 
-The widget settings now open as an **in-window subpage**, not an
+The widget settings open as an **in-window subpage**, not an
 `Adw.PreferencesDialog`. `_openWidgetPreferences` builds an `Adw.NavigationPage`
 whose child is an `Adw.ToolbarView` + `Adw.HeaderBar` (so it gets the widget
 title and a working back button). The `context.window` handed to the widget is a
-small **shim** object whose `.add(page)` routes the widget's `Adw.PreferencesPage`
-into the toolbar's content (`toolbar.set_content(page)`). After the widget fills
-it, the subpage is pushed with `window.push_subpage(...)`. `context.save` is
-unchanged (persist to the `widgets` GSettings key), and the lazy
-`descriptor.loadPreferences()` import stays. This keeps the widget-prefs contract
-(`context.window.add(page)` + `context.save(options)`) intact.
+small **shim** object (typed as `WidgetPreferencesHost` in `contracts.ts`) with
+exactly three methods: `.add(page)` routes the widget's `Adw.PreferencesPage`
+into the toolbar's content (`toolbar.set_content(page)`), and
+`.push_subpage(page)` / `.pop_subpage()` forward to the real window, so a widget
+whose settings have sub-sections navigates the same way the panel's own pages
+do. After the widget fills it, the subpage is pushed with
+`window.push_subpage(...)`. `context.save` is unchanged (persist to the
+`widgets` GSettings key), and the lazy `descriptor.loadPreferences()` import
+stays.
+
+### One shape for "a thing you can switch on and configure"
+
+Wherever a list offers both an on/off switch and further settings — the panel's
+widget list, the break timer's three timers — the row is the **same**:
+
+- `Adw.ActionRow`, its **subtitle a one-line summary** of the current
+  configuration, so a list can be compared without opening anything;
+- a settings **button** (`emblem-system-symbolic`) in the suffix that pushes an
+  in-window subpage with that item's own settings;
+- a `Gtk.Switch` in the suffix, also set as the row's `activatable_widget`, so
+  activating the row toggles it.
+
+Do **not** use `Adw.ExpanderRow` for this. Expanding in place puts a switch and
+a disclosure on the same row (a click lands on whichever the user did not mean),
+and a page of expanded items is a long scroll in which it is unclear whose row
+is whose.
 
 Shell-side instantiation is unchanged: `pluginManager.ts` still maps ids to the
 Shell plugin modules and calls `create(parent, options)`.

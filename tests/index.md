@@ -45,6 +45,15 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   which formatted times count as markup (a literal `&` or `<` does not), which
   tags belong to the supported subset, and salvaging the time from markup Pango
   rejects (`@tag:widget-clock`).
+- `breakTimerState.test.mjs` — the gi-free break-timer rules from
+  [`../extension-src/plugins/break-timer/breakTimerState.ts`](../extension-src/plugins/break-timer/breakTimerState.ts):
+  defaults and normalization, activity accumulation, idle-based resets (a longer
+  break resets the shorter timers), the daily counter's boot/long-absence rules,
+  the reminder state machine (warning → break screen → reset, suppressed →
+  message + retry), postpone/skip, the silence rules (a manual pause or a
+  session inhibitor stops the reminders while the counters keep running, and the
+  owed break arrives the moment the silence ends), and what a restart restores
+  (`@tag:widget-break-timer`).
 - `props.test.mjs` — `definedProps` from
   [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
   keys from a GObject initializer (regression for the cpu-load-monitor settings

@@ -50,7 +50,8 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   screensaver/suspend via `org.gnome.SessionManager` (not in the default
   config).
 - [`break-timer`](break-timer/index.md) — Workrave-style micro/rest/daily
-  activity-based rest-reminder progress bars (not in the default config).
+  activity-based rest-reminder progress bars, with a focus-free warning and a
+  dimmed break screen when one comes due (not in the default config).
 
 Further per-widget settings work is tracked in
 [`../../docs/roadmap/backlog.md`](../../docs/roadmap/backlog.md).

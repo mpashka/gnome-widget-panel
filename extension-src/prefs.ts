@@ -958,9 +958,14 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                 toolbar.add_top_bar(new Adw.HeaderBar());
 
                 // Shim standing in for the Adw.PreferencesWindow/Dialog the
-                // widget expects: it only needs `.add(page)`.
+                // widget expects: `.add(page)` for its own page, and
+                // `push_subpage()` forwarded to the real window so a widget
+                // whose settings have sub-sections (break-timer's per-timer
+                // pages) uses the same navigation as the rest of the UI.
                 const shim = {
                     add: (widgetPage) => toolbar.set_content(widgetPage),
+                    push_subpage: (subpage) => window.push_subpage(subpage),
+                    pop_subpage: () => window.pop_subpage(),
                 };
 
                 module.fillWidgetPreferences({

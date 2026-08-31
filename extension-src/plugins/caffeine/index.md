@@ -27,6 +27,24 @@ done.
   automatic suspend in addition to the screensaver/idle lock. Set to `false`
   to only block the screensaver while still allowing the system to suspend.
 
+## Interactions
+
+- **Left click** toggles the inhibitor on or off with no deadline.
+- **Right click** opens a menu of durations (15 min, 30 min, 1 h, 2 h, or "until
+  turned off"), plus "Turn off" with the remaining time while it is active.
+  Picking a duration while already active only moves the deadline; the cookie in
+  hand stays valid. The deadline is a `GLib.timeout_add_seconds` that calls
+  `Uninhibit` when it fires — a keep-awake one can forget to end is how a laptop
+  spends the night with its screen on.
+- **Hover** shows the state: `Screen and suspend behave normally`,
+  `Keeping awake until turned off`, or `Keeping awake — 42:10 left` (the
+  remaining time ticks only while the pointer is on the button).
+
+The same inhibitor also silences the [break-timer](../break-timer/index.md)
+widget's reminders, which read `IsInhibited(4)`. That is the whole link between
+the two widgets — one raises a session-wide signal, the other reads it; neither
+imports the other, and either works alone.
+
 While **active** the button always shows the fixed "awake" icon
 (`display-brightness-symbolic`), regardless of the configured `icon`, so the
 state is unmistakable at a glance; a custom `text` label stays visible in both
@@ -55,8 +73,9 @@ this needs to work for the shell panel itself, not a sandboxed app):
 ## Source files
 
 - `index.ts` — plugin entrypoint; `CaffeineButton` (`St.Button` subclass)
-  owning the Inhibit/Uninhibit D-Bus calls and the active/inactive visual
-  state.
+  owning the Inhibit/Uninhibit D-Bus calls, the timed keep-awake (deadline +
+  expiry timeout), the right-click menu, the hover tooltip and the
+  active/inactive visual state.
 - `prefs.ts` — per-widget settings UI: an icon-picker row for `icon`
   (inactive state), an `Adw.EntryRow` for `text`, and an `Adw.SwitchRow` for
   `inhibitSuspend`.

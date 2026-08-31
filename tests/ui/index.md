@@ -52,6 +52,16 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-17-menu-size-stable.sh` — the gnome-menu popup asks for the same size for
   every category and fits the monitor work area; a popup that grew with the
   selection moved its own rows out from under the pointer and shook.
+- `t-18-break-timer-reminders.sh` — the break reminders: the focus-free warning
+  (no grab, no key focus), the modal break screen that takes input and resets
+  the timer when served, postpone keeping the break owed, skip starting the
+  interval over, a suppressed break screen degrading to the message, a session
+  inhibitor or a manual pause silencing both stages while the counters run on,
+  the warning yielding exactly once when the pointer reaches it, and the
+  right-click menu building (`@tag:widget-break-timer`).
+- `t-19-caffeine-duration.sh` — caffeine's timed keep-awake: the right-click
+  menu of durations, the deadline and auto-off timer a duration arms, and
+  turning it off clearing both (`@tag:widget-caffeine`).
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
