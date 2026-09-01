@@ -16,9 +16,11 @@ assert_true "$W._deadline === 0 && $W._expiryId === null" 'it starts with no dea
 
 # A headless session has no org.gnome.SessionManager: the real Inhibit() fails
 # asynchronously and (correctly) drops the deadline with it, since nothing is
-# being kept awake. Stub the call out so the bookkeeping can be checked.
-ui_eval "$W._inhibit = function () { this._cookie = 1; this._applyVisualState(true); }" >/dev/null
-ui_eval "$W._uninhibit = function () { this._cookie = null; this._applyVisualState(false); }" >/dev/null
+# being kept awake. Stub out the shared SessionInhibitor's two D-Bus calls (see
+# extension-src/sessionInhibitor.ts) so the widget's bookkeeping can be checked;
+# the stubs still report through _notify, which is what the widget listens to.
+ui_eval "$W._inhibitor.inhibit = function () { this._cookie = 1; this._notify(true); }" >/dev/null
+ui_eval "$W._inhibitor.release = function () { this._cookie = null; this._notify(false); }" >/dev/null
 
 # --- a duration sets a deadline the widget will act on --------------------
 ui_eval "$W._keepAwakeFor(900)" >/dev/null

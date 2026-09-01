@@ -8,10 +8,11 @@
 // A right click keeps the session awake for a fixed time instead of
 // indefinitely; the same inhibitor also silences the break-timer widget's
 // reminders (it reads IsInhibited), so one gesture covers a whole meeting.
+// The D-Bus plumbing itself is shared with the break timer, which holds an
+// inhibitor of its own while its reminders are paused: `../../sessionInhibitor.ts`.
 // See index.md for the motivation and D-Bus details.
 
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -21,6 +22,11 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {nowSeconds} from '../../colorUtils.js';
 import {formatDuration} from '../../duration.js';
+import {
+    INHIBIT_IDLE,
+    INHIBIT_SUSPEND,
+    SessionInhibitor,
+} from '../../sessionInhibitor.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {buildButtonContent} from '../panelButtonContent.js';
 
@@ -34,17 +40,8 @@ const DEFAULTS = {
 };
 const ACTIVE_ICON = 'display-brightness-symbolic';
 
-const BUS_NAME = 'org.gnome.SessionManager';
-const OBJECT_PATH = '/org/gnome/SessionManager';
-const IFACE_NAME = 'org.gnome.SessionManager';
 const APP_ID = 'gnome-widget-panel';
 const REASON = 'Manual caffeine: keep screen awake during a call';
-
-// org.gnome.SessionManager Inhibit flags: 4 = inhibit the session being
-// marked idle (screensaver), 8 = inhibit suspending the session. 4 | 8 = 12
-// inhibits both; with `inhibitSuspend: false` only flag 4 is requested.
-const FLAG_INHIBIT_IDLE = 4;
-const FLAG_INHIBIT_SUSPEND = 8;
 
 // Right-click durations. A meeting ends; an inhibitor that outlives it is how a
 // laptop spends the night with its screen on, so every timed choice expires by
@@ -60,10 +57,14 @@ const CaffeineButton = GObject.registerClass(
     class CaffeineButton extends St.Button {
         _init(options) {
             this._options = options;
-            this._cookie = null;
-            this._pending = false;
             this._destroyed = false;
-            this._cancellable = new Gio.Cancellable();
+            // The session inhibitor itself lives in the shared module; this
+            // widget only decides when it is held and what that looks like.
+            this._inhibitor = new SessionInhibitor({
+                appId: APP_ID,
+                label: 'caffeine',
+                onChanged: (held) => this._onInhibitChanged(held),
+            });
             // Wall-clock second the timed keep-awake ends at; 0 = until the
             // button is switched off again.
             this._deadline = 0;
@@ -97,8 +98,23 @@ const CaffeineButton = GObject.registerClass(
 
         _inhibitFlags() {
             return this._options.inhibitSuspend === false
-                ? FLAG_INHIBIT_IDLE
-                : FLAG_INHIBIT_IDLE | FLAG_INHIBIT_SUSPEND;
+                ? INHIBIT_IDLE
+                : INHIBIT_IDLE | INHIBIT_SUSPEND;
+        }
+
+        // Whether the session manager currently keeps the screen awake for us.
+        get _active() {
+            return this._inhibitor.held;
+        }
+
+        // Every transition the inhibitor makes, its failures included, so the
+        // button never claims a keep-awake the session manager refused.
+        _onInhibitChanged(held) {
+            if (this._destroyed)
+                return;
+            if (!held)
+                this._setDeadline(0);
+            this._applyVisualState(held);
         }
 
         // Rebuild the button child for the given active state and toggle the
@@ -121,9 +137,9 @@ const CaffeineButton = GObject.registerClass(
 
         _onClicked() {
             try {
-                if (this._pending)
+                if (this._inhibitor.pending)
                     return;
-                if (this._cookie !== null)
+                if (this._active)
                     this._turnOff();
                 else
                     this._keepAwakeFor(0);
@@ -140,15 +156,13 @@ const CaffeineButton = GObject.registerClass(
         // the inhibitor cookie in hand stays valid.
         _keepAwakeFor(seconds) {
             this._setDeadline(seconds > 0 ? nowSeconds() + seconds : 0);
-            if (this._cookie === null && !this._pending)
-                this._inhibit();
-            else
-                this._updateTooltip();
+            this._inhibitor.inhibit(REASON, this._inhibitFlags());
+            this._updateTooltip();
         }
 
         _turnOff() {
             this._setDeadline(0);
-            this._uninhibit(false);
+            this._inhibitor.release();
             this._updateTooltip();
         }
 
@@ -167,7 +181,7 @@ const CaffeineButton = GObject.registerClass(
                 () => {
                     this._expiryId = null;
                     this._deadline = 0;
-                    this._uninhibit(false);
+                    this._inhibitor.release();
                     this._updateTooltip();
                     return GLib.SOURCE_REMOVE;
                 }
@@ -201,7 +215,7 @@ const CaffeineButton = GObject.registerClass(
         _openMenu() {
             const menu = this._ensureMenu();
             menu.removeAll();
-            if (this._cookie !== null) {
+            if (this._active) {
                 const remaining = this._remainingSeconds();
                 this._addMenuItem(
                     menu,
@@ -230,7 +244,7 @@ const CaffeineButton = GObject.registerClass(
         // --- Tooltip ----------------------------------------------------------
 
         _tooltipText() {
-            if (this._cookie === null)
+            if (!this._active)
                 return 'Screen and suspend behave normally';
             const remaining = this._remainingSeconds();
             return remaining > 0
@@ -269,128 +283,9 @@ const CaffeineButton = GObject.registerClass(
             }
         }
 
-        // Async Inhibit() call. The button only shows "active" once a cookie is
-        // returned; a failure reverts (stays/returns to inactive) visually.
-        // Passes `this._cancellable` so destroy() can cancel the in-flight call;
-        // the reply callback still fires after cancellation/destroy (GDBus
-        // guarantees the callback runs), so it must not touch `this` state or
-        // the (possibly freed) actor once destroyed — see the `_destroyed`
-        // guard below, which instead releases the just-acquired cookie.
-        _inhibit() {
-            this._pending = true;
-            try {
-                Gio.DBus.session.call(
-                    BUS_NAME,
-                    OBJECT_PATH,
-                    IFACE_NAME,
-                    'Inhibit',
-                    new GLib.Variant('(susu)', [APP_ID, 0, REASON, this._inhibitFlags()]),
-                    new GLib.VariantType('(u)'),
-                    Gio.DBusCallFlags.NONE,
-                    -1,
-                    this._cancellable,
-                    (connection, result) => {
-                        this._pending = false;
-                        try {
-                            const reply = connection.call_finish(result);
-                            const [cookie] = reply.deep_unpack();
-                            if (this._destroyed || this._cancellable.is_cancelled()) {
-                                // The widget is gone (or being torn down): do not
-                                // touch `this._cookie`/the actor. The reply still
-                                // holds a live inhibit cookie the session manager
-                                // will never see released otherwise, so release it
-                                // directly, fire-and-forget.
-                                this._releaseCookie(cookie);
-                                return;
-                            }
-                            this._cookie = cookie;
-                            this._applyVisualState(true);
-                        } catch (error) {
-                            logError(error, 'caffeine: Inhibit call failed');
-                            if (this._destroyed)
-                                return;
-                            this._cookie = null;
-                            // Nothing is being kept awake, so no deadline either.
-                            this._setDeadline(0);
-                            this._applyVisualState(false);
-                        }
-                    }
-                );
-            } catch (error) {
-                logError(error, 'caffeine: failed to call Inhibit');
-                this._pending = false;
-                this._cookie = null;
-                this._setDeadline(0);
-                this._applyVisualState(false);
-            }
-        }
-
-        // Fire-and-forget Uninhibit(cookie) for a cookie that arrived after the
-        // widget was already destroyed (see _inhibit above). Independent of
-        // `this._cookie`/`this._cancellable` since the widget's own state has
-        // already been torn down by the time this runs.
-        _releaseCookie(cookie) {
-            try {
-                Gio.DBus.session.call(
-                    BUS_NAME,
-                    OBJECT_PATH,
-                    IFACE_NAME,
-                    'Uninhibit',
-                    new GLib.Variant('(u)', [cookie]),
-                    null,
-                    Gio.DBusCallFlags.NONE,
-                    -1,
-                    null,
-                    (connection, result) => {
-                        try {
-                            connection.call_finish(result);
-                        } catch (error) {
-                            logError(error, 'caffeine: late Uninhibit call failed');
-                        }
-                    }
-                );
-            } catch (error) {
-                logError(error, 'caffeine: failed to call late Uninhibit');
-            }
-        }
-
-        // Async Uninhibit(cookie) call; `fireAndForget` is used from destroy()
-        // where there is no actor left to update visually.
-        _uninhibit(fireAndForget) {
-            if (this._cookie === null)
-                return;
-            const cookie = this._cookie;
-            this._cookie = null;
-            if (!fireAndForget)
-                this._applyVisualState(false);
-            try {
-                Gio.DBus.session.call(
-                    BUS_NAME,
-                    OBJECT_PATH,
-                    IFACE_NAME,
-                    'Uninhibit',
-                    new GLib.Variant('(u)', [cookie]),
-                    null,
-                    Gio.DBusCallFlags.NONE,
-                    -1,
-                    this._cancellable,
-                    (connection, result) => {
-                        try {
-                            connection.call_finish(result);
-                        } catch (error) {
-                            logError(error, 'caffeine: Uninhibit call failed');
-                        }
-                    }
-                );
-            } catch (error) {
-                logError(error, 'caffeine: failed to call Uninhibit');
-            }
-        }
-
         destroy() {
-            // Mark destroyed FIRST so any in-flight Inhibit reply callback (see
-            // _inhibit) knows not to touch `this._cookie` or call
-            // _applyVisualState() on this (about to be freed) actor.
+            // Mark destroyed FIRST so a late inhibitor callback knows not to
+            // touch this (about to be freed) actor.
             this._destroyed = true;
             // The deadline timer and the tooltip tick outlive the actor unless
             // they are dropped here; _setDeadline(0) also cancels the expiry.
@@ -407,29 +302,10 @@ const CaffeineButton = GObject.registerClass(
                 this._tooltip.destroy();
                 this._tooltip = null;
             }
-            try {
-                // Release an already-acquired cookie (the common case: the
-                // widget had successfully inhibited before being destroyed).
-                // Issue this call BEFORE cancelling `this._cancellable` below —
-                // it is passed the same cancellable, and an ALREADY-cancelled
-                // GCancellable makes GDBus short-circuit a brand-new async call
-                // before it is even sent, which would leak this cookie instead
-                // of releasing it.
-                this._uninhibit(true);
-            } catch (error) {
-                logError(error, 'caffeine: failed to release inhibit on destroy');
-            }
-            try {
-                // Cancel a still-pending Inhibit call, if any (the race this fix
-                // targets: destroyed before the Inhibit reply arrived). GDBus
-                // still invokes the reply callback after cancellation, so this
-                // only short-circuits the wait; the `_destroyed` guard in the
-                // callback is what actually prevents touching freed state, and
-                // releases the cookie if the call had in fact already succeeded.
-                this._cancellable.cancel();
-            } catch (error) {
-                logError(error, 'caffeine: failed to cancel pending D-Bus call');
-            }
+            // Releases the cookie and cancels an in-flight Inhibit; a reply
+            // that still arrives releases its own cookie rather than leaving the
+            // session awake with nobody left to stop it (see sessionInhibitor).
+            this._inhibitor.destroy();
             super.destroy();
         }
     }

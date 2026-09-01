@@ -6,12 +6,20 @@ import assert from 'node:assert/strict';
 
 import {formatDuration} from '../extension/duration.js';
 import {
+    DEFAULT_DAY_END_MINUTES,
+    DEFAULT_PAUSE_MINUTES,
     DUE_MESSAGE_SECONDS,
     advance,
     createState,
+    dayEndFraction,
+    dayEndRemainingSeconds,
+    isDayOver,
+    normalizeDayEnd,
+    normalizePauseMinutes,
     leadSeconds,
     limitSeconds,
     normalizeTimers,
+    pauseFraction,
     pauseRemainingSeconds,
     pauseReminders,
     postponeReminder,
@@ -193,6 +201,31 @@ test('the pause ends by itself and the owed break arrives at once', () => {
 test('resume ends the pause early', () => {
     const resumed = resumeReminders(pauseReminders(createState(), 3600, 1000));
     assert.equal(pauseRemainingSeconds(resumed, 1000), 0);
+    assert.equal(resumed.pausedFrom, 0);
+});
+
+test('the pause fraction counts down from 1 to 0 over the chosen pause', () => {
+    const paused = pauseReminders(createState(), 1000, 1000);
+    assert.equal(paused.pausedFrom, 1000);
+    assert.equal(pauseFraction(paused, 1000), 1);
+    assert.equal(pauseFraction(paused, 1250), 0.75);
+    assert.equal(pauseFraction(paused, 1900), 0.1);
+    assert.equal(pauseFraction(paused, 2000), 0);
+});
+
+test('the pause fraction is 0 when nothing is paused, 1 when the start is lost', () => {
+    assert.equal(pauseFraction(createState(), 1000), 0);
+    // A state file written before `pausedFrom` existed: a full bar still reads
+    // as "paused", which is the part that matters.
+    const legacy = {...createState(), pausedUntil: 2000, pausedFrom: 0};
+    assert.equal(pauseFraction(legacy, 1500), 1);
+});
+
+test('the pause start is cleared when the pause runs out', () => {
+    const silent = pauseReminders(createState(), 60, 1000);
+    const back = runClock(silent, 1, 1060);
+    assert.equal(back.pausedUntil, 0);
+    assert.equal(back.pausedFrom, 0);
 });
 
 test('a session inhibitor silences both stages, not just the break screen', () => {
@@ -292,4 +325,94 @@ test('durations switch to hours once past one', () => {
     assert.equal(formatDuration(0), '0:00');
     assert.equal(formatDuration(452), '7:32');
     assert.equal(formatDuration(28800), '8:00:00');
+});
+
+
+// --- Configurable pause lengths ---------------------------------------------
+
+test('the pause menu offers three lengths, 30 min / 1 h / 1:30 by default', () => {
+    assert.deepEqual(DEFAULT_PAUSE_MINUTES, [30, 60, 90]);
+    assert.deepEqual(normalizePauseMinutes(undefined), [30, 60, 90]);
+});
+
+test('configured pause lengths are kept, sorted and clamped', () => {
+    assert.deepEqual(normalizePauseMinutes([90, 10, 45]), [10, 45, 90]);
+    assert.deepEqual(normalizePauseMinutes([0, 'x', 10000]), [1, 60, 480]);
+});
+
+test('a short pause list falls back to the defaults for what is missing', () => {
+    assert.deepEqual(normalizePauseMinutes([5]), [5, 60, 90]);
+    assert.deepEqual(normalizePauseMinutes('nonsense'), [30, 60, 90]);
+});
+
+// --- End of the working day --------------------------------------------------
+
+const DAY_END_OFF = {dayEndAt: 0, now: 1000};
+
+test('the end-of-day limit is off by default and defaults to 21:30', () => {
+    const off = normalizeDayEnd({});
+    assert.equal(off.enabled, false);
+    assert.equal(off.minutes, DEFAULT_DAY_END_MINUTES);
+    assert.equal(DEFAULT_DAY_END_MINUTES, 21 * 60 + 30);
+});
+
+test('the configured stop-working time is clamped to a day', () => {
+    assert.equal(normalizeDayEnd({dayEndMinutes: -5}).minutes, 0);
+    assert.equal(normalizeDayEnd({dayEndMinutes: 5000}).minutes, 24 * 60 - 1);
+    assert.equal(normalizeDayEnd({dayEndEnabled: true, dayEndMinutes: 90}).enabled, true);
+});
+
+test('the working day is over once the deadline passes, never when it is off', () => {
+    assert.equal(isDayOver({dayEndAt: 2000, now: 1999}), false);
+    assert.equal(isDayOver({dayEndAt: 2000, now: 2000}), true);
+    assert.equal(isDayOver(DAY_END_OFF), false);
+    assert.equal(dayEndRemainingSeconds({dayEndAt: 2000, now: 1400}), 600);
+    assert.equal(dayEndRemainingSeconds({dayEndAt: 2000, now: 2500}), 0);
+    assert.equal(dayEndRemainingSeconds(DAY_END_OFF), 0);
+});
+
+test('today\'s work starts at the first activity, and the day bar fills from it', () => {
+    const worked = run(createState(), 10, {now: 1000, dayEndAt: 3000});
+    assert.equal(worked.dayStartedAt, 1000);
+    // Ten seconds of a 2000-second working day.
+    assert.equal(
+        Math.round(dayEndFraction(worked, {dayEndAt: 3000, now: 1010}) * 1000) / 1000,
+        0.005
+    );
+    assert.equal(dayEndFraction(worked, {dayEndAt: 3000, now: 3000}), 1);
+});
+
+test('before the first activity there is nothing to fill from', () => {
+    assert.equal(dayEndFraction(createState(), {dayEndAt: 3000, now: 2000}), 0);
+    assert.equal(dayEndFraction(createState(), DAY_END_OFF), 0);
+});
+
+test('the deadline raises the daily reminder even with hours left on the counter', () => {
+    const state = run(createState(), 60, {now: 1000, dayEndAt: 2000});
+    assert.equal(state.reminder, null);
+    const over = run(state, 1, {now: 2000, dayEndAt: 2000});
+    assert.equal(over.reminder.timer, 'daily');
+    assert.equal(over.reminder.reason, 'day-end');
+    assert.equal(over.reminder.stage, 'due');
+    // The counter is nowhere near its own limit; the clock alone did this.
+    assert.ok(over.elapsed.daily < limitSeconds(TIMERS[2]));
+});
+
+test('with the limit off the clock says nothing', () => {
+    const state = run(createState(), 60, {now: 5000, dayEndAt: 0});
+    assert.equal(state.reminder, null);
+});
+
+test('a new working day clears the previous day start', () => {
+    const worked = run(createState(), 5, {now: 1000, dayEndAt: 9000});
+    assert.equal(worked.dayStartedAt, 1000);
+    // A long absence ends the working day (the daily reset rule).
+    const away = run(worked, 1, {
+        now: 40000,
+        idleSeconds: 7 * 3600,
+        dailyIdleResetSeconds: 6 * 3600,
+        dayEndAt: 9000,
+    });
+    assert.equal(away.elapsed.daily, 0);
+    assert.equal(away.dayStartedAt, 0);
 });

@@ -14,7 +14,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   clicks (`ui_click` primary-button shorthand, `ui_click_button` for another
   button and/or a press-and-hold duration), screenshots, assertions.
 - `t-01-panel-loads.sh` — panel loads, widgets in config order, no JS errors.
-- `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate.
+- `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate;
+  the standing strip is as thick as the lying one is tall (per-orientation sizing
+  in `stylesheet.css`).
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
 - `t-04-position-preset.sh` — `aligned` presets snap the panel.
 - `t-05-config-live-reload.sh` — `widgets` GSettings key edits live-reload;
@@ -57,11 +59,30 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   the timer when served, postpone keeping the break owed, skip starting the
   interval over, a suppressed break screen degrading to the message, a session
   inhibitor or a manual pause silencing both stages while the counters run on,
-  the warning yielding exactly once when the pointer reaches it, and the
-  right-click menu building (`@tag:widget-break-timer`).
+  the pause also holding a session inhibitor (and handing the screen back on
+  resume and on its own expiry, without waiting for the stale IsInhibited poll),
+  the warning yielding exactly once when the pointer reaches it, the right-click
+  menu building with the configured pause lengths, and the end of the working day
+  (nothing before the deadline, the daily reminder and a full bar after it, and
+  silence with the limit switched off)
+  (`@tag:widget-break-timer`, `@tag:session-inhibitor`).
 - `t-19-caffeine-duration.sh` — caffeine's timed keep-awake: the right-click
   menu of durations, the deadline and auto-off timer a duration arms, and
-  turning it off clearing both (`@tag:widget-caffeine`).
+  turning it off clearing both. The shared `SessionInhibitor`'s D-Bus calls are
+  stubbed, since a headless session has no session manager
+  (`@tag:widget-caffeine`, `@tag:session-inhibitor`).
+- `t-20-app-windows.sh` — the app-windows widget against three REAL GTK windows
+  of one application opened in the session: the widget tracks that application,
+  counts its windows on the button, lists their titles under the configured
+  limit with the remainder announced, keeps the window that had focus at the top
+  (the popup's own grab has already taken the focus by then), aligns every title
+  at the same x whether or not the row carries the focus mark, keeps the count
+  badge from widening the button, and activates the window whose row is clicked
+  (`@tag:widget-app-windows`).
+- [`window-client.js`](window-client.js) — test client for that test: opens one
+  GTK window per title argument under a single application id, spawned from
+  inside the shell so it reaches the session's compositor; it self-quits after
+  two minutes.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +

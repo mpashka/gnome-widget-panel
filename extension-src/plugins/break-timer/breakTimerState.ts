@@ -40,6 +40,11 @@ export interface TimerConfig {
 
 export interface Reminder {
     timer: TimerName;
+    /**
+     * Which threshold raised it. Only the daily limit has two: `day-end` is the
+     * clock ("stop working"), `limit` is the amount of work done.
+     */
+    reason?: 'limit' | 'day-end';
     stage: ReminderStage;
     /** Seconds left in this stage. */
     remaining: number;
@@ -63,6 +68,18 @@ export interface BreakTimerState {
      * involved no typing at all.
      */
     pausedUntil: number;
+    /**
+     * Wall-clock second the running pause began at, so the widget can draw how
+     * much of it is left. 0 when nothing is paused — and also for a state
+     * written by an older version, where the bar simply reads as full.
+     */
+    pausedFrom: number;
+    /**
+     * Wall-clock second today's work began at — the first activity after the
+     * daily counter was last reset. It is what the end-of-day bar fills from;
+     * 0 before the first activity of the day.
+     */
+    dayStartedAt: number;
 }
 
 export interface TickInput {
@@ -80,6 +97,13 @@ export interface TickInput {
     now: number;
     /** Idle that ends the working day and resets the daily counter; 0 = off. */
     dailyIdleResetSeconds: number;
+    /**
+     * Wall-clock epoch second of today's "stop working" time, or 0 when that
+     * limit is switched off. The widget computes it (only it knows the local
+     * time zone and today's date), so these rules stay plain arithmetic and the
+     * tests stay timezone-free.
+     */
+    dayEndAt: number;
 }
 
 export interface StoredState {
@@ -112,6 +136,40 @@ const DAILY_REPEAT_SECONDS = 3600;
 const SUPPRESSED_RETRY_SECONDS = 60;
 
 export const DEFAULT_DAILY_IDLE_RESET_HOURS = 6;
+
+/**
+ * The pause lengths the context menu offers, in minutes. Three of them: a menu
+ * of every plausible duration is a menu nobody reads. Configurable, because the
+ * length of "a meeting" is personal.
+ */
+export const DEFAULT_PAUSE_MINUTES: number[] = [30, 60, 90];
+
+/**
+ * The "stop working" time, as minutes since midnight (21:30). Off by default:
+ * when the working day ends is a personal rule, and a widget that invents one
+ * for somebody is a widget they switch off.
+ */
+export const DEFAULT_DAY_END_MINUTES = 21 * 60 + 30;
+
+/** The end-of-day limit as the widget reads it out of its options. */
+export interface DayEndConfig {
+    enabled: boolean;
+    /** Minutes since local midnight. */
+    minutes: number;
+}
+
+
+export function normalizeDayEnd(options: {
+    dayEndEnabled?: unknown;
+    dayEndMinutes?: unknown;
+}): DayEndConfig {
+    const raw = Math.round(Number(options?.dayEndMinutes));
+    const minutes = Number.isFinite(raw)
+        ? Math.min(24 * 60 - 1, Math.max(0, raw))
+        : DEFAULT_DAY_END_MINUTES;
+    return {enabled: options?.dayEndEnabled === true, minutes};
+}
+const PAUSE_MINUTES_RANGE: readonly [number, number] = [1, 8 * 60];
 
 /**
  * Where the advance-warning message may sit. It starts on the configured
@@ -191,6 +249,27 @@ const REMINDER_MODES: ReminderMode[] = ['off', 'notify', 'screen'];
 
 
 /**
+ * Read the configured pause lengths: exactly three, each a whole number of
+ * minutes inside the allowed range, in ascending order. Anything missing or
+ * unusable falls back to its default, so a hand-edited config still leaves a
+ * usable menu.
+ */
+export function normalizePauseMinutes(value: unknown): number[] {
+    const raw = Array.isArray(value) ? value : [];
+    const minutes = DEFAULT_PAUSE_MINUTES.map((fallback, index) => {
+        const candidate = Math.round(Number(raw[index]));
+        if (!Number.isFinite(candidate))
+            return fallback;
+        return Math.min(
+            PAUSE_MINUTES_RANGE[1],
+            Math.max(PAUSE_MINUTES_RANGE[0], candidate)
+        );
+    });
+    return minutes.sort((a, b) => a - b);
+}
+
+
+/**
  * Normalize the configured timers: fixed name/count/order (micro, rest, daily);
  * every other field is taken from the matching input entry when valid and
  * defaulted otherwise. Mirrors cpuGraph's normalizeBands defensive pattern —
@@ -260,6 +339,8 @@ export function createState(): BreakTimerState {
         reminder: null,
         quietUntil: {},
         pausedUntil: 0,
+        pausedFrom: 0,
+        dayStartedAt: 0,
     };
 }
 
@@ -270,6 +351,8 @@ function cloneState(state: BreakTimerState): BreakTimerState {
         reminder: state.reminder ? {...state.reminder} : null,
         quietUntil: {...state.quietUntil},
         pausedUntil: state.pausedUntil ?? 0,
+        pausedFrom: state.pausedFrom ?? 0,
+        dayStartedAt: state.dayStartedAt ?? 0,
     };
 }
 
@@ -284,6 +367,10 @@ function findTimer(timers: TimerConfig[], name: TimerName): TimerConfig | undefi
 function resetTimer(state: BreakTimerState, name: TimerName): void {
     state.elapsed[name] = 0;
     delete state.quietUntil[name];
+    // A new working day starts when the daily counter does, so the end-of-day
+    // bar fills from the moment work actually resumes.
+    if (name === 'daily')
+        state.dayStartedAt = 0;
     if (state.reminder && state.reminder.timer === name)
         state.reminder = null;
 }
@@ -298,11 +385,60 @@ function repeatSeconds(timer: TimerConfig, canInterrupt: boolean): number {
 }
 
 
-function isOffered(state: BreakTimerState, timer: TimerConfig): boolean {
+/**
+ * Is the "stop working for today" time here? A second daily threshold that has
+ * nothing to do with how much was worked: some hours are simply not working
+ * hours. `dayEndAt` is 0 when the limit is switched off.
+ */
+export function isDayOver(input: {dayEndAt: number; now: number}): boolean {
+    return input.dayEndAt > 0 && input.now >= input.dayEndAt;
+}
+
+
+/**
+ * How close the working day is to its end, as 0..1 — the daily bar draws
+ * whichever of its two thresholds is further along. Measured from the moment
+ * today's work began, which is the only start the widget can honestly claim;
+ * before the first activity of the day there is nothing to measure, so the bar
+ * stays empty until the deadline itself arrives.
+ */
+export function dayEndFraction(
+    state: BreakTimerState,
+    input: {dayEndAt: number; now: number}
+): number {
+    if (input.dayEndAt <= 0)
+        return 0;
+    if (input.now >= input.dayEndAt)
+        return 1;
+    const started = state.dayStartedAt ?? 0;
+    if (started <= 0 || started >= input.dayEndAt)
+        return 0;
+    return Math.min(1, Math.max(0, (input.now - started) / (input.dayEndAt - started)));
+}
+
+
+/** Seconds of the working day left; 0 once it is over or the limit is off. */
+export function dayEndRemainingSeconds(input: {dayEndAt: number; now: number}): number {
+    if (input.dayEndAt <= 0)
+        return 0;
+    return Math.max(0, input.dayEndAt - input.now);
+}
+
+
+function isOffered(
+    state: BreakTimerState,
+    timer: TimerConfig,
+    input: TickInput
+): boolean {
     if (!timer.enabled || timer.reminder === 'off')
         return false;
     const elapsed = state.elapsed[timer.name] ?? 0;
-    if (elapsed < limitSeconds(timer) - leadSeconds(timer))
+    // The daily limit has a second way of coming due: the clock. Whichever
+    // arrives first raises the same reminder, on the same timer, so nothing is
+    // said twice.
+    const overdue = elapsed >= limitSeconds(timer) - leadSeconds(timer)
+        || (timer.name === 'daily' && isDayOver(input));
+    if (!overdue)
         return false;
     return elapsed >= (state.quietUntil[timer.name] ?? 0);
 }
@@ -319,8 +455,22 @@ function byUrgency(left: TimerConfig, right: TimerConfig): number {
 function startedReminder(
     state: BreakTimerState,
     timer: TimerConfig,
-    canInterrupt: boolean
+    canInterrupt: boolean,
+    input: TickInput
 ): Reminder {
+    // The clock beat the counter to it: no advance warning (the warning belongs
+    // to a break one is about to owe, not to a time of day) and a message of its
+    // own, so "call it a day" is not confused with "you have worked 8 hours".
+    if (timer.name === 'daily' && isDayOver(input)
+        && (state.elapsed[timer.name] ?? 0) < limitSeconds(timer)) {
+        return {
+            timer: timer.name,
+            reason: 'day-end',
+            stage: 'due',
+            remaining: DUE_MESSAGE_SECONDS,
+            total: DUE_MESSAGE_SECONDS,
+        };
+    }
     const lead = leadSeconds(timer);
     const toLimit = limitSeconds(timer) - (state.elapsed[timer.name] ?? 0);
     if (lead > 0 && toLimit > 0) {
@@ -427,8 +577,10 @@ export function advance(
     input: TickInput
 ): BreakTimerState {
     const next = cloneState(state);
-    if (next.pausedUntil > 0 && next.pausedUntil <= input.now)
+    if (next.pausedUntil > 0 && next.pausedUntil <= input.now) {
         next.pausedUntil = 0;
+        next.pausedFrom = 0;
+    }
     const silent = isSilent(next, input);
     if (silent)
         next.reminder = null;
@@ -440,8 +592,12 @@ export function advance(
             continue;
         if (timer.breakSeconds > 0 && input.idleSeconds >= timer.breakSeconds)
             resetTimer(next, timer.name);
-        else if (working && !inBreak)
+        else if (working && !inBreak) {
             next.elapsed[timer.name] = (next.elapsed[timer.name] ?? 0) + input.tickSeconds;
+            // The first activity after a reset is when today's work began.
+            if (timer.name === 'daily' && next.dayStartedAt <= 0)
+                next.dayStartedAt = input.now;
+        }
     }
     if (input.dailyIdleResetSeconds > 0 && input.idleSeconds >= input.dailyIdleResetSeconds)
         resetTimer(next, 'daily');
@@ -450,9 +606,9 @@ export function advance(
 
     advanceReminder(next, timers, input);
     if (!next.reminder) {
-        const due = timers.filter(timer => isOffered(next, timer)).sort(byUrgency);
+        const due = timers.filter(timer => isOffered(next, timer, input)).sort(byUrgency);
         if (due.length > 0)
-            next.reminder = startedReminder(next, due[0], input.canInterrupt);
+            next.reminder = startedReminder(next, due[0], input.canInterrupt, input);
     }
     return next;
 }
@@ -470,6 +626,7 @@ export function pauseReminders(
 ): BreakTimerState {
     const next = cloneState(state);
     next.pausedUntil = now + Math.max(0, seconds);
+    next.pausedFrom = now;
     next.reminder = null;
     return next;
 }
@@ -481,6 +638,7 @@ export function resumeReminders(state: BreakTimerState): BreakTimerState {
         return state;
     const next = cloneState(state);
     next.pausedUntil = 0;
+    next.pausedFrom = 0;
     return next;
 }
 
@@ -488,6 +646,28 @@ export function resumeReminders(state: BreakTimerState): BreakTimerState {
 /** Seconds left of the manual pause, 0 when the timers are not paused. */
 export function pauseRemainingSeconds(state: BreakTimerState, now: number): number {
     return Math.max(0, (state.pausedUntil ?? 0) - now);
+}
+
+
+/**
+ * How much of the running pause is still to come, as 1..0 — what the widget
+ * draws instead of its timer bars while paused. 0 when nothing is paused, and 1
+ * when the start is unknown (a state file written before `pausedFrom` existed):
+ * a full bar reads as "paused", which is the part that matters.
+ */
+export function pauseFraction(state: BreakTimerState, now: number): number {
+    const remaining = pauseRemainingSeconds(state, now);
+    if (remaining <= 0)
+        return 0;
+    // `pausedFrom` is a wall-clock epoch second, so 0 means "not recorded"
+    // (a state file from before the field existed), not "the epoch".
+    const from = state.pausedFrom ?? 0;
+    if (from <= 0)
+        return 1;
+    const total = (state.pausedUntil ?? 0) - from;
+    if (!(total > 0))
+        return 1;
+    return Math.min(1, remaining / total);
 }
 
 

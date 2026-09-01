@@ -211,9 +211,15 @@ anyway.
 - **Postpone** / **Skip** the reminder that is currently up, when that timer
   allows them. The panel button is a target that never moves, unlike the
   message.
-- **Pause for 15 minutes · 1 hour · 2 hours.** Every pause expires by itself —
+- **Pause for 30 minutes · 1 hour · 1:30** (all three lengths are settings).
+  Every pause expires by itself —
   a pause you can forget to end is a timer you have switched off by accident.
-- **Resume**, which also shows how much of the pause is left.
+  **A pause keeps the screen awake as well**, for exactly as long as it lasts:
+  the meeting a pause covers is the same meeting a lock screen would interrupt.
+  It is the [Caffeine](widgets.md) gesture from the other end, so either widget
+  alone covers a call — pause the timers here, or switch Caffeine on there.
+- **Resume**, which also shows how much of the pause is left. Resuming hands the
+  screen back at the same moment.
 
 **Anything keeping the session awake** silences the timers for as long as it
 lasts — a screen-share inhibitor, a media player, and in particular the panel's
@@ -223,8 +229,11 @@ covers both halves of it: the screen stays on and the timers stay quiet. Nothing
 is shown until the inhibitor goes away — not the break screen, and not the
 message either, which is the point when the screen is being shared.
 
-While the timers are silent, **their bars are drawn dimmed** and the hover
-tooltip says why (`Paused — 42:10 left`, or `Silent — the screen is kept
+**While paused the widget shows a coffee cup** and a single bar counting the
+pause down, instead of three timer bars whose numbers nobody is watching during
+a meeting. Silenced by something else — an inhibitor that is not ours — the
+timer bars stay, only **dimmed**. Either way the hover tooltip says why
+(`Paused — 42:10 left, screen kept awake`, or `Silent — the screen is kept
 awake`).
 
 The pause lives for the session: restarting GNOME Shell ends it, unlike the

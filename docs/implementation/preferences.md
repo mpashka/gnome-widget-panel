@@ -96,6 +96,13 @@ is applied **live** to the running panel — no reload needed. It has these rows
   then relocates. (This single enum replaces the former separate `vertical` bool
   and `vertical-rotation` int; the control-button orientation gesture also just
   writes this one key.)
+  **Thickness is symmetric.** `stylesheet.css` fixes the strip's thickness on
+  *both* axes — `:horizontal { height }` and `:vertical { width }` — and every
+  per-widget rule that pads *along* the panel swaps its axis with the
+  orientation (`.system-status-icon`, `.system-status-icon-2`, `.clone`,
+  `.messages-indicator`). Without the vertical width the strip grew to its
+  widest child and stood noticeably fatter than it lies (28 px against 22 px);
+  `tests/ui/t-02-orientation-live.sh` now pins the two within a few pixels.
 - **Content padding** — an `Adw.SpinRow` for `content-padding`. User changes are
   written explicitly on `notify::value`, rounded to whole pixels, and external
   `changed::content-padding` updates sync the row back to the stored value.
@@ -215,9 +222,9 @@ the Shell-only plugin modules. The pieces:
   `fillWidgetPreferences(context)`; it calls `context.window.add(page)` with its
   `Adw.PreferencesPage` and `context.save(options)` to persist its `options`
   object back into the `widgets` GSettings key. Widgets with settings today:
-  `ai-agent-status`, `ai-agent-usage`, `break-timer`, `caffeine`, `clock`,
-  `cpu-load-monitor`, `favorites`, `gnome-action`, `gnome-menu`, `launch` and
-  `printscreen`.
+  `ai-agent-status`, `ai-agent-usage`, `app-windows`, `break-timer`,
+  `caffeine`, `clock`, `cpu-load-monitor`, `favorites`, `gnome-action`,
+  `gnome-menu`, `launch` and `printscreen`.
 
 The widget settings open as an **in-window subpage**, not an
 `Adw.PreferencesDialog`. `_openWidgetPreferences` builds an `Adw.NavigationPage`

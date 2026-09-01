@@ -49,6 +49,9 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
 - [`caffeine`](caffeine/index.md) — toggle button that manually inhibits the
   screensaver/suspend via `org.gnome.SessionManager` (not in the default
   config).
+- [`app-windows`](app-windows/index.md) — button listing the windows of the
+  application in focus by title, with its live icon and window count (not in the
+  default config).
 - [`break-timer`](break-timer/index.md) — Workrave-style micro/rest/daily
   activity-based rest-reminder progress bars, with a focus-free warning and a
   dimmed break screen when one comes due (not in the default config).

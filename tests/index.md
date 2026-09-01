@@ -52,12 +52,31 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   the reminder state machine (warning → break screen → reset, suppressed →
   message + retry), postpone/skip, the silence rules (a manual pause or a
   session inhibitor stops the reminders while the counters keep running, and the
-  owed break arrives the moment the silence ends), and what a restart restores
-  (`@tag:widget-break-timer`).
+  owed break arrives the moment the silence ends), the pause fraction the paused
+  widget draws (including the full bar a pre-`pausedFrom` state file gets), the
+  configurable pause lengths, the end-of-the-working-day threshold (when the day
+  is over, the bar filling from the first activity of the day, the reminder it
+  raises with hours left on the counter, and a new day clearing the old start),
+  and what a restart restores (`@tag:widget-break-timer`).
+- `duration.test.mjs` — `formatDuration`/`formatClock`/`durationStep`/
+  `stepDuration` from
+  [`../extension-src/duration.ts`](../extension-src/duration.ts): how a duration
+  is counted down (`M:SS`, `H:MM:SS`) versus how it is *edited* (`30 s`,
+  `45 min`, `1:30`), the step ladder that follows the value, snapping to a
+  multiple of the current step, and the range being enforced
+  (`@tag:prefs-duration`).
 - `props.test.mjs` — `definedProps` from
   [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
   keys from a GObject initializer (regression for the cpu-load-monitor settings
   page failing to open on `tooltip_text: undefined`), keeps `null`/falsy values.
+- `appWindowEntries.test.mjs` — the gi-free app-windows rules from
+  [`../extension-src/plugins/app-windows/appWindowEntries.ts`](../extension-src/plugins/app-windows/appWindowEntries.ts):
+  option defaults, clamping and lenient parsing, most-recently-used vs title
+  order with the focused window always leading (and never dropped by the limit),
+  title collapsing/`Untitled window`, the row limit and its "N more" remainder,
+  the other-workspaces filter, and the tooltip fragments (singular/plural count,
+  the empty-state wording and the Pango escaping that stops a window title from
+  injecting markup) (`@tag:widget-app-windows`).
 - `hookStdin.test.mjs` — `READ_STDIN_FN` from
   [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
   the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input

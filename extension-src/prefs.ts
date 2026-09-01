@@ -705,8 +705,16 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         layoutGroup.add(paddingRow);
     }
 
-    _persist(state, rebuild) {
+    // Write the configuration out; the running panel live-reloads from it.
+    _save(state) {
         saveWidgetConfig(state.settings, state.config);
+    }
+
+    // Write it out AND rebuild the list. Only for changes that alter the rows
+    // themselves (add, remove, reorder): a rebuild drops the list's scroll
+    // position, so a change that leaves the rows as they were must use `_save`.
+    _persist(state, rebuild) {
+        this._save(state);
         rebuild();
     }
 
@@ -778,7 +786,11 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
             });
             enabled.connect('notify::active', () => {
                 item.enabled = enabled.active;
-                this._persist(state, rebuild);
+                // Persist only. Switching a widget on or off changes no row —
+                // the same rows stay in the same order — and rebuilding the
+                // list here threw away the scroll position, so a toggle halfway
+                // down the list jumped the view back to the top.
+                this._save(state);
             });
             row.add_suffix(enabled);
             row.activatable_widget = enabled;
@@ -978,7 +990,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                         // and rebuilding resets the main page's scroll position
                         // (which then shows at the top when the subpage is
                         // popped). The running panel live-reloads from the file.
-                        saveWidgetConfig(state.settings, state.config);
+                        this._save(state);
                     },
                 });
 

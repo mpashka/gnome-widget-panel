@@ -62,6 +62,30 @@ is alive and feeds `advance()`:
   id changes (the machine was switched on again) or after a continuous idle of
   `dailyResetHours` (default 6 h).
 
+### The daily limit's second threshold: the end of the working day
+
+The daily limit answers to **two** thresholds and the bar draws whichever is
+further along:
+
+- the **work done** — `elapsed.daily` against `workMinutes`, as before;
+- the **time of day** — `dayEndMinutes` (default 21:30), off unless
+  `dayEndEnabled` is set. Some hours are simply not working hours, and no amount
+  of "but I only worked three hours today" changes that.
+
+The rules stay timezone-free: `breakTimerGraph.ts` computes the deadline as an
+epoch second (`_dayEndAt()`, via `GLib.DateTime`) and passes it into `advance()`
+as `input.dayEndAt` (0 = switched off), so `breakTimerState.ts` only does
+arithmetic and the unit tests need no clock. The deadline is anchored to the day
+the work **began** on (`state.dayStartedAt`, the first activity after the daily
+counter last reset), not to today: past midnight the deadline that matters is
+still the one of the day one sat down on, by then already behind.
+
+`isDayOver()` makes the daily timer due even with hours left on its counter, and
+the reminder carries `reason: 'day-end'` so its message says "The working day is
+over — stop for today" rather than claiming a limit was reached.
+`dayEndFraction()` fills the bar from `dayStartedAt` to the deadline; before the
+first activity of the day there is nothing to measure from, so it stays empty.
+
 ## Reminders
 
 ### Silence: the pause and the session inhibitor
@@ -76,6 +100,23 @@ most every `INHIBIT_REFRESH_SECONDS`, 10 s) rather than only while a reminder is
 up, because it decides whether the timers may speak at all. `_canInterrupt()`
 therefore no longer looks at it: that predicate is now only about the *break
 screen* (fullscreen, locked), which still degrades to the message.
+
+**A pause is also a keep-awake.** Nobody pauses their rest reminders for a
+meeting and then wants the screen to lock mid-sentence, so `_pause()` takes a
+session inhibitor (`SessionInhibitor` from
+[`../../sessionInhibitor.ts`](../../sessionInhibitor.ts), `@tag:session-inhibitor`
+— the same plumbing the [caffeine](../caffeine/index.md) widget uses) and holds
+it for exactly as long as the pause lasts. It is released by `_resume()`, by the
+pause running out (checked on the tick right after `advance()`) and by
+`destroy()`. Releasing also clears the cached `inhibited` answer and forces a
+re-poll: that answer is up to 10 s old and would otherwise still report our own
+just-released inhibitor, keeping the timers silent after the user resumed them.
+
+**While paused the widget draws a different face:** a Cairo coffee cup and one
+bar counting the pause down (`pauseFraction()`), instead of the three timer bars
+whose numbers nobody is watching during a meeting. `pausedFrom` is stored beside
+`pausedUntil` so the bar survives a shell restart; a state file from before that
+field simply draws a full bar.
 
 The right-click `PopupMenu` on the graph (`_openMenu`, rebuilt on every open)
 carries Postpone/Skip for the current reminder and the pause durations
@@ -167,6 +208,13 @@ The widget reads per-widget `options` from the `widgets` GSettings key:
     reset), `notify`, no postpone/skip, `#ffb82e` / overdue `#f03333`.
 - `dailyResetHours` — hours of continuous idle that end the working day
   (default 6, 0 disables the rule; a reboot always ends it).
+- `dayEndEnabled` / `dayEndMinutes` — the daily limit's second threshold: stop
+  working at a time of day, as minutes since local midnight. Default **off**,
+  21:30 (`DEFAULT_DAY_END_MINUTES`). See "The daily limit's second threshold"
+  above.
+- `pauseMinutes` — the three lengths the context menu offers, in minutes
+  (default `[30, 60, 90]`). Normalized to exactly three sorted values inside
+  1 min … 8 h; anything missing falls back to its default.
 - `messageAnchor` — where the advance warning starts: one of `top-left`,
   `top-center`, `top-right` (default), `bottom-left`, `bottom-center`,
   `bottom-right`.
@@ -174,11 +222,15 @@ The widget reads per-widget `options` from the `widgets` GSettings key:
   tick interval is fixed at 1 s (not configurable).
 - `showTooltip` — set `false` to disable the hover tooltip (default `true`).
 - `template` — hover-tooltip template string (default
-  `{micro}\n{rest}\n{daily}`). Tokens `{micro}`, `{rest}`, `{daily}`: each
+  `{micro}\n{rest}\n{daily}\n{dayend}`). Tokens `{micro}`, `{rest}`, `{daily}`:
+  each
   renders as a coloured Pango fragment `name: elapsed/limit` (e.g.
   `micro: 7:32/10:00`) in the timer's `color`, or in `overdueColor` with a
   trailing `— break!` once overdue. A *disabled* timer's token renders as an
-  empty string, so its template line collapses to blank. Durations format as
+  empty string, and a line left blank by an empty token is dropped altogether.
+  `{dayend}` renders `until 21:30: 1:18:00 left` — with `— first` when the clock
+  is the threshold the bar is drawing — or `day over (21:30) — stop`, and is
+  empty while the end-of-day limit is switched off. Durations format as
   `M:SS`, switching to `H:MM:SS` once past an hour (used for the `daily`
   timer). Literal text is Pango-escaped and `\n` is a line break; see
   [`../../tooltipTemplate.ts`](../../tooltipTemplate.ts) (`@tag:ui`). Edited

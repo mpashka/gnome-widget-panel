@@ -9,8 +9,12 @@
 // unchanged in both the GNOME Shell and the preferences process (the live
 // preview in each widget's `prefs.ts` renders sample fragments through it).
 
-/** Escape the three characters that are special to Pango markup. */
-function escapePangoText(text: string): string {
+/**
+ * Escape the three characters that are special to Pango markup. Exported for
+ * widgets whose fragments are plain text taken from the outside world (a window
+ * title, an application name), which must not be read as markup.
+ */
+export function escapePangoText(text: string): string {
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')

@@ -6,9 +6,13 @@
 }
 
 #FloatingMiniPanel:vertical {
-  /* No fixed width: the strip sizes to its widest child (an icon), so it stays
-     about one icon wide. Content padding is applied inline from the
+  /* Mirror of the horizontal rule above: the strip is as THICK as the
+     horizontal panel is TALL. Letting the widest child decide instead made a
+     vertical panel noticeably fatter than the horizontal one is high (28 px
+     against 22 px measured), because every child then has to pay for the widest
+     icon plus its side padding. Content padding is applied inline from the
      content-padding setting. */
+  width: 20px;
   padding: 0px 0px;
 }
 
@@ -20,12 +24,15 @@
 }
 
 #FloatingMiniPanel:vertical .system-status-icon {
-  /* Constrain the width too: without it St.Icon keeps its natural 48px width
-     (the default icon size), which made the vertical strip ~52px wide with
-     huge side margins around the 16-24px glyphs. Mirrors the horizontal rule. */
-  width: 24px;
+  /* Constrain the width: without it St.Icon keeps its natural 48px width (the
+     default icon size), which made the vertical strip ~52px wide with huge side
+     margins around the 16-24px glyphs. The width matches the strip and the side
+     padding is zero, so the icon does not push the strip wider; the padding
+     that separates icons runs along the strip instead (mirror of the horizontal
+     rule, where it runs vertically). */
+  width: 20px;
   height: 24px;
-  padding: 2px 2px;
+  padding: 2px 0px;
   -st-icon-style: symbolic !important;
 }
 
@@ -38,16 +45,23 @@
 }
 
 #FloatingMiniPanel:vertical .system-status-icon-2 {
-  width: 24px; /* see .system-status-icon: cap St.Icon's natural 48px width */
+  width: 20px; /* see .system-status-icon: cap St.Icon's natural 48px width */
   height: 24px;
-  padding-left: 2px;
-  padding-right: 2px;
+  padding-left: 0px;
+  padding-right: 0px;
   padding-top: 4px;
   -st-icon-style: symbolic !important;
 }
 
-#FloatingMiniPanel .clone {
+/* Cloned shell indicators (keyboard layout, tray icons). The padding separates
+   them ALONG the panel, so it swaps with the orientation: side padding in a
+   vertical panel would widen the whole strip. */
+#FloatingMiniPanel:horizontal .clone {
   padding: 2px 8px;
+}
+
+#FloatingMiniPanel:vertical .clone {
+  padding: 8px 2px;
 }
 
 #FloatingMiniPanel:horizontal .divider {
@@ -85,7 +99,7 @@
 
 #FloatingMiniPanel:vertical .messages-indicator {
   height: 16px;
-  padding: 0px 7px;
+  padding: 0px 2px;
 }
 
 #FloatingMiniPanel StLabel {
@@ -119,6 +133,19 @@
 
 #FloatingMiniPanel .break-timer-graph {
   margin: 2px 4px;
+}
+
+/* The app-windows window count is drawn as a badge in the corner of the button
+   icon rather than as a second child beside it: a child of its own widens the
+   button, and in a vertical panel the widest child sets the whole strip's
+   width. Small and translucent-dark so it reads over any application icon. */
+#FloatingMiniPanel .app-windows-count {
+  font-size: 7pt;
+  font-weight: bold;
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.65);
+  border-radius: 5px;
+  padding: 0px 2px;
 }
 
 /* Break reminders (see plugins/break-timer/breakTimerReminder.ts). The message

@@ -19,7 +19,13 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {hexToRgb, nowSeconds, toNumber} from '../../colorUtils.js';
-import {formatDuration} from '../../duration.js';
+import {formatClock, formatDuration} from '../../duration.js';
+import {
+    INHIBIT_IDLE,
+    INHIBIT_SUSPEND,
+    SessionInhibitor,
+    queryInhibited,
+} from '../../sessionInhibitor.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
 import {BreakReminderUi} from './breakTimerReminder.js';
@@ -27,10 +33,16 @@ import {
     DEFAULT_DAILY_IDLE_RESET_HOURS,
     advance,
     createState,
+    dayEndFraction,
+    dayEndRemainingSeconds,
+    isDayOver,
     isSilent,
     limitSeconds,
     normalizeAnchor,
+    normalizeDayEnd,
+    normalizePauseMinutes,
     normalizeTimers,
+    pauseFraction,
     pauseRemainingSeconds,
     pauseReminders,
     postponeReminder,
@@ -49,7 +61,7 @@ const BAR_GAP = 1;
 // Default hover-tooltip template. Tokens: {micro}, {rest}, {daily}, each a
 // coloured `name: elapsed/limit` Pango fragment (empty when the timer is
 // disabled). See ../../tooltipTemplate.ts.
-const DEFAULT_TOOLTIP_TEMPLATE = '{micro}\n{rest}\n{daily}';
+const DEFAULT_TOOLTIP_TEMPLATE = '{micro}\n{rest}\n{daily}\n{dayend}';
 
 // How often the counters reach the disk, and how stale the session-inhibitor
 // answer may get. The inhibitor now silences the reminders altogether (not just
@@ -59,22 +71,14 @@ const DEFAULT_TOOLTIP_TEMPLATE = '{micro}\n{rest}\n{daily}';
 const PERSIST_INTERVAL_SECONDS = 30;
 const INHIBIT_REFRESH_SECONDS = 10;
 
-// org.gnome.SessionManager.IsInhibited(4): is anything holding the session
-// awake right now (a call, a video, the panel's own caffeine widget)? If so
-// every reminder stays silent — see the `inhibited` input of advance().
-const SESSION_BUS_NAME = 'org.gnome.SessionManager';
-const SESSION_OBJECT_PATH = '/org/gnome/SessionManager';
-const SESSION_IFACE_NAME = 'org.gnome.SessionManager';
-const FLAG_INHIBIT_IDLE = 4;
-
 // The manual pause offered by the context menu, in seconds. Every choice
 // expires on its own: a pause one can forget to end is a timer one has turned
-// off by accident.
-const PAUSE_CHOICES = [
-    {label: 'Pause for 15 minutes', seconds: 15 * 60},
-    {label: 'Pause for 1 hour', seconds: 60 * 60},
-    {label: 'Pause for 2 hours', seconds: 2 * 60 * 60},
-];
+// off by accident. A pause is also a keep-awake: nobody pauses their rest
+// reminders and then wants the screen to lock mid-sentence, so the pause holds
+// a session inhibitor for exactly as long as it lasts — the caffeine widget's
+// gesture, from the other end (see ../../sessionInhibitor.ts).
+const PAUSE_APP_ID = 'gnome-widget-panel';
+const PAUSE_REASON = 'Break timer paused: keep the screen awake meanwhile';
 
 // Bar opacity while the reminders are silent (paused or something keeps the
 // session awake): the counters still run, so the bars stay — dimmed.
@@ -107,6 +111,8 @@ export const BreakTimerGraph = GObject.registerClass(
             this._dailyIdleResetSeconds = Math.max(0, Math.round(
                 toNumber(options.dailyResetHours, DEFAULT_DAILY_IDLE_RESET_HOURS) * 3600
             ));
+            this._pauseMinutes = normalizePauseMinutes(options.pauseMinutes);
+            this._dayEnd = normalizeDayEnd(options);
             this._messageAnchor = normalizeAnchor(options.messageAnchor);
             this._showTooltip = options.showTooltip !== false;
             this._template = typeof options.template === 'string'
@@ -124,6 +130,12 @@ export const BreakTimerGraph = GObject.registerClass(
             this._inhibited = false;
             this._inhibitPending = false;
             this._inhibitCheckedAt = 0;
+            // The keep-awake the manual pause holds while it lasts.
+            this._pauseInhibitor = new SessionInhibitor({
+                appId: PAUSE_APP_ID,
+                label: 'break-timer',
+                onChanged: () => this.queue_repaint(),
+            });
             this._persistedAt = nowSeconds();
             this._bootId = null;
 
@@ -167,6 +179,38 @@ export const BreakTimerGraph = GObject.registerClass(
             this._restore();
         }
 
+        // The epoch second of the "stop working" time for the working day that
+        // is currently running. Anchored to the day work BEGAN on, not to today:
+        // past midnight the deadline that matters is still the one of the day
+        // one sat down on, which is by then in the past — as it should be.
+        _dayEndAt() {
+            if (!this._dayEnd.enabled)
+                return 0;
+            const anchor = this._state.dayStartedAt > 0
+                ? this._state.dayStartedAt
+                : nowSeconds();
+            try {
+                const base = GLib.DateTime.new_from_unix_local(anchor);
+                const target = GLib.DateTime.new_local(
+                    base.get_year(),
+                    base.get_month(),
+                    base.get_day_of_month(),
+                    Math.floor(this._dayEnd.minutes / 60),
+                    this._dayEnd.minutes % 60,
+                    0
+                );
+                return target ? target.to_unix() : 0;
+            } catch (error) {
+                logError(error, 'break-timer: could not work out the end of the day');
+                return 0;
+            }
+        }
+
+        // Is the working day over, by the clock rather than by the counter?
+        _dayOver() {
+            return isDayOver({dayEndAt: this._dayEndAt(), now: nowSeconds()});
+        }
+
         _readIdleMs() {
             if (!this._idleCapable)
                 return 0;
@@ -187,8 +231,14 @@ export const BreakTimerGraph = GObject.registerClass(
                 inhibited: this._inhibited,
                 now: nowSeconds(),
                 dailyIdleResetSeconds: this._dailyIdleResetSeconds,
+                dayEndAt: this._dayEndAt(),
             };
             this._state = advance(this._state, this._timers, input);
+            // The pause ran out inside advance(): hand the screen back with it,
+            // or the keep-awake would outlive the pause that asked for it.
+            if (this._pauseInhibitor.held &&
+                pauseRemainingSeconds(this._state, input.now) === 0)
+                this._releasePauseInhibitor();
             this._silent = isSilent(this._state, input);
             this._syncReminder();
             this._persistPeriodically();
@@ -255,42 +305,21 @@ export const BreakTimerGraph = GObject.registerClass(
 
         // Asynchronous IsInhibited(), at most once every INHIBIT_REFRESH_SECONDS:
         // the answer decides whether the timers may speak at all, so it is kept
-        // fresh on every tick rather than only while a reminder is up.
+        // fresh on every tick rather than only while a reminder is up. Our own
+        // pause inhibitor counts as an inhibitor too, which is exactly right:
+        // while it is held the reminders must stay silent.
         _refreshInhibited() {
             const now = nowSeconds();
             if (this._inhibitPending || now - this._inhibitCheckedAt < INHIBIT_REFRESH_SECONDS)
                 return;
             this._inhibitCheckedAt = now;
             this._inhibitPending = true;
-            try {
-                Gio.DBus.session.call(
-                    SESSION_BUS_NAME,
-                    SESSION_OBJECT_PATH,
-                    SESSION_IFACE_NAME,
-                    'IsInhibited',
-                    new GLib.Variant('(u)', [FLAG_INHIBIT_IDLE]),
-                    new GLib.VariantType('(b)'),
-                    Gio.DBusCallFlags.NONE,
-                    -1,
-                    this._cancellable,
-                    (connection, result) => {
-                        this._inhibitPending = false;
-                        if (this._destroyed)
-                            return;
-                        try {
-                            const [inhibited] = connection.call_finish(result).deep_unpack();
-                            this._inhibited = inhibited;
-                        } catch (error) {
-                            // No session manager, or the call was cancelled:
-                            // assume nothing is inhibiting.
-                            this._inhibited = false;
-                        }
-                    }
-                );
-            } catch (error) {
+            queryInhibited(INHIBIT_IDLE, this._cancellable).then((inhibited) => {
                 this._inhibitPending = false;
-                this._inhibited = false;
-            }
+                if (this._destroyed)
+                    return;
+                this._inhibited = inhibited;
+            });
         }
 
         // --- Context menu ---------------------------------------------------
@@ -351,11 +380,11 @@ export const BreakTimerGraph = GObject.registerClass(
                 );
                 return;
             }
-            for (const choice of PAUSE_CHOICES) {
+            for (const minutes of this._pauseMinutes) {
                 this._addMenuItem(
                     menu,
-                    choice.label,
-                    () => this._pause(choice.seconds)
+                    `Pause for ${formatClock(minutes * 60)}`,
+                    () => this._pause(minutes * 60)
                 );
             }
             // Not an action, an explanation: caffeine (or any other inhibitor)
@@ -378,14 +407,33 @@ export const BreakTimerGraph = GObject.registerClass(
         _pause(seconds) {
             this._state = pauseReminders(this._state, seconds, nowSeconds());
             this._silent = true;
+            // Pausing the reminders is also asking for the screen to stay: the
+            // meeting the pause covers is exactly the moment a lock screen is
+            // unwelcome. Released again by _resume, by the pause running out
+            // (see the tick) and by destroy().
+            this._pauseInhibitor.inhibit(
+                PAUSE_REASON,
+                INHIBIT_IDLE | INHIBIT_SUSPEND
+            );
             this._syncReminder();
             this.queue_repaint();
         }
 
         _resume() {
             this._state = resumeReminders(this._state);
-            this._silent = this._inhibited;
+            this._releasePauseInhibitor();
             this.queue_repaint();
+        }
+
+        // Give the screen back and stop claiming the session is inhibited: the
+        // polled IsInhibited answer is up to INHIBIT_REFRESH_SECONDS old and,
+        // until it is refreshed, still reports our own just-released inhibitor —
+        // which would keep the timers silent after the user resumed them.
+        _releasePauseInhibitor() {
+            this._pauseInhibitor.release();
+            this._inhibited = false;
+            this._inhibitCheckedAt = 0;
+            this._silent = false;
         }
 
         // --- Persistence ----------------------------------------------------
@@ -431,9 +479,29 @@ export const BreakTimerGraph = GObject.registerClass(
 
         // --- Tooltip --------------------------------------------------------
 
+        // Overdue by either of the daily limit's two thresholds: the work done,
+        // or the time of day.
         _isOverdue(timer) {
             const limit = limitSeconds(timer);
-            return limit > 0 && (this._state.elapsed[timer.name] ?? 0) >= limit;
+            if (limit > 0 && (this._state.elapsed[timer.name] ?? 0) >= limit)
+                return true;
+            return timer.name === 'daily' && this._dayOver();
+        }
+
+        // How full a timer's bar is. The daily bar answers to two thresholds and
+        // shows the one that is further along — whichever will be reached first
+        // is the one worth watching.
+        _fractionFor(timer) {
+            const limit = limitSeconds(timer);
+            const elapsed = this._state.elapsed[timer.name] ?? 0;
+            const byWork = limit > 0 ? Math.min(1, elapsed / limit) : 0;
+            if (timer.name !== 'daily')
+                return byWork;
+            const byClock = dayEndFraction(this._state, {
+                dayEndAt: this._dayEndAt(),
+                now: nowSeconds(),
+            });
+            return Math.max(byWork, byClock);
         }
 
         // Build the coloured Pango-markup fragment for one timer's tooltip token;
@@ -450,10 +518,38 @@ export const BreakTimerGraph = GObject.registerClass(
             return `<span foreground="${color}">${text}${suffix}</span>`;
         }
 
+        // The end-of-day token: how much of the working day is left, and which
+        // of the daily limit's two thresholds will be reached first. Empty when
+        // the limit is switched off, so its template line collapses.
+        _dayEndFragment() {
+            const dayEndAt = this._dayEndAt();
+            if (!dayEndAt)
+                return '';
+            const daily = this._timers.find(timer => timer.name === 'daily');
+            const at = formatClock(this._dayEnd.minutes * 60);
+            if (this._dayOver()) {
+                const color = daily?.overdueColor ?? '#f03333';
+                return `<span foreground="${color}">day over (${at}) — stop</span>`;
+            }
+            const now = nowSeconds();
+            const left = dayEndRemainingSeconds({dayEndAt, now});
+            // "first" is the honest word for whichever threshold the bar is
+            // drawing: the one whose share is further along.
+            const byClock = dayEndFraction(this._state, {dayEndAt, now});
+            const byWork = daily && limitSeconds(daily) > 0
+                ? Math.min(1, (this._state.elapsed.daily ?? 0) / limitSeconds(daily))
+                : 0;
+            const suffix = byClock >= byWork ? ' — first' : '';
+            const color = daily?.color ?? '#ffb82e';
+            return `<span foreground="${color}">until ${at}: `
+                + `${formatDuration(left)} left${suffix}</span>`;
+        }
+
         _tooltipFragments() {
             const fragments = {};
             for (const timer of this._timers)
                 fragments[timer.name] = this._timerFragment(timer);
+            fragments.dayend = this._dayEndFragment();
             return fragments;
         }
 
@@ -462,8 +558,12 @@ export const BreakTimerGraph = GObject.registerClass(
         // that looks like a running one is a trap.
         _statusFragment() {
             const remaining = pauseRemainingSeconds(this._state, nowSeconds());
-            if (remaining > 0)
-                return `<i>Paused — ${formatDuration(remaining)} left</i>`;
+            if (remaining > 0) {
+                const awake = this._pauseInhibitor.held
+                    ? ', screen kept awake'
+                    : '';
+                return `<i>Paused — ${formatDuration(remaining)} left${awake}</i>`;
+            }
             if (this._inhibited)
                 return '<i>Silent — the screen is kept awake</i>';
             return '';
@@ -472,7 +572,13 @@ export const BreakTimerGraph = GObject.registerClass(
         _tooltipMarkup() {
             const body = renderTemplate(this._template, this._tooltipFragments());
             const status = this._statusFragment();
-            return status ? `${status}\n${body}` : body;
+            const markup = status ? `${status}\n${body}` : body;
+            // A token that renders empty (a disabled timer, the end-of-day limit
+            // switched off) would otherwise leave its blank line behind.
+            return markup
+                .split('\n')
+                .filter(line => line.trim().length > 0)
+                .join('\n');
         }
 
         _onHoverChanged() {
@@ -520,6 +626,16 @@ export const BreakTimerGraph = GObject.registerClass(
             context.save();
             this._applyRotation(context, sw, sh);
 
+            // Paused: one glance must say "not counting, and the screen is
+            // staying on" — a cup and how much of the pause is left, instead of
+            // three bars whose numbers nobody is watching right now.
+            if (pauseRemainingSeconds(this._state, nowSeconds()) > 0) {
+                this._drawPaused(context, width, height, fg);
+                context.restore();
+                context.$dispose();
+                return;
+            }
+
             const enabled = this._timers.filter(timer => timer.enabled);
             if (enabled.length === 0) {
                 context.restore();
@@ -538,11 +654,8 @@ export const BreakTimerGraph = GObject.registerClass(
                 context.rectangle(0, y, width, sliceHeight);
                 context.fill();
 
-                const elapsed = this._state.elapsed[timer.name] ?? 0;
-                const limit = limitSeconds(timer);
                 const overdue = this._isOverdue(timer);
-                const fraction = limit > 0 ? Math.min(1, elapsed / limit) : 0;
-                const barWidth = overdue ? width : width * fraction;
+                const barWidth = overdue ? width : width * this._fractionFor(timer);
                 if (barWidth <= 0)
                     return;
                 const [r, g, b] = hexToRgb(overdue ? timer.overdueColor : timer.color);
@@ -556,6 +669,66 @@ export const BreakTimerGraph = GObject.registerClass(
 
             context.restore();
             context.$dispose();
+        }
+
+        // The paused face: a coffee cup filling the left square of the widget,
+        // and one bar for the rest of it showing how much of the pause is left.
+        // Drawn rather than themed, so it needs no icon from the icon theme and
+        // scales with whatever size the panel gives the widget.
+        _drawPaused(context, width, height, fg) {
+            const cup = Math.min(height, width);
+            this._drawCup(context, cup, fg);
+
+            const barX = cup + BAR_GAP * 2;
+            const barWidth = Math.max(0, width - barX);
+            if (barWidth <= 0)
+                return;
+            const barHeight = Math.max(2, Math.round(height / 3));
+            const barY = (height - barHeight) / 2;
+
+            context.setSourceRGBA(fg[0], fg[1], fg[2], 0.15);
+            context.rectangle(barX, barY, barWidth, barHeight);
+            context.fill();
+
+            const left = pauseFraction(this._state, nowSeconds());
+            if (left <= 0)
+                return;
+            context.setSourceRGBA(fg[0], fg[1], fg[2], SILENT_BAR_ALPHA + 0.25);
+            context.rectangle(barX, barY, barWidth * left, barHeight);
+            context.fill();
+        }
+
+        // A cup in `size` x `size` pixels: body, handle, and steam above it. Kept
+        // to plain strokes and fills so it stays legible at the 16 px the panel
+        // usually gives it.
+        _drawCup(context, size, fg) {
+            const unit = size / 16;
+            const alpha = SILENT_BAR_ALPHA + 0.45;
+            context.setSourceRGBA(fg[0], fg[1], fg[2], alpha);
+            context.setLineWidth(Math.max(1, unit));
+
+            // Body: a slightly tapered cup standing on the bottom edge.
+            const left = 2 * unit;
+            const right = 11 * unit;
+            const top = 7 * unit;
+            const bottom = 14 * unit;
+            context.moveTo(left, top);
+            context.lineTo(right, top);
+            context.lineTo(right - unit, bottom);
+            context.lineTo(left + unit, bottom);
+            context.closePath();
+            context.fill();
+
+            // Handle on the right of the body.
+            context.arc(right, (top + bottom) / 2, 2.5 * unit, -Math.PI / 2, Math.PI / 2);
+            context.stroke();
+
+            // Two curls of steam, so the cup reads as a hot drink and not a bin.
+            for (const x of [4.5 * unit, 8 * unit]) {
+                context.moveTo(x, 5.5 * unit);
+                context.curveTo(x + unit, 4 * unit, x - unit, 3 * unit, x, 1.5 * unit);
+                context.stroke();
+            }
         }
 
         // Called by the panel host when its orientation/rotation changes. When
@@ -583,6 +756,12 @@ export const BreakTimerGraph = GObject.registerClass(
         destroy() {
             this._destroyed = true;
             this._persist();
+            // Before the cancellable is cancelled: the inhibitor releases its
+            // cookie through a fresh call, and GDBus short-circuits a call made
+            // with an already-cancelled cancellable — which would leave the
+            // screen awake with nobody left to release it. The inhibitor has its
+            // own cancellable for a reply still in flight.
+            this._pauseInhibitor.destroy();
             this._cancellable.cancel();
             if (this._timeoutId) {
                 GLib.Source.remove(this._timeoutId);

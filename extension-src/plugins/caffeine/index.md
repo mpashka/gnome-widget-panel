@@ -41,9 +41,14 @@ done.
   remaining time ticks only while the pointer is on the button).
 
 The same inhibitor also silences the [break-timer](../break-timer/index.md)
-widget's reminders, which read `IsInhibited(4)`. That is the whole link between
-the two widgets — one raises a session-wide signal, the other reads it; neither
-imports the other, and either works alone.
+widget's reminders, which read `IsInhibited(4)`; and that widget holds an
+inhibitor of its own while its reminders are paused, so a pause for a meeting
+keeps the screen awake too. The link between the two widgets is only that
+session-wide signal — one raises it, the other reads it; neither imports the
+other, and either works alone. What they *do* share is the plumbing:
+[`../../sessionInhibitor.ts`](../../sessionInhibitor.ts) (`@tag:session-inhibitor`)
+owns the Inhibit/Uninhibit/IsInhibited calls and the destroy-race handling for
+both.
 
 While **active** the button always shows the fixed "awake" icon
 (`display-brightness-symbolic`), regardless of the configured `icon`, so the
@@ -53,7 +58,8 @@ states. The button also gets the `checked` style pseudo-class while active.
 ## D-Bus mechanism
 
 Uses `org.gnome.SessionManager`'s inhibitor API directly (no portal, since
-this needs to work for the shell panel itself, not a sandboxed app):
+this needs to work for the shell panel itself, not a sandboxed app), through the
+shared [`sessionInhibitor.ts`](../../sessionInhibitor.ts):
 
 - On activation: async `Inhibit(app_id, toplevel_xid, reason, flags)` on
   `org.gnome.SessionManager` at `/org/gnome/SessionManager`, with
@@ -65,7 +71,9 @@ this needs to work for the shell panel itself, not a sandboxed app):
   actually received, and reverts to inactive if the call fails.
 - On deactivation (including `destroy()`): async `Uninhibit(cookie)`, then the
   cookie is cleared. The call from `destroy()` is fire-and-forget (guarded, no
-  visual update since the actor is going away).
+  visual update since the actor is going away). A cookie whose reply lands after
+  the widget is gone is released by the shared module itself — otherwise the
+  session stays awake with nobody left to stop it.
 - All D-Bus calls and the click handler are wrapped in try/catch so a failure
   (e.g. no session manager, call error) can never throw out of `create()` or
   disable the panel.
@@ -73,9 +81,12 @@ this needs to work for the shell panel itself, not a sandboxed app):
 ## Source files
 
 - `index.ts` — plugin entrypoint; `CaffeineButton` (`St.Button` subclass)
-  owning the Inhibit/Uninhibit D-Bus calls, the timed keep-awake (deadline +
-  expiry timeout), the right-click menu, the hover tooltip and the
-  active/inactive visual state.
+  owning the timed keep-awake (deadline + expiry timeout), the right-click menu,
+  the hover tooltip and the active/inactive visual state. The inhibitor itself
+  is a `SessionInhibitor` from
+  [`../../sessionInhibitor.ts`](../../sessionInhibitor.ts); the widget only
+  decides when it is held and reacts to `onChanged`, so a refused Inhibit can
+  never leave the button claiming a keep-awake it does not have.
 - `prefs.ts` — per-widget settings UI: an icon-picker row for `icon`
   (inactive state), an `Adw.EntryRow` for `text`, and an `Adw.SwitchRow` for
   `inhibitSuspend`.

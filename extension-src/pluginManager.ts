@@ -6,6 +6,7 @@ import * as GnomeAction from './plugins/gnome-action/index.js';
 import * as AiAgentStatus from './plugins/ai-agent-status/index.js';
 import * as AiAgentUsage from './plugins/ai-agent-usage/index.js';
 import * as AppNotifications from './plugins/app-notifications/index.js';
+import * as AppWindows from './plugins/app-windows/index.js';
 import * as BreakTimer from './plugins/break-timer/index.js';
 import * as Caffeine from './plugins/caffeine/index.js';
 import * as Clock from './plugins/clock/index.js';
@@ -34,6 +35,7 @@ const REGISTRY = new Map([
     ['launch', Launch],
     ['caffeine', Caffeine],
     ['break-timer', BreakTimer],
+    ['app-windows', AppWindows],
 ]);
 
 // Build the enabled plugin actors in config order. Returns an ARRAY of

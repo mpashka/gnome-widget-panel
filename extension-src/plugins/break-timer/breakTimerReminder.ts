@@ -52,6 +52,10 @@ function messageText(reminder, timer) {
     const title = timerTitle(timer);
     if (reminder.stage === 'prelude')
         return `${title} in ${Math.max(0, Math.ceil(reminder.remaining))} s`;
+    // The daily limit has two thresholds and they mean different things: one
+    // says the work is done, the other says the hour is late.
+    if (reminder.reason === 'day-end')
+        return 'The working day is over — stop for today';
     if (timer.name === 'daily')
         return `${title} reached — call it a day`;
     return `${title} — time to stop`;
