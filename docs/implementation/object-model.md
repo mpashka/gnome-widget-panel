@@ -187,7 +187,7 @@ Owns in-memory provider state and rendering:
   session secret, writes a thin `~/.claude/gnome-widget-panel-claude-hook.js`
   command hook and receives statusLine JSON over HTTP.
 - Codex provider: the widget starts
-  `plugins/ai-agent-usage/helpers/codex-usage-helper.js` as a `gjs -m` child
+  `plugins/ai-agent-usage/helpers/codex-usage-helper.gjs` as a `gjs -m` child
   process and reads stdout JSON Lines asynchronously.
 - In-memory history must remain separate per provider (`codex`, `claude`,
   future providers). Rendering may merge histories into one visible graph, but

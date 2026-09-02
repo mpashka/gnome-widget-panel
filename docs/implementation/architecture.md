@@ -59,7 +59,7 @@ to stdout for Claude's status line. The widget stores Claude token data only in
 memory.
 
 Codex log parsing is isolated from GNOME Shell. The widget starts
-`extension/plugins/ai-agent-usage/helpers/codex-usage-helper.js` as a `gjs -m`
+`extension/plugins/ai-agent-usage/helpers/codex-usage-helper.gjs` as a `gjs -m`
 child process through `Gio.Subprocess`; the helper recursively scans
 `~/.codex/sessions/**/*.jsonl`, extracts the newest `token_count` event, and
 streams normalized JSON Lines to stdout. For UI load, the helper uses

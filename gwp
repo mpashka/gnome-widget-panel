@@ -109,7 +109,7 @@ def build():
     run(tsc, "-p", ROOT / "tsconfig.json")
 
     for path in OUT.rglob("*"):
-        if path.suffix in {".js", ".json", ".md", ".css", ".xml"} and path.is_file():
+        if path.suffix in {".js", ".gjs", ".json", ".md", ".css", ".xml"} and path.is_file():
             text = path.read_text()
             stripped = re.sub(r"[ \t]+$", "", text, flags=re.M)
             if stripped != text:

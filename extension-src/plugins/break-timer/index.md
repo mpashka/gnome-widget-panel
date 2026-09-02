@@ -148,7 +148,12 @@ every 30 s while a reminder is on screen — the same signal the
 
 The message **yields once per showing**: it is reactive, and on `enter-event` it
 eases (150 ms) to the anchor furthest from `global.get_pointer()`, then sets
-`_yielded` and stays. Anchors are the six `MESSAGE_ANCHORS` positions on the
+`_yielded` and stays. The yield is also what **unlocks the warning's buttons**:
+`_messageOffersActions()` is false for the `prelude` stage until `_yielded`, so
+the advance warning is a bare hint until it has moved and grows Postpone/Skip
+when the flight ends (`_syncMessageActions()` in the ease's `onComplete`, after
+which `_placeMessage()` re-anchors the now taller box). The `due` message offers
+them from the start — there the break is already owed. Anchors are the six `MESSAGE_ANCHORS` positions on the
 primary monitor (`normalizeAnchor(options.messageAnchor)`, default `top-right`);
 `_placeMessage()` re-applies the current anchor as the countdown text changes
 width, unless a flight is in progress (`_yielding`) or the user dragged it
@@ -156,6 +161,24 @@ width, unless a flight is in progress (`_yielding`) or the user dragged it
 implicit pointer grab keeps the motion events coming, and no modal is taken,
 because this message must never hold the keyboard. (`Clutter.DragAction` does
 not exist in this Shell.)
+
+Those drag handlers sit on the **ancestor of the Postpone/Skip buttons**, which
+constrains them twice:
+
+- **The press must never be consumed.** In Shell 50 `St.Button` recognises its
+  click with a `ClutterClickGesture`, and any ancestor answering `EVENT_STOP`
+  for the same press cancels that gesture — a drag handler that swallowed the
+  press left both buttons dead to the mouse while every direct
+  `_actions.onSkip()` call still worked. `_onDragPress` and `_onDragRelease`
+  therefore return `EVENT_PROPAGATE`; only a motion during an actual drag is
+  consumed.
+- **A press on the buttons must not start a drag.** Which press that is comes
+  from the pointer coordinates against `_messageActions` (`isInside`), not from
+  `event.get_source()` — that is `null` for events an input device injects, and
+  `contains(null)` throws.
+
+`t-18` covers both with a virtual pointer: a call to `_actions.onSkip()` goes
+nowhere near the gesture and would pass over either bug.
 
 `BreakReminderUi` creates its actors on first use. The message is chrome
 (`Main.layoutManager.addChrome(actor, {trackFullscreen: true})` — Shell 50

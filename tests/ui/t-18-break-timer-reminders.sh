@@ -20,6 +20,10 @@ ui_start '{"schema":1,"plugins":[{"id":"break-timer","enabled":true,
 
 ui_wait_js "plugin('break-timer') !== null" || fail "break-timer did not appear"
 ui_eval "plugin('break-timer')._readIdleMs = () => 0" >/dev/null
+# A headless session has no session manager: the async IsInhibited reply lands
+# at an arbitrary moment and would silence the reminders mid-test.
+ui_eval "plugin('break-timer')._refreshInhibited = () => {};
+    plugin('break-timer')._inhibited = false; 'stubbed'" >/dev/null
 
 # The widget's own tick would race these hand-driven ones.
 TICK='(n => { const g = plugin("break-timer"); for (let i = 0; i < n; i++) g._tick(); })'
@@ -122,11 +126,86 @@ ui_eval "$RESET_STATE" >/dev/null
 ui_eval "$TICK(25)" >/dev/null
 assert_eq "$(ui_eval "$STATE.reminder.stage")" '"prelude"' 'the warning is up again'
 assert_eq "$(ui_eval "$UI._anchor")" '"top-right"' 'the warning starts on its anchor'
+# Before it has stepped aside it is a hint about a break that has not begun:
+# its Postpone/Skip would act on nothing one can see, and the pointer coming
+# for them would move the message away first.
+assert_true "$UI._messageActions.get_n_children() === 0" \
+    'the warning carries no buttons until it has stepped aside'
+
 ui_eval "$UI._onMessageEnter()" >/dev/null
 assert_true "$UI._yielded" 'the pointer makes the warning yield'
 YIELDED_ANCHOR="$(ui_eval "$UI._anchor")"
 ui_eval "$UI._onMessageEnter()" >/dev/null
 assert_eq "$(ui_eval "$UI._anchor")" "$YIELDED_ANCHOR" 'it yields once per showing, so its buttons stay clickable'
+# ... and having moved, it offers them: they are now both meaningful and
+# reachable. The row is built when the flight ends.
+ui_wait_js "$UI._messageActions.get_n_children() > 0" 3 \
+    || fail 'the warning never grew its buttons after stepping aside'
+_ui_log 'ok - the buttons appear once the warning has stepped aside'
+
+# --- and its buttons really do click, with a real pointer -----------------
+# Not a formality: St.Button recognises its click with a ClutterClickGesture,
+# which is cancelled if an ancestor consumes the same press. The message's own
+# drag handler used to do exactly that, so neither Postpone nor Skip worked at
+# all. Only a virtual-pointer press/release goes through that machinery — a
+# direct `_actions.onSkip()` call, as used above, would pass either way.
+#
+# These gestures take real time, and the widget's own once-a-second tick would
+# turn the warning into a break screen half way through one. Freeze it for the
+# section and drive the clock entirely by hand.
+ui_eval "const g = plugin('break-timer');
+    globalThis._realTick = g._tick; g._tick = () => {}; 'frozen'" >/dev/null
+HAND='(n => { const g = plugin("break-timer");
+  for (let i = 0; i < n; i++) globalThis._realTick.call(g); })'
+
+arm_warning() {   # a warning on screen, pinned where it is
+    ui_eval "$RESET_STATE" >/dev/null
+    ui_eval "$HAND(26)" >/dev/null
+    # Pin it as though it had already stepped aside: the pointer arriving would
+    # otherwise make it yield mid-approach, and a warning that has not yielded
+    # carries no buttons to click.
+    ui_eval "$UI._yielded = true; $UI._syncMessageActions(); 'pinned'" >/dev/null
+    ui_wait_js "$UI._messageVisible && $STATE.reminder.stage === 'prelude'" 3 \
+        || fail 'the warning did not come up for the pointer'
+    ui_park_pointer
+}
+
+ui_eval "globalThis._skips = 0; globalThis._postpones = 0;
+    const a = $UI._actions, s = a.onSkip, p = a.onPostpone;
+    a.onSkip = () => { globalThis._skips++; return s && s(); };
+    a.onPostpone = () => { globalThis._postpones++; return p && p(); }; 'wired'" >/dev/null
+
+arm_warning
+ui_click "$UI._messageActions.get_children().find(c => c.label.startsWith('Postpone'))" >/dev/null
+# The gesture emits `clicked` while the release is still being dispatched.
+ui_wait_js "globalThis._postpones === 1" 3 || true
+assert_true "globalThis._postpones === 1" 'Postpone on the warning answers a real click'
+
+arm_warning
+ui_click "$UI._messageActions.get_children().find(c => c.label === 'Skip')" >/dev/null
+ui_wait_js "globalThis._skips === 1" 3 || true
+assert_true "globalThis._skips === 1" 'and so does Skip'
+
+# --- the body still drags, and dragging is not a click --------------------
+ui_eval "globalThis._skips = 0; globalThis._postpones = 0; 'r'" >/dev/null
+arm_warning
+ui_eval "$UI._dragged = false; $UI._dragOffset = null; 'r'" >/dev/null
+ui_drag "$UI._message" 10 8 150 60 >/dev/null
+ui_wait_js "$UI._dragged" 3 || true
+assert_true "$UI._dragged" 'the warning can be dragged out of the way by its body'
+assert_true "globalThis._skips === 0 && globalThis._postpones === 0" \
+    'and a drag fires none of its actions'
+
+# --- the break screen's own buttons click too -----------------------------
+ui_eval "$RESET_STATE; globalThis._skips = 0; 'r'" >/dev/null
+ui_eval "$HAND(31)" >/dev/null
+ui_wait_js "$UI._screenVisible" 3 || fail 'the break screen did not come up'
+ui_park_pointer
+ui_click "$UI._screenActions.get_children().find(c => c.label === 'Skip')" >/dev/null
+ui_wait_js "globalThis._skips === 1" 3 || true
+assert_true "globalThis._skips === 1" 'Skip on the break screen answers a real click'
+
+ui_eval "plugin('break-timer')._tick = globalThis._realTick; 'thawed'" >/dev/null
 
 # --- the context menu builds, with the configured pause lengths -----------
 ui_eval "plugin('break-timer')._openMenu()" >/dev/null

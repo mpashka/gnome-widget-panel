@@ -270,6 +270,24 @@ grep -rn "@tag:<slug>" extension-src docs tests   # one tag
 grep -rhoE "@tag:[a-z0-9/-]+" . | sort -u         # every tag in the repo
 ```
 
+## Git: branches and committing
+
+Two rules, both about not leaving work in limbo:
+
+- **`main` holds released versions only. Work happens on a branch.** Never
+  commit to `main` and never push to it outside a release. Day-to-day work goes
+  to **`dev`**; a large or risky job gets its own `task/<name>` branch cut from
+  `dev` and merged back into it. At release time `dev` is **squash-merged** into
+  `main`, so `main` carries one commit per published version and matches what
+  users installed from extensions.gnome.org. Full procedure:
+  [`docs/process/release.md`](docs/process/release.md).
+- **Commit a task when it is finished** — code, documentation and tests in the
+  same commit, with the suite green — rather than leaving it in the working
+  tree. Unfinished work of two sessions in one tree cannot be committed
+  separately: the hunks interleave, and splitting them by hand costs more than
+  the work did. If the user has not asked for a commit, still finish the task in
+  a committable state and say it is ready.
+
 ## Process
 
 How work is filed, fixed and reviewed. Read the relevant page before the

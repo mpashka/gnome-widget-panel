@@ -119,7 +119,7 @@ their helper scripts live in [`../../.github/scripts`](../../.github/scripts).
 
 ### CI (`ci.yml`)
 
-Runs on every push to `main` and every pull request: `npm ci`, `npm run
+Runs on **every push, on every branch**, and on every pull request: `npm ci`, `npm run
 typecheck`, then `npm test` (which builds `extension-src` → `extension` and runs
 the gi-free unit tests). UI tests (`npm run test:ui`) need a live GNOME Shell
 host and are not run in CI.
@@ -181,18 +181,50 @@ later. The step therefore runs with `continue-on-error: true`. If it fails,
 upload `dist/<uuid>.shell-extension.zip` by hand at
 <https://extensions.gnome.org/upload/>.
 
+## Branches: `main` is the published versions
+
+`main` carries **one commit per released version** and nothing else, so what it
+holds is what users installed from extensions.gnome.org — the tree a reviewer
+compares the uploaded zip against. Every change is therefore made somewhere
+else:
+
+| Branch | What lives there |
+| --- | --- |
+| `main` | released versions only: one squashed commit per version, tagged `vA.B.C` |
+| `dev` | the working branch — day-to-day commits land here |
+| `task/<name>` | one bigger or riskier job, cut from `dev` and merged back into it |
+
+Rules that follow from that: never commit or push to `main` outside a release,
+and never rewrite `dev` history that is already pushed. CI runs on every branch,
+so a work branch is tested like any other.
+
 ## Cutting a release
 
 1. (Optional) create/fill a **milestone** for the release and assign its issues;
    name it `vA.B.C` for auto-matching, or note its title for the `milestone`
    input.
-2. Open the repository **Actions** tab → **Release** → **Run workflow**.
-3. Pick the `bump` part (`patch` / `minor` / `major` / `none`), optionally the
+2. **Publish the work onto `main` as one commit**, from a clean `dev`:
+
+   ```bash
+   git checkout main
+   git merge --squash dev
+   git commit -m "release: prepare vA.B.C"   # one commit per published version
+   git push origin main
+   ```
+
+   A squash rather than a merge: a real merge would drag every development
+   commit into `main` and it would stop being the list of published versions.
+   `dev` keeps the full history and is **not** deleted or reset afterwards — it
+   simply carries on; the next squash takes whatever is new since the last one.
+3. Open the repository **Actions** tab → **Release** → **Run workflow**, with
+   the branch selector on **`main`** (the workflow commits the version bump and
+   the tag to the branch it was dispatched from).
+4. Pick the `bump` part (`patch` / `minor` / `major` / `none`), optionally the
    `milestone` title, and run.
-4. The workflow bumps, tests, builds notes from the milestone, tags, publishes
+5. The workflow bumps, tests, builds notes from the milestone, tags, publishes
    the GitHub Release, closes the milestone and submits to EGO. Watch the run;
    the EGO step is advisory.
-5. Afterwards you can freely **edit the GitHub Release body** to refine the
+6. Afterwards you can freely **edit the GitHub Release body** to refine the
    notes.
 
 To build a zip locally without releasing: `npm run pack` →

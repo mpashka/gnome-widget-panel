@@ -12,7 +12,8 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - [`lib.sh`](lib.sh) — harness library: session bootstrap (`ui_start`), shell
   JS evaluation (`ui_eval`), polling waits, GSettings helpers, virtual-pointer
   clicks (`ui_click` primary-button shorthand, `ui_click_button` for another
-  button and/or a press-and-hold duration), screenshots, assertions.
+  button and/or a press-and-hold duration, `ui_drag` for a press-move-release
+  drag), screenshots, assertions.
 - `t-01-panel-loads.sh` — panel loads, widgets in config order, no JS errors.
 - `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate;
   the standing strip is as thick as the lying one is tall (per-orientation sizing
@@ -61,7 +62,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   inhibitor or a manual pause silencing both stages while the counters run on,
   the pause also holding a session inhibitor (and handing the screen back on
   resume and on its own expiry, without waiting for the stale IsInhibited poll),
-  the warning yielding exactly once when the pointer reaches it, the right-click
+  the warning yielding exactly once when the pointer reaches it (and only then
+  growing its Postpone/Skip buttons — before the flight it is a bare hint),
+  its Postpone and Skip answering a **real pointer click** (an ancestor consuming the press
+  cancels St.Button's ClutterClickGesture, so a direct `onSkip()` call proves
+  nothing) while a drag of its body moves it and fires neither, the right-click
   menu building with the configured pause lengths, and the end of the working day
   (nothing before the deadline, the daily reminder and a full bar after it, and
   silence with the limit switched off)

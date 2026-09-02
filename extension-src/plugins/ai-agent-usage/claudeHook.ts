@@ -179,19 +179,36 @@ function withIoLock(fn) {
     return run;
 }
 
+// Write via our own temp file so the mode is already on the inode when it
+// becomes `path`. Replacing `path` directly creates a fresh file at the umask
+// default and only chmods it afterwards; a process killed in that window (a dev
+// shell restart, a closed prefs window) leaves the hook world-readable and
+// **not executable**, and Claude Code then fails every hook invocation with
+// "Permission denied" until someone chmods it by hand.
 async function atomicWrite(path, contents, mode) {
-    const file = Gio.File.new_for_path(path);
-    await file.replace_contents_bytes_async(
-        GLib.Bytes.new(new TextEncoder().encode(contents)),
-        null,
-        false,
-        Gio.FileCreateFlags.REPLACE_DESTINATION,
-        null
-    );
+    const temp = Gio.File.new_for_path(`${path}.${GLib.uuid_string_random()}.tmp`);
     try {
-        GLib.chmod(path, mode);
+        await temp.replace_contents_bytes_async(
+            GLib.Bytes.new(new TextEncoder().encode(contents)),
+            null,
+            false,
+            Gio.FileCreateFlags.REPLACE_DESTINATION,
+            null
+        );
+        GLib.chmod(temp.get_path(), mode);
+        temp.move(
+            Gio.File.new_for_path(path),
+            Gio.FileCopyFlags.OVERWRITE,
+            null,
+            null
+        );
     } catch (error) {
-        logError(error, 'GNOME Widget Panel AI usage chmod failed');
+        try {
+            temp.delete(null);
+        } catch (_e) {
+            // Nothing to clean up: the temp was never created.
+        }
+        throw error;
     }
 }
 
@@ -277,7 +294,10 @@ export async function installEventHooks() {
 export async function eventHooksStatus() {
     if (!isClaudeInstalled())
         return 'not-installed';
-    if (!GLib.file_test(eventHookPath(), GLib.FileTest.EXISTS))
+    // IS_EXECUTABLE, not EXISTS: Claude Code runs the hook file directly, so a
+    // present-but-not-executable script is a broken install, and reporting it
+    // as 'ok' would hide the one action that repairs it.
+    if (!GLib.file_test(eventHookPath(), GLib.FileTest.IS_EXECUTABLE))
         return 'unconfigured';
     const path = settingsPath();
     if (!GLib.file_test(path, GLib.FileTest.EXISTS))
@@ -348,7 +368,8 @@ export async function deregisterPort(port) {
 export async function configStatus() {
     if (!isClaudeInstalled())
         return 'not-installed';
-    if (!GLib.file_test(hookPath(), GLib.FileTest.EXISTS))
+    // IS_EXECUTABLE — see eventHooksStatus().
+    if (!GLib.file_test(hookPath(), GLib.FileTest.IS_EXECUTABLE))
         return 'unconfigured';
     const path = settingsPath();
     if (!GLib.file_test(path, GLib.FileTest.EXISTS))

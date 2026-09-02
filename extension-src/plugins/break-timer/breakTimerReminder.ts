@@ -5,7 +5,9 @@
 // breakTimerState.ts:
 //
 //   1. a passive message with a live countdown, added to the chrome so it never
-//      takes keyboard focus — you can finish the sentence you are typing;
+//      takes keyboard focus — you can finish the sentence you are typing. The
+//      advance warning shows no buttons until it has stepped aside from the
+//      pointer once (see _messageOffersActions);
 //   2. a dimmed modal break screen covering every monitor, which takes input
 //      (so typing cannot leak into applications) but leaves window focus alone:
 //      pushModal/popModal restores whatever was focused before it appeared.
@@ -40,6 +42,14 @@ function anchorPosition(anchor, monitor, width, height) {
         ? monitor.y + MESSAGE_MARGIN
         : monitor.y + monitor.height - height - MESSAGE_MARGIN;
     return [Math.round(Math.max(monitor.x, x)), Math.round(Math.max(monitor.y, y))];
+}
+
+
+// Whether a stage-coordinate point falls on an actor.
+function isInside(actor, x, y) {
+    const [left, top] = actor.get_transformed_position();
+    const [width, height] = actor.get_transformed_size();
+    return x >= left && x < left + width && y >= top && y < top + height;
 }
 
 
@@ -83,6 +93,10 @@ export class BreakReminderUi {
         this._messageLabel = null;
         this._messageActions = null;
         this._messageVisible = false;
+        // The reminder the message is currently showing, so its action row can
+        // be rebuilt after a yield without waiting for the next tick.
+        this._messageStage = '';
+        this._messageTimer = null;
         this._screen = null;
         this._screenBox = null;
         this._screenTitle = null;
@@ -158,14 +172,20 @@ export class BreakReminderUi {
 
     _showMessage(reminder, timer) {
         this._ensureMessage();
+        const firstShowing = !this._messageVisible;
+        // A new showing starts unyielded: it may step aside once again — and
+        // must do so before its actions are built, or a warning following a
+        // yielded one would flash the buttons for a tick.
+        if (firstShowing)
+            this._yielded = false;
+        this._messageStage = reminder.stage;
+        this._messageTimer = timer;
         this._messageLabel.text = messageText(reminder, timer);
-        this._fillActions(this._messageActions, `message:${timer.name}:${reminder.stage}`, timer);
+        this._syncMessageActions();
         this._placeMessage();
-        if (this._messageVisible)
+        if (!firstShowing)
             return;
         this._messageVisible = true;
-        // A new showing starts unyielded: it may step aside once again.
-        this._yielded = false;
         this._message.remove_all_transitions();
         this._message.show();
         this._message.ease({
@@ -173,6 +193,29 @@ export class BreakReminderUi {
             duration: FADE_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
+    }
+
+    // The advance warning carries no buttons until it has stepped aside once.
+    // Before that it is a hint about a break that has not begun, and its
+    // Postpone/Skip act on nothing one can see yet; they are also unreachable
+    // in practice, since the pointer that comes for them makes the message move
+    // away first. Once it HAS moved they are both meaningful and clickable, so
+    // that is when they appear. The owed-break message ('due') offers them from
+    // the start: there the break is already owed.
+    _messageOffersActions() {
+        return this._messageStage !== 'prelude' || this._yielded;
+    }
+
+    _syncMessageActions() {
+        if (!this._messageTimer)
+            return;
+        this._fillActions(
+            this._messageActions,
+            `message:${this._messageTimer.name}:${this._messageStage}:` +
+                `${this._messageOffersActions()}`,
+            this._messageTimer,
+            this._messageOffersActions()
+        );
     }
 
     // Keep the message on its anchor as the countdown text changes width. A
@@ -202,13 +245,22 @@ export class BreakReminderUi {
 
     // --- Dragging -----------------------------------------------------------
 
+    // Only the body starts a drag, and the press is never consumed. St.Button
+    // recognises its click with a ClutterClickGesture, and a gesture is
+    // cancelled as soon as an ancestor answers EVENT_STOP for the same press —
+    // an ancestor that swallowed it left Postpone and Skip unclickable
+    // altogether, whether or not the message had yielded first.
+    //
+    // Which press belongs to a button is decided by where it landed rather than
+    // by event.get_source(), which is null for events an input device injects.
     _onDragPress(event) {
-        if (event.get_button() !== Clutter.BUTTON_PRIMARY)
-            return Clutter.EVENT_PROPAGATE;
         const [pointerX, pointerY] = event.get_coords();
+        if (event.get_button() !== Clutter.BUTTON_PRIMARY
+            || isInside(this._messageActions, pointerX, pointerY))
+            return Clutter.EVENT_PROPAGATE;
         const [x, y] = this._message.get_position();
         this._dragOffset = {x: pointerX - x, y: pointerY - y};
-        return Clutter.EVENT_STOP;
+        return Clutter.EVENT_PROPAGATE;
     }
 
     _onDragMotion(event) {
@@ -224,7 +276,11 @@ export class BreakReminderUi {
         return Clutter.EVENT_STOP;
     }
 
+    // Same rule as the press: a release the drag did not ask for stays the
+    // button's business.
     _onDragRelease() {
+        if (!this._dragOffset)
+            return Clutter.EVENT_PROPAGATE;
         this._dragOffset = null;
         return Clutter.EVENT_STOP;
     }
@@ -254,6 +310,11 @@ export class BreakReminderUi {
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
                 this._yielding = false;
+                // It has moved: the warning's actions appear now, and only now
+                // — after the flight, so the box does not grow mid-air and land
+                // off its anchor.
+                this._syncMessageActions();
+                this._placeMessage();
             },
         });
     }
@@ -401,13 +462,18 @@ export class BreakReminderUi {
 
     // --- Shared -------------------------------------------------------------
 
-    // Rebuild the Postpone/Skip row only when the timer or stage changes, so a
+    // Rebuild the Postpone/Skip row only when the timer, the stage or whether
+    // actions are offered at all changes (all of it carried by `key`), so a
     // once-a-second text update never rebuilds actors under the pointer.
-    _fillActions(container, key, timer) {
+    _fillActions(container, key, timer, offered = true) {
         if (this._actionsKey === key)
             return;
         this._actionsKey = key;
         container.destroy_all_children();
+        if (!offered) {
+            container.visible = false;
+            return;
+        }
         if (timer.allowPostpone) {
             container.add_child(this._actionButton(
                 `Postpone ${timer.postponeMinutes} min`,

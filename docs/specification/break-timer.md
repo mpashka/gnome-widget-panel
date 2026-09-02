@@ -152,8 +152,12 @@ countdown** appears: `Rest break in 24 s`, ticking down every second.
 - **Going idle during the warning cancels it.** If you take the hint and stop,
   and the pause reaches the break length, the break has been taken: the message
   disappears, the timer resets and the break screen never comes.
-- It carries the same **Postpone** / **Skip** buttons as the break screen, when
-  those are allowed.
+- **Its buttons appear only after it has stepped aside.** While the warning is
+  still on its opening anchor it is a plain hint — no buttons at all. Once it
+  has flown out of the pointer's way it carries the same **Postpone** / **Skip**
+  buttons as the break screen, when those are allowed. Before the flight they
+  would act on a break that has not begun, and they could not be pressed anyway:
+  the pointer coming for them is exactly what makes the message move.
 - **In `message only` mode the message is all there is.** It stays for half a
   minute saying the break is due, then goes quiet for five minutes of work
   before saying so again. Nothing dims and nothing is enforced.

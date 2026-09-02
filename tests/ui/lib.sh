@@ -18,13 +18,15 @@
 #   ui_set KEY VAL        gsettings set on the panel schema (test profile)
 #   ui_get KEY            gsettings get on the panel schema
 #   ui_click 'ACTOR_JS'   click the actor's center with a virtual pointer
+#   ui_drag 'ACTOR_JS' OX OY DX DY  press inside the actor and drag by (dx, dy)
+#   ui_park_pointer       move the pointer away, letting the last gesture settle
 #   ui_screenshot FILE    write a PNG of the whole stage
 #   ui_config_write JSON  overwrite the `widgets` GSettings key (live-reload)
 #   assert_eq GOT WANT LABEL / assert_contains HAY NEEDLE LABEL /
 #   assert_true 'EXPR' LABEL / fail MSG
 #
-# Nothing here touches the user's real session, config or dconf, except one
-# throwaway dconf database file (~/.config/dconf/gwpuitest).
+# Nothing here touches the user's real session, config, state or dconf, except
+# one throwaway dconf database file (~/.config/dconf/gwpuitest).
 set -euo pipefail
 
 GWP_UI_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -80,6 +82,14 @@ ui_start() {
     GWP_UI_TMP="$(mktemp -d /tmp/gwp-ui.XXXXXX)"
     export GWP_UI_TMP
     trap _ui_teardown EXIT INT TERM
+
+    # Isolated state dir. The break-timer widget persists its counters to
+    # $XDG_STATE_HOME/gnome-widget-panel/break-timer.json and restores them at
+    # start, so without this the tests read and OVERWRITE the counters of the
+    # real session — and inherit whatever the previous run left, which made
+    # t-18's opening assertions depend on run history.
+    export XDG_STATE_HOME="$GWP_UI_TMP/state"
+    mkdir -p "$XDG_STATE_HOME"
 
     # Isolated extensions dir: panel build + test driver.
     export XDG_DATA_HOME="$GWP_UI_TMP/data"
@@ -253,6 +263,60 @@ ui_click_button() {
             await new Promise(res => setTimeout(res, $hold_ms));
             d.notify_button(t(), $button, Clutter.ButtonState.RELEASED);
             return {x: cx, y: cy};
+        })()
+    "
+}
+
+# Move the pointer into the top-left corner and let the main loop settle.
+# Call this between two injected gestures: the previous release is still being
+# dispatched when the next ui_eval returns, and a gesture started on top of it
+# is delivered against stale pick/grab state (a click that never clicks, a drag
+# that never drags).
+ui_park_pointer() {
+    ui_eval "
+        (async () => {
+            const seat = Clutter.get_default_backend().get_default_seat();
+            globalThis._gwpVdev ??=
+                seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            globalThis._gwpVdev.notify_absolute_motion(GLib.get_monotonic_time(), 2, 2);
+            await new Promise(res => setTimeout(res, 120));
+            return 'parked';
+        })()
+    " >/dev/null
+}
+
+# Press inside an actor at (offset_x, offset_y) from its top-left corner, move
+# the pointer by (dx, dy) in small steps, then release — a mouse drag.
+# ui_drag "plugin('break-timer')._reminderUi._message" 10 8 150 60
+ui_drag() {
+    local actor_js="$1" ox="${2:-10}" oy="${3:-10}" dx="${4:-100}" dy="${5:-100}"
+    # See ui_click_button for why the timestamps and the double motion matter.
+    ui_eval "
+        (async () => {
+            const a = ($actor_js);
+            if (!a) throw new Error('ui_drag: actor not found');
+            const [ax, ay] = a.get_transformed_position();
+            const px = Math.round(ax + $ox), py = Math.round(ay + $oy);
+            const seat = Clutter.get_default_backend().get_default_seat();
+            globalThis._gwpVdev ??=
+                seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            const d = globalThis._gwpVdev;
+            const t = () => GLib.get_monotonic_time();
+            d.notify_absolute_motion(t(), px, py);
+            await new Promise(res => setTimeout(res, 20));
+            d.notify_absolute_motion(t(), px, py);
+            await new Promise(res => setTimeout(res, 20));
+            d.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+            await new Promise(res => setTimeout(res, 20));
+            const steps = 5;
+            for (let i = 1; i <= steps; i++) {
+                d.notify_absolute_motion(t(),
+                    px + ($dx * i) / steps, py + ($dy * i) / steps);
+                await new Promise(res => setTimeout(res, 20));
+            }
+            d.notify_button(t(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+            await new Promise(res => setTimeout(res, 20));
+            return {from: [px, py], by: [$dx, $dy]};
         })()
     "
 }

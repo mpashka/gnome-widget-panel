@@ -29,6 +29,13 @@ and Gemini CLI.
   (module mode) — the script bodies use ES module `import`; a bare `gjs`
   shebang runs gjs's legacy import system and crashes with a `SyntaxError` on
   every invocation, which was issue #6's root cause for the empty token graph.
+  Both scripts are written through a temp file that is chmodded **before** it is
+  renamed into place: Claude Code executes the hook file directly, so an install
+  interrupted between the write and a later chmod would leave it without its
+  executable bit and Claude would report "Permission denied" on every prompt.
+  For the same reason `configStatus`/`eventHooksStatus` test `IS_EXECUTABLE`,
+  not mere existence, so a broken install shows as `unconfigured` and the
+  "Configure" button (or the next shell restart) repairs it.
 - `claudeStatusLine.ts` — gi-free normalization of the two Claude HTTP hook
   payloads: `normalizeClaudeStatusLine` (statusLine → the per-provider sample,
   including mapping `rate_limits.five_hour`/`seven_day` onto
@@ -37,14 +44,19 @@ and Gemini CLI.
   [`../../../tests/claudeStatusLine.test.mjs`](../../../tests/claudeStatusLine.test.mjs).
 - `aiAgentUsageGraph.ts` — in-memory provider state, Claude HTTP hook server,
   Codex helper process management and graph rendering.
-- `helpers/codex-usage-helper.ts` — out-of-process GJS helper that scans Codex
+- `helpers/*.gjs` — the two out-of-process helpers below. **`.gjs`, not `.ts`:**
+  they are standalone programs the widget spawns with `gjs -m`, not modules of
+  the extension, so they are copied into the built tree verbatim and stay out of
+  the TypeScript module graph. EGO's checker expects every shipped `.js` to be
+  reachable from `extension.js` or `prefs.js` (EGO-P-007), and these never are.
+- `helpers/codex-usage-helper.gjs` — out-of-process GJS helper that scans Codex
   JSONL logs and streams normalized JSON Lines to the widget. Codex
   `total_token_usage` is cumulative for a session, so the UI load uses
   `last_token_usage`; the cumulative value is preserved as
   `tokens.session_total` for diagnostics. It also extracts recent user prompts
   (`response_item` messages with `role: user`) as a `requests` array, skipping
   injected environment/instruction blocks.
-- `helpers/gemini-usage-helper.ts` — out-of-process GJS helper for Gemini CLI.
+- `helpers/gemini-usage-helper.gjs` — out-of-process GJS helper for Gemini CLI.
   It picks the most recently active project under `~/.gemini/tmp/<project_hash>/`
   (override the root with `GEMINI_DATA_DIR`, matching ccusage), reads recent user
   prompts from that project's `logs.json` (`{sessionId, messageId, type:"user",

@@ -490,7 +490,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 'plugins',
                 'ai-agent-usage',
                 'helpers',
-                'codex-usage-helper.js',
+                'codex-usage-helper.gjs',
             ]);
             if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
                 return;
@@ -555,7 +555,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 'plugins',
                 'ai-agent-usage',
                 'helpers',
-                'gemini-usage-helper.js',
+                'gemini-usage-helper.gjs',
             ]);
             if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
                 return;
