@@ -274,12 +274,17 @@ grep -rhoE "@tag:[a-z0-9/-]+" . | sort -u         # every tag in the repo
 
 Two rules, both about not leaving work in limbo:
 
-- **`main` holds released versions only. Work happens on a branch.** Never
-  commit to `main` and never push to it outside a release. Day-to-day work goes
-  to **`dev`**; a large or risky job gets its own `task/<name>` branch cut from
-  `dev` and merged back into it. At release time `dev` is **squash-merged** into
-  `main`, so `main` carries one commit per published version and matches what
-  users installed from extensions.gnome.org. Full procedure:
+- **`main` holds released versions only. Work happens on a branch of its own,
+  one per task.** Never commit to `main` and never push to it outside a release.
+  A task gets a branch named after it — the same slug as its
+  `docs/requests/<task>/` directory when it has one — cut from `main`, and
+  several such branches live side by side: that is how parallel work keeps its
+  own history instead of one queue. **Delete a branch once its history stops
+  being useful** — normally after the release that carried it — rather than
+  keeping an ever-growing list. There is no long-lived integration branch: at
+  release time the finished branches are squashed onto `main` as **one commit
+  per published version**, so `main` matches what users installed from
+  extensions.gnome.org. Full procedure:
   [`docs/process/release.md`](docs/process/release.md).
 - **Commit a task when it is finished** — code, documentation and tests in the
   same commit, with the suite green — rather than leaving it in the working

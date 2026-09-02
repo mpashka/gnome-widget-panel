@@ -181,41 +181,61 @@ later. The step therefore runs with `continue-on-error: true`. If it fails,
 upload `dist/<uuid>.shell-extension.zip` by hand at
 <https://extensions.gnome.org/upload/>.
 
-## Branches: `main` is the published versions
+## Branches: `main` is the published versions, work is one branch per task
 
 `main` carries **one commit per released version** and nothing else, so what it
 holds is what users installed from extensions.gnome.org — the tree a reviewer
-compares the uploaded zip against. Every change is therefore made somewhere
-else:
+compares the uploaded zip against. Every change is therefore made on a branch of
+its own:
 
 | Branch | What lives there |
 | --- | --- |
 | `main` | released versions only: one squashed commit per version, tagged `vA.B.C` |
-| `dev` | the working branch — day-to-day commits land here |
-| `task/<name>` | one bigger or riskier job, cut from `dev` and merged back into it |
+| `<task>` | one task, cut from `main`; named after the task — the slug of its `docs/requests/<task>/` directory when it has one |
+| `release-A.B.C` | throwaway: where the finished branches are integrated and tested for one release (see below) |
 
-Rules that follow from that: never commit or push to `main` outside a release,
-and never rewrite `dev` history that is already pushed. CI runs on every branch,
-so a work branch is tested like any other.
+- **One task, one branch, and several at a time.** Parallel work keeps its own
+  history instead of queueing behind whatever else is in flight, and each branch
+  can be reviewed, dropped or resurrected on its own.
+- **Cut from `main`** — that is, from the last released version. Only branch off
+  another task's branch when the work genuinely depends on it; then say so in
+  the first commit message, because that branch now cannot be released on its
+  own.
+- **Delete a branch when its history stops being useful** — normally once the
+  release carrying it is out, or when the work is abandoned. The branch list is
+  the work in flight, not an archive: released history is on `main`, and a tag
+  or a `safety/*` ref keeps anything worth remembering.
+- Never commit or push to `main` outside a release, and never rewrite a branch's
+  history that is already pushed and being read by somebody else.
+- CI runs on every branch, so a work branch is tested like any other. The UI
+  suite (`npm run test:ui`) still runs locally — CI has no GNOME Shell.
 
 ## Cutting a release
 
 1. (Optional) create/fill a **milestone** for the release and assign its issues;
    name it `vA.B.C` for auto-matching, or note its title for the `milestone`
    input.
-2. **Publish the work onto `main` as one commit**, from a clean `dev`:
+2. **Integrate the finished branches and publish them onto `main` as one
+   commit.** Branches are cut from `main` and do not see each other, so they
+   meet for the first time here; integrate and test them together before `main`
+   ever sees them:
 
    ```bash
+   git checkout -b release-A.B.C main
+   git merge <task-1> <task-2>        # resolve conflicts here, not on main
+   npm test && npm run test:ui        # the combination, not each branch alone
+
    git checkout main
-   git merge --squash dev
+   git merge --squash release-A.B.C
    git commit -m "release: prepare vA.B.C"   # one commit per published version
    git push origin main
    ```
 
    A squash rather than a merge: a real merge would drag every development
    commit into `main` and it would stop being the list of published versions.
-   `dev` keeps the full history and is **not** deleted or reset afterwards — it
-   simply carries on; the next squash takes whatever is new since the last one.
+   Afterwards delete the branches that landed — `release-A.B.C` included; their
+   content is on `main` and their history has done its job. A branch whose work
+   did **not** make this release simply stays and waits for the next one.
 3. Open the repository **Actions** tab → **Release** → **Run workflow**, with
    the branch selector on **`main`** (the workflow commits the version bump and
    the tag to the branch it was dispatched from).
