@@ -79,6 +79,18 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   at the same x whether or not the row carries the focus mark, keeps the count
   badge from widening the button, and activates the window whose row is clicked
   (`@tag:widget-app-windows`).
+- `t-21-menu-search.sh` — the gnome-menu search box against the session's real
+  applications: typing finds an application by the name shown and by its
+  untranslated name, the matches replace the category listing with no category
+  marked selected, a query matching nothing says so, clearing the box or picking
+  a category returns to browsing — and none of it changes the popup's size
+  (`@tag:widget-gnome-menu`).
+- `t-22-menu-actions.sh` — the gnome-menu row actions: a real right-click opens
+  them inside the popup, only the favorites half that applies is listed, acting
+  on it updates the Favorites category in the still-open menu (and back again),
+  a click elsewhere dismisses the actions without launching anything, and
+  "Edit Application…" leaves a user copy of the `.desktop` entry in the
+  session's isolated `XDG_DATA_HOME` (`@tag:widget-gnome-menu`, `@tag:ux`).
 - [`window-client.js`](window-client.js) — test client for that test: opens one
   GTK window per title argument under a single application id, spawned from
   inside the shell so it reaches the session's compositor; it self-quits after

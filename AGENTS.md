@@ -319,6 +319,11 @@ matching task:
   4. After the user reports a run, the **agent reads the logs itself and cleans up**
      the script's artifacts — installed handlers, log capture, changed settings
      (e.g. restore the idle timeout) and the state file.
+- **UX:** [`docs/process/ux.md`](docs/process/ux.md) — design an interaction from the
+  use case and count its steps from where the user already is: actions on the object
+  under the pointer, one toggling item instead of two, no dialogs for reversible
+  actions, a keyboard route for the primary path. Read it before designing a menu,
+  a button or a settings flow.
 - **Code quality:** [`docs/process/code-quality.md`](docs/process/code-quality.md) — modularity,
   uniform naming across the whole codebase, and per-widget documentation, so that
   adding a feature or fixing a bug never gets harder over time.

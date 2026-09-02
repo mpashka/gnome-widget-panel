@@ -77,6 +77,13 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   the other-workspaces filter, and the tooltip fragments (singular/plural count,
   the empty-state wording and the Pango escaping that stops a window title from
   injecting markup) (`@tag:widget-app-windows`).
+- `appSearch.test.mjs` — the gi-free applications-menu search rules from
+  [`../extension-src/plugins/gnome-menu/appSearch.ts`](../extension-src/plugins/gnome-menu/appSearch.ts):
+  text folding (case, accents, `ё`), the term list built from an application's
+  names, finding an application by its translated **and** untranslated name (plus
+  executable and desktop id), every query word having to match in any order, the
+  ranking (shown name over keyword, prefix over substring, alphabetical ties) and
+  the result cap (`@tag:widget-gnome-menu`).
 - `hookStdin.test.mjs` — `READ_STDIN_FN` from
   [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
   the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input

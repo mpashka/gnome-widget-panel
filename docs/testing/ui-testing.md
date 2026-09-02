@@ -64,6 +64,12 @@ SKIP_BUILD=1 tests/ui/run.sh   # reuse existing extension/ build
 GWP_UI_KEEP=1 tests/ui/run.sh  # keep per-test artifacts dirs
 ```
 
+**Do not build while a run is in progress.** Every test session symlinks
+`extension/`, so a `npm run build` (or `npm test`, which builds first) started
+alongside a run regenerates that tree underneath the live shells: tests fail
+from the point of the rebuild onwards, in ways that have nothing to do with the
+change under test.
+
 Requires a GNOME 50 host with `gnome-shell` and `dbus-run-session` (headless
 rendering uses llvmpipe; no display needed). Not part of `npm test` (which
 stays Node-only and CI-cheap).

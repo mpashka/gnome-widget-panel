@@ -34,8 +34,9 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   panel.
 - [`ubuntu-system-status`](ubuntu-system-status/index.md) — Ubuntu quick
   settings indicators for Wi-Fi, sound, battery and related system state.
-- [`gnome-menu`](gnome-menu/index.md) — button that opens the GNOME application
-  grid.
+- [`gnome-menu`](gnome-menu/index.md) — button that opens a categorised
+  applications menu with a search box over every application name, translated
+  and untranslated.
 - [`gnome-action`](gnome-action/index.md) — "Gnome Action" button that runs a
   configurable GNOME action (windows overview, all applications, show desktop);
   multi-instance. Formerly `activities`; that id still resolves via a

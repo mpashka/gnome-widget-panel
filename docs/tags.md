@@ -39,6 +39,7 @@ code, user guide, internals and tests.
 | Tag | Description |
 | --- | --- |
 | `process` | Contributor/agent process rules: how to file a bug, the staged bug-fixing workflow (with subagents) and the code-quality rules that keep change cost flat (`docs/process/bug-report-howto.md`, `docs/process/bug-fixing-workflow.md`, `docs/process/code-quality.md`, `.github/ISSUE_TEMPLATE/`, `AGENTS.md` Process section). |
+| `ux` | The interaction bar every widget is designed against: use cases first, fewest steps from where the user is, actions on the object under the pointer, no dialogs for reversible actions, a keyboard route for the primary path (`docs/process/ux.md`). |
 | `mechanism` | Plugin host mechanism: registry, config store, ordering, lifecycle, preferences plumbing and the About/GitHub-issue helper (`extension.ts`, `pluginManager.ts`, `configStore.ts`, `contracts.ts`, `plugins/registry.ts`, `prefs.ts`, `systemInfo.ts`, `docs/implementation/architecture.md`, `docs/implementation/preferences.md`). |
 | `ui` | Panel and preferences UI: floating panel actor, control button, indicator drawer, rendering, the widget-management settings window, the searchable icon picker, the shared templated-tooltip renderer and the shared duration formatter (`extension.ts`, `controlButton.ts`, `indicatorsDrawer.ts`, `prefs.ts`, `tooltipTemplate.ts`, `duration.ts`, `plugins/iconPicker.ts`, `docs/implementation/object-model.md`, `docs/implementation/preferences.md`). |
 | `versioning` | Version fields, the `alpha` release-channel badge, where the version is shown, issue-based release notes (milestones → GitHub Release), the CHANGELOG / GNOME support matrix, and the CI / Release automation (`extension-src/version.ts`, `systemInfo.ts` version + release-notes helpers, `controlButton.ts` menu, `prefs.ts` About group, `metadata.json`, `.github/workflows/`, `.github/scripts/` incl. `release-notes.mjs`, `docs/process/releases.json`, `CHANGELOG.md`, `tests/version.test.mjs`, `docs/process/release.md`). |
@@ -49,7 +50,7 @@ code, user guide, internals and tests.
 | `widget-ai-agent-status` | The `ai-agent-status` built-in widget (per-session Claude status dots fed by lifecycle event hooks). |
 | `widget-clock` | The `clock` built-in widget. |
 | `widget-ubuntu-system-status` | The `ubuntu-system-status` built-in widget. |
-| `widget-gnome-menu` | The `gnome-menu` built-in widget (opens the application grid). |
+| `widget-gnome-menu` | The `gnome-menu` built-in widget (categorised applications menu with a search box). |
 | `widget-gnome-action` | The `gnome-action` built-in widget ("Gnome Action": overview / app grid / show desktop). Formerly `activities`; that id still resolves as a backward-compat alias. |
 | `widget-favorites` | The `favorites` built-in widget (Places menu). |
 | `widget-printscreen` | The `printscreen` built-in widget (opens the interactive screenshot UI). |

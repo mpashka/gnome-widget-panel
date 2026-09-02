@@ -30,9 +30,25 @@ widgets are optional — add them from preferences.
 - **Icon:** `start-here-symbolic` (the distributor "start" icon — the Ubuntu logo
   on Ubuntu). Each entry inside the menu shows its own app icon.
 - **What it does:** opens a two-column categorised application menu (like the
-  XFCE/Whisker menu): categories on the left, that category's apps on the right.
+  XFCE/Whisker menu): a search box above categories on the left and that
+  category's apps on the right.
 - **Interactions:** click toggles the menu; hovering a category previews its apps;
-  clicking an app launches it.
+  clicking an app launches it. The search box has the keyboard as soon as the
+  menu opens, so an application can be found by typing: matching applications
+  from **every** category replace the right pane, ranked best first. An
+  application is found under **either language** — the name shown in the menu,
+  the untranslated name from its `.desktop` file, its generic name, keywords,
+  executable or id — so a Russian desktop still finds "Settings" and an English
+  one "Настройки". `Enter` launches the top match, `↓` moves into the list,
+  `Escape` clears the search and then closes the menu; picking a category also
+  ends the search.
+  **Right-clicking an application** opens its actions where it sits: the entry's
+  own `.desktop` actions ("New Window", "New Document", …), one favorites item
+  (*Add to Favorites* / *Remove from Favorites*, whichever applies) and
+  *Edit Application…*, which copies a system entry into
+  `~/.local/share/applications` and opens it in the text editor. The Favorites
+  category updates in the open menu; a click elsewhere only dismisses the
+  actions. Newly installed or edited applications appear on their own.
 - **Settings:** icon, label.
 
 ### Gnome Action — `gnome-action`

@@ -145,7 +145,11 @@ Specification: [`../specification/break-timer.md`](../specification/break-timer.
 
 ### New widgets
 
-- [x] `gnome-menu` widget — opens the app grid; configurable icon / text.
+- [x] `gnome-menu` widget — categorised applications menu; configurable icon /
+  text. Search over every name an application carries (translated and
+  untranslated) and per-row right-click actions (`.desktop` actions, favorites
+  toggle, edit the entry) are built; see
+  [the widget page](../../extension-src/plugins/gnome-menu/index.md).
 - [x] `favorites` widget — Places menu (Home, XDG dirs, GTK bookmarks);
   configurable icon / text.
 - [x] `activities` widget — toggles the Activities overview; configurable
