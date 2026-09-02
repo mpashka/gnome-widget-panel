@@ -181,33 +181,35 @@ later. The step therefore runs with `continue-on-error: true`. If it fails,
 upload `dist/<uuid>.shell-extension.zip` by hand at
 <https://extensions.gnome.org/upload/>.
 
-## Branches: `main` is the published versions, work is one branch per task
+## Branches: one commit per version on `main`, one branch per version beside it
 
-`main` carries **one commit per released version** and nothing else, so what it
-holds is what users installed from extensions.gnome.org — the tree a reviewer
-compares the uploaded zip against. Every change is therefore made on a branch of
-its own:
+The two histories answer different questions and are deliberately not the same
+shape:
 
-| Branch | What lives there |
+| Where | What it holds |
 | --- | --- |
-| `main` | released versions only: one squashed commit per version, tagged `vA.B.C` |
-| `<task>` | one task, cut from `main`; named after the task — the slug of its `docs/requests/<task>/` directory when it has one |
-| `release-A.B.C` | throwaway: where the finished branches are integrated and tested for one release (see below) |
+| `main` | **one commit per released version**, tagged `vA.B.C` — the list of published versions, matching what users installed from extensions.gnome.org |
+| `release/A.B.C` | **how that version was built**: every commit of the work that went into it |
 
-- **One task, one branch, and several at a time.** Parallel work keeps its own
-  history instead of queueing behind whatever else is in flight, and each branch
-  can be reviewed, dropped or resurrected on its own.
-- **Cut from `main`** — that is, from the last released version. Only branch off
-  another task's branch when the work genuinely depends on it; then say so in
-  the first commit message, because that branch now cannot be released on its
-  own.
-- **Delete a branch when its history stops being useful** — normally once the
-  release carrying it is out, or when the work is abandoned. The branch list is
-  the work in flight, not an archive: released history is on `main`, and a tag
-  or a `safety/*` ref keeps anything worth remembering.
-- Never commit or push to `main` outside a release, and never rewrite a branch's
-  history that is already pushed and being read by somebody else.
-- CI runs on every branch, so a work branch is tested like any other. The UI
+- **All work goes on the version branch.** Cut `release/A.B.C` from `main` when
+  a version starts, commit to it as often as the work needs — one commit per
+  finished task is the norm — and never touch `main` in between.
+- **Several version branches may run at once**, which is the point of having
+  them: `release/0.2.3` can be finishing while `release/0.3.0` starts. Cut a
+  later version from `main` unless it genuinely needs the earlier one's work;
+  then cut it from that branch instead and rebase it onto `main` once the
+  earlier version has shipped.
+- **The name is the version, not the task.** `release/0.2.3`, not `v0.2.3`: a
+  branch sharing a name with the release tag makes every `git checkout 0.2.3`
+  ambiguous. If the bump turns out to be a minor rather than a patch, rename the
+  branch — it costs one command.
+- **Delete the branch when its history stops being useful**, some time after its
+  release: `main` and the tag carry the released tree, and the branch only
+  carries how it got there. The branch list should read as the versions in
+  flight, not an archive.
+- Never push to `main` outside a release, and never rewrite a version branch's
+  history once it is pushed.
+- CI runs on every branch, so a version branch is tested like any other. The UI
   suite (`npm run test:ui`) still runs locally — CI has no GNOME Shell.
 
 ## Cutting a release
@@ -215,27 +217,23 @@ its own:
 1. (Optional) create/fill a **milestone** for the release and assign its issues;
    name it `vA.B.C` for auto-matching, or note its title for the `milestone`
    input.
-2. **Integrate the finished branches and publish them onto `main` as one
-   commit.** Branches are cut from `main` and do not see each other, so they
-   meet for the first time here; integrate and test them together before `main`
-   ever sees them:
+2. **Squash the version branch onto `main` as one commit**, with the full suite
+   green on the branch first:
 
    ```bash
-   git checkout -b release-A.B.C main
-   git merge <task-1> <task-2>        # resolve conflicts here, not on main
-   npm test && npm run test:ui        # the combination, not each branch alone
+   git checkout release/A.B.C
+   npm test && npm run test:ui               # the version as a whole, on its branch
 
    git checkout main
-   git merge --squash release-A.B.C
-   git commit -m "release: prepare vA.B.C"   # one commit per published version
+   git merge --squash release/A.B.C
+   git commit -m "release: prepare vA.B.C"   # the one commit this version gets
    git push origin main
    ```
 
    A squash rather than a merge: a real merge would drag every development
    commit into `main` and it would stop being the list of published versions.
-   Afterwards delete the branches that landed — `release-A.B.C` included; their
-   content is on `main` and their history has done its job. A branch whose work
-   did **not** make this release simply stays and waits for the next one.
+   The branch is **not** deleted here — keep it while its history is still worth
+   reading, and drop it once it is not.
 3. Open the repository **Actions** tab → **Release** → **Run workflow**, with
    the branch selector on **`main`** (the workflow commits the version bump and
    the tag to the branch it was dispatched from).

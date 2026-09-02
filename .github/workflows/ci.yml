@@ -3,9 +3,9 @@
 # test:ui) need a live GNOME Shell host and are not run here. See
 # ../../docs/process/release.md.
 #
-# Every branch, not just main: work happens on one branch per task (main holds
-# released versions only), so restricting CI to main would test nothing until
-# release day.
+# Every branch, not just main: work happens on the branch of the version being
+# built (main holds one commit per released version), so restricting CI to main
+# would test nothing until release day.
 name: CI
 
 on:
