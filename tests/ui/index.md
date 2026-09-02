@@ -91,7 +91,16 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   a click elsewhere dismisses the actions without launching anything, and
   "Edit Application…" leaves a user copy of the `.desktop` entry in the
   session's isolated `XDG_DATA_HOME` (`@tag:widget-gnome-menu`, `@tag:ux`).
-- [`window-client.js`](window-client.js) — test client for that test: opens one
+- `t-23-vertical-strip.sh` — what the VERTICAL strip does to widgets, from
+  three bugs seen there: the break-timer graph now gets the strip's full
+  thickness (its side margin swaps with the orientation) instead of 12 of 20px
+  with its daily bar clipped to a sliver, a cloned tray icon takes 26px of the
+  strip instead of 44, and a cloned quick-settings label turns with the strip
+  instead of ellipsizing to a bare `…` — all of it reverting cleanly when the
+  panel goes back to horizontal. Uses a fake `appindicator` role, since a
+  headless session has no tray applications (`@tag:widget-break-timer`,
+  `@tag:widget-app-notifications`, `@tag:widget-ubuntu-system-status`).
+- [`window-client.js`](window-client.js) — test client for `t-20`: opens one
   GTK window per title argument under a single application id, spawned from
   inside the shell so it reaches the session's compositor; it self-quits after
   two minutes.

@@ -28,6 +28,7 @@ import {
 } from '../../sessionInhibitor.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
+import {applyRotation, drawingBox} from '../../panelRotation.js';
 import {BreakReminderUi} from './breakTimerReminder.js';
 import {
     DEFAULT_DAILY_IDLE_RESET_HOURS,
@@ -599,32 +600,16 @@ export const BreakTimerGraph = GObject.registerClass(
 
         // --- Drawing --------------------------------------------------------
 
-        // Rotate the vertical panel: when rotated the actor/surface is swapped
-        // (see setPanelLayout); draw in the base (unrotated) coordinate space and
-        // let the transform map it into the tall/narrow surface.
-        _applyRotation(context, sw, sh) {
-            if (!this._rotated)
-                return;
-            if (this._rotateDir === 'left') {
-                context.translate(0, sh);
-                context.rotate(-Math.PI / 2);
-            } else {
-                context.translate(sw, 0);
-                context.rotate(Math.PI / 2);
-            }
-        }
-
         _draw() {
             const context = this.get_context();
             const [sw, sh] = this.get_surface_size();
-            const width = this._rotated ? this._baseWidth : sw;
-            const height = this._rotated ? this._baseHeight : sh;
+            const [width, height] = drawingBox(this._rotated, sw, sh);
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
             const fg = [color.red / 255, color.green / 255, color.blue / 255];
 
             context.save();
-            this._applyRotation(context, sw, sh);
+            applyRotation(context, this._rotated, this._rotateDir, sw, sh);
 
             // Paused: one glance must say "not counting, and the screen is
             // staying on" — a cup and how much of the pause is left, instead of

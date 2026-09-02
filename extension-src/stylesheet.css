@@ -92,6 +92,21 @@
   padding: 8px 0px;
 }
 
+/* Cloned tray/app indicators (`#extBtn`, see indicatorsDrawer.ts) are the one
+   case where EVERY icon is its own `.btn`: in a vertical strip that button
+   padding stacks on top of the icon's own and pushed neighbouring tray icons
+   44px apart, while the quick-settings icons in the same strip — all inside a
+   single button — sit 28px apart. Same rhythm for both: a 20px icon (matching
+   the strip's width) with 4px of button padding around it. */
+#FloatingMiniPanel:vertical #extBtn {
+  padding: 2px 0px;
+}
+
+#FloatingMiniPanel:vertical #extBtn .system-status-icon,
+#FloatingMiniPanel:vertical #extBtn .system-status-icon-2 {
+  height: 20px;
+}
+
 #FloatingMiniPanel:horizontal .messages-indicator {
   width: 16px;
   padding: 2px 0px;
@@ -116,6 +131,19 @@
   font-weight: normal;
 }
 
+/* Text cloned from the shell's quick settings (battery percentage, net speed).
+   It is drawn and turns with the strip (see panelText.ts), so its glyph height
+   becomes the strip's width: at the panel's default size a turned "100%" is
+   23px tall, wider than the 20px strip, and would push the whole panel out. A
+   notch smaller in the vertical strip keeps it inside. */
+#FloatingMiniPanel .quick-status-text {
+  font-weight: normal;
+}
+
+#FloatingMiniPanel:vertical .quick-status-text {
+  font-size: 9pt;
+}
+
 .popup-menu.panel-menu {
   margin-bottom: 0;
 }
@@ -127,12 +155,22 @@
   width: 32px;
   height: 16px;
 }
-#FloatingMiniPanel .cpu-graph {
+
+/* The margin separates a graph from its neighbours ALONG the panel, so it
+   swaps with the orientation exactly like `.btn` and `.clone` do. The side
+   margin used to stay at 4px in the vertical strip, which left a 32px-wide
+   graph only 12 of the strip's 20px: the break timer's last (daily) bar was
+   then drawn past the edge and showed as a one-pixel sliver. The graphs now
+   scale to whatever surface they get (see panelRotation.ts), and this gives
+   them the full thickness the strip can spare. */
+#FloatingMiniPanel:horizontal .cpu-graph,
+#FloatingMiniPanel:horizontal .break-timer-graph {
   margin: 2px 4px;
 }
 
-#FloatingMiniPanel .break-timer-graph {
-  margin: 2px 4px;
+#FloatingMiniPanel:vertical .cpu-graph,
+#FloatingMiniPanel:vertical .break-timer-graph {
+  margin: 4px 2px;
 }
 
 /* The app-windows window count is drawn as a badge in the corner of the button

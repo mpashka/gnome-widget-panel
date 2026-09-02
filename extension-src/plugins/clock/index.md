@@ -35,13 +35,13 @@ configurable strftime/`date` template.
 - `dateButton.ts` — wraps GNOME Shell `dateMenu` (redirects menu source actor
   while mapped, restores it on unmap/destroy) and renders the `format` label on
   a one-second timer released in `destroy()`. Implements
-  `setPanelLayout({vertical, rotation})`: in a vertical panel it rotates the time
-  label actor 90° (`rotation` `left`/`right` picks the direction) around its
-  centre so the time reads vertically; horizontal mode restores
-  `rotation_angle_z = 0`. `_applyText()` feeds the Pango layout as markup when
-  the template uses the supported subset — for the **size request as well as the
-  drawing**, since measuring plain text while drawing bold/big markup clips the
-  time.
+  `setPanelLayout({vertical, rotation})` by handing it to the shared
+  [`panelText.ts`](../../panelText.ts): the time is *drawn* with PangoCairo, so
+  in a vertical panel it turns 90° (`rotation` `left`/`right` picks the
+  direction) and asks for the swapped size instead of widening the strip.
+  `layoutClockText()` feeds the Pango layout as markup when the template uses
+  the supported subset — for the **size request as well as the drawing**, since
+  measuring plain text while drawing bold/big markup clips the time.
 - `clockMarkup.ts` — gi-free helpers (`hasMarkup`, `stripMarkup`) deciding
   whether a formatted time should go through Pango's markup parser and how to
   salvage it when it does not parse. Unit-tested in

@@ -238,10 +238,21 @@ The widget reads per-widget `options` from the `widgets` GSettings key:
 
 ## Vertical panel rotation and tooltip
 
-Implements `setPanelLayout({vertical, rotation})` and `_applyRotation`
-exactly like `cpu-load-monitor`'s `cpuGraph.ts`: in a vertical panel the
-graph swaps its actor size (tall/narrow) and rotates the Cairo drawing 90°
-(`rotation` `left`/`right` picks the direction). The hover tooltip uses the
+Implements `setPanelLayout({vertical, rotation})` exactly like
+`cpu-load-monitor`'s `cpuGraph.ts`: in a vertical panel the graph swaps its
+actor size (tall/narrow) and rotates the Cairo drawing 90° (`rotation`
+`left`/`right` picks the direction) through the shared
+[`panelRotation.ts`](../../panelRotation.ts).
+
+**The drawing box comes from the surface, not from the size the graph asked
+for.** The strip is 20px wide and CSS margins take their cut, so the allocation
+can be narrower than the requested 16px thickness; drawing the requested size
+into a smaller surface put the last of the three stacked bars past the edge and
+left the yellow daily bar as a one-pixel sliver. The bars now scale to whatever
+they are given, and the vertical `.break-timer-graph` margin swaps with the
+orientation so the strip hands over its full thickness. Pinned by
+[`t-23-vertical-strip.sh`](../../../tests/ui/index.md) and
+[`tests/panelRotation.test.mjs`](../../../tests/index.md). The hover tooltip uses the
 same flicker-free, in-place-update pattern (fade only on enter/leave) and is
 placed to the side of the widget when the panel is vertical (whichever side
 has more room), or above/below when horizontal.

@@ -65,6 +65,12 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   `45 min`, `1:30`), the step ladder that follows the value, snapping to a
   multiple of the current step, and the range being enforced
   (`@tag:prefs-duration`).
+- `panelRotation.test.mjs` — the gi-free panel-widget geometry from
+  [`../extension-src/panelRotation.ts`](../extension-src/panelRotation.ts): the
+  drawing box a widget gets for a surface (taken from the **surface**, not from
+  the size it asked for — the regression that clipped the break timer's daily
+  bar to one pixel in a vertical strip) and the corners the left/right rotation
+  maps that box onto (`@tag:ui`).
 - `props.test.mjs` — `definedProps` from
   [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
   keys from a GObject initializer (regression for the cpu-load-monitor settings
