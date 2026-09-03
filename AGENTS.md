@@ -275,20 +275,19 @@ grep -rhoE "@tag:[a-z0-9/-]+" . | sort -u         # every tag in the repo
 Two rules, both about not leaving work in limbo:
 
 - **`main` holds released versions only — one commit per version. Work happens
-  on the branch of the version being built.** Never commit to `main` and never
-  push to it outside a release. Every change goes to `release/A.B.C`, the branch
-  of the version it will ship in, and that branch carries **as many commits as
-  the work takes**; at release time it is **squashed onto `main` as a single
-  commit** and tagged. So the two histories differ on purpose: `main` is the
-  list of published versions and matches what users installed from
-  extensions.gnome.org, the version branch is how that version was actually
-  built. Several version branches may run at once (`release/0.2.3` and
-  `release/0.3.0`), and a branch is **deleted once its history stops being
-  useful** — normally some time after its release. `git checkout dev` always
-  lands on the branch currently being built: `dev` is a symbolic ref aimed at it,
-  repointed with `git dev release/A.B.C`. Which part of the version moves is
-  decided by what ships — **a new widget is a minor bump**, changes inside
-  existing widgets are a patch. Full procedure:
+  on `dev`.** Never commit to `main` and never push to it outside a release.
+  Every change goes to `dev`, which carries **as many commits as the work
+  takes** — one per finished task is the norm. The version has no number until
+  the release, because until then nobody knows whether this is a fix, a new
+  widget or something larger; at release time `dev` is **renamed to
+  `release/A.B.C`**, **squashed onto `main` as a single commit** and tagged, and
+  a fresh `dev` is cut from `main`. So the two histories differ on purpose:
+  `main` is the list of published versions and matches what users installed from
+  extensions.gnome.org, `release/A.B.C` is how that version was actually built —
+  kept while its history is useful, **deleted** afterwards, which loses nothing
+  because the version itself lives on `main` under its tag. Which part of the
+  number moves is decided by what ships — **a new widget is a minor bump**,
+  changes inside existing widgets are a patch. Full procedure:
   [`docs/process/release.md`](docs/process/release.md).
 - **Commit a task when it is finished** — code, documentation and tests in the
   same commit, with the suite green — rather than leaving it in the working

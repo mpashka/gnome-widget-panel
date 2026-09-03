@@ -11,9 +11,9 @@ the relevant page **before** the matching task.
 - [`development.md`](development.md) — the reload-without-logout developer
   workflow: symlink install, nested GNOME Shell runner, dev GSettings profile and
   the in-session screenshot driver (`@tag:dev`, `@tag:dev-screenshot`).
-- [`release.md`](release.md) — the branch model (one commit per version on
-  `main`, one `release/A.B.C` branch per version beside it), the versioning
-  scheme (integer EGO
+- [`release.md`](release.md) — the branch model (work on `dev`, renamed to
+  `release/A.B.C` at the release, one commit per version on `main`), which part
+  of the version a change bumps, the versioning scheme (integer EGO
   `version` vs. human-readable `version-name`, the `alpha` badge), where the
   version is shown, issue-based release notes (milestones → GitHub Release), the
   CHANGELOG / GNOME support matrix and the CI / Release GitHub Actions

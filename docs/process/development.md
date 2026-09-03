@@ -12,11 +12,11 @@ imported code. New code is only loaded by a fresh shell process. On X11 that is
 The developer workflow loads new code in a second, throwaway `gnome-shell`
 process — running in a window — that you can restart freely.
 
-Work on the branch of the version being built (`release/A.B.C`), never on
-`main`: `main` keeps one commit per released version, the version branch keeps
-every commit that went into it. The model — several version branches in
-parallel, deleted once their history has done its job — and the release that
-squashes a branch onto `main` are in [`release.md`](release.md).
+Work on `dev`, never on `main`: `main` keeps one commit per released version,
+`dev` keeps every commit that went into the version being built. The version
+number is chosen at the release, which is when it is knowable, and `dev` is
+renamed to `release/A.B.C` then — that branch, the squash onto `main` and when
+it may be deleted are in [`release.md`](release.md).
 
 ## One-time setup
 

@@ -228,109 +228,99 @@ throws away the place in the queue:
   (`Unreviewed` / `Rejected` / `Active`); the dispatcher watches it for us — see
   [`promotion.md`](promotion.md).
 
-## Branches: one commit per version on `main`, one branch per version beside it
+## Branches: `dev` while it is built, `release/A.B.C` once it has a number
 
-The two histories answer different questions and are deliberately not the same
-shape:
+Work starts long before anyone can say which version it will become. Naming the
+branch after the version therefore asks for the one fact nobody has yet — whether
+this turns out to be a fix (patch), a new widget (minor) or something larger. So
+the working branch carries no version in its name at all, and is given one at the
+moment the number becomes a fact: the release.
 
-| Where | What it holds |
-| --- | --- |
-| `main` | **one commit per released version**, tagged `vA.B.C` — the list of published versions, matching what users installed from extensions.gnome.org |
-| `release/A.B.C` | **how that version was built**: every commit of the work that went into it |
+| Where | What it holds | How long |
+| --- | --- | --- |
+| `dev` | the work in flight — as many commits as it takes, one per finished task | until a release renames it |
+| `release/A.B.C` | **how that version was built**: the same commits, now under the number they produced | while the history is still worth reading |
+| `main` | **one commit per released version**, tagged `vA.B.C` | forever — this is the list of published versions, matching what users installed from extensions.gnome.org |
 
-- **All work goes on the version branch.** Cut `release/A.B.C` from `main` when
-  a version starts, commit to it as often as the work needs — one commit per
-  finished task is the norm — and never touch `main` in between.
-- **Several version branches may run at once**, which is the point of having
-  them: `release/0.2.3` can be finishing while `release/0.3.0` starts. Cut a
-  later version from `main` unless it genuinely needs the earlier one's work;
-  then cut it from that branch instead and rebase it onto `main` once the
-  earlier version has shipped.
-- **The name is the version, not the task.** `release/0.2.3`, not `v0.2.3`: a
-  branch sharing a name with the release tag makes every `git checkout 0.2.3`
-  ambiguous. If the bump turns out to be a minor rather than a patch, rename the
-  branch — it costs one command.
-- **Delete the branch when its history stops being useful**, some time after its
-  release: `main` and the tag carry the released tree, and the branch only
-  carries how it got there. The branch list should read as the versions in
-  flight, not an archive.
-- Never push to `main` outside a release, and never rewrite a version branch's
-  history once it is pushed.
-- CI runs on every branch, so a version branch is tested like any other. The UI
-  suite (`npm run test:ui`) still runs locally — CI has no GNOME Shell.
+Three properties hold at once because of that split:
 
-### `dev` — a fixed name for whichever version branch is current
+- **Every released version is always present.** `main` and its tag carry the
+  released tree and depend on no branch, so deleting branches can never lose a
+  release.
+- **A version's own commits outlive its release**, under `release/A.B.C`.
+- **They may be dropped later.** Nothing durable points at them: `CHANGELOG.md`,
+  [`releases.json`](releases.json) and the extension's About links all address
+  tags and GitHub Releases, never branches.
 
-Naming the branch after the version costs a name that never moves: every release
-the branch you commit to becomes a different one, and a bump that turns out to be
-minor renames it mid-flight. `dev` supplies the missing fixed name — it is a
-**symbolic ref**, a branch that *is* another branch rather than a copy of it:
+What follows from it:
 
-```bash
-git dev                        # what does dev point at now?  -> release/0.2.3
-git dev release/0.2.4          # repoint it at the next version branch
-git checkout dev               # lands on release/0.2.4; HEAD reads release/0.2.4
-```
-
-Commits made "on `dev`" are commits on the version branch itself: there is no
-second head, nothing to merge and nothing that can drift. `git branch` shows the
-link (`dev -> release/0.2.4`), and the alias is one line of config — add
-`--global` to get it in every repository:
-
-```bash
-git config alias.dev '!f() { if [ -n "$1" ]; then git symbolic-ref refs/heads/dev "refs/heads/$1" && echo "dev -> $1"; else git symbolic-ref --short refs/heads/dev; fi; }; f'
-```
-
-- **`dev` is local; never push it.** `git push origin dev` resolves the symref and
-  creates a genuine, separate `dev` branch on the remote, which then stops
-  following the renames. Push the version branch under its own name.
-- **Repoint it when the next version branch is cut** (last step of
-  [Cutting a release](#cutting-a-release)) — otherwise it quietly keeps aiming at
-  the version that already shipped.
+- **All work goes on `dev`**, never on `main`; `main` moves only during a release.
+- **One `dev` at a time.** Two versions in flight is the exception now, not the
+  norm: when it is genuinely needed — a hotfix while `dev` carries something big —
+  cut a named branch off `main` for it and release it the same way.
+- **Once it has a number, the name is the version, not the task**: `release/0.2.3`,
+  not `v0.2.3`, because a branch sharing a name with the tag makes
+  `git checkout 0.2.3` ambiguous.
+- **Never rewrite `main` or a `release/*` branch** once pushed. `dev` is the one
+  exception, and by construction rather than by force: a release renames the old
+  `dev` away and starts a fresh one from `main`, so the remote branch is deleted
+  and recreated, never force-pushed over.
+- CI runs on every branch, so `dev` is tested like any other. The UI suite
+  (`npm run test:ui`) still runs locally — CI has no GNOME Shell.
 
 ## Cutting a release
 
 1. (Optional) create/fill a **milestone** for the release and assign its issues;
    name it `vA.B.C` for auto-matching, or note its title for the `milestone`
    input.
-2. **Squash the version branch onto `main` as one commit**, with the full suite
-   green on the branch first:
+2. **Green suite on `dev`, then give the version its number** — the part follows
+   from what shipped, see [Which part to bump](#which-part-to-bump):
 
    ```bash
-   git checkout release/A.B.C
-   npm test && npm run test:ui               # the version as a whole, on its branch
+   git checkout dev
+   npm test && npm run test:ui          # the version as a whole, on its branch
 
+   git branch -m dev release/A.B.C      # the number is a fact now — name the branch
+   git push origin release/A.B.C        # push it under the new name
+   git push origin :dev                 # drop the stale remote dev
+   ```
+
+3. **Squash that branch onto `main` as the one commit this version gets:**
+
+   ```bash
    git checkout main
    git merge --squash release/A.B.C
-   git commit -m "release: prepare vA.B.C"   # the one commit this version gets
+   git commit -m "release: prepare vA.B.C"
    git push origin main
    ```
 
-   A squash rather than a merge: a real merge would drag every development
-   commit into `main` and it would stop being the list of published versions.
-   The branch is **not** deleted here — keep it while its history is still worth
-   reading, and drop it once it is not.
-3. Open the repository **Actions** tab → **Release** → **Run workflow**, with
+   A squash rather than a merge: a real merge would drag every development commit
+   into `main`, and it would stop being the list of published versions.
+4. Open the repository **Actions** tab → **Release** → **Run workflow**, with
    the branch selector on **`main`** (the workflow commits the version bump and
    the tag to the branch it was dispatched from).
-4. Pick the `bump` part (`patch` / `minor` / `major` / `none`), optionally the
-   `milestone` title, and — if an earlier version is still in EGO review — clear
-   the `ego_upload` checkbox, then run.
-5. The workflow bumps, tests, builds notes from the milestone, tags, publishes
+5. Pick the `bump` part (`patch` / `minor` / `major` / `none`) — the same part the
+   branch was just named after — optionally the `milestone` title, and — if an
+   earlier version is still in EGO review — clear the `ego_upload` checkbox, then
+   run.
+6. The workflow bumps, tests, builds notes from the milestone, tags, publishes
    the GitHub Release, closes the milestone and submits to EGO. Watch the run;
    the EGO step is advisory.
-6. Afterwards you can freely **edit the GitHub Release body** to refine the
+7. Afterwards you can freely **edit the GitHub Release body** to refine the
    notes.
-7. **Open the next version branch** and point `dev` at it — development continues
+8. **Start the next `dev`** from the release commit — development continues
    there, never on `main`:
 
    ```bash
-   git checkout main && git pull      # the workflow's "release: vA.B.C" commit
-   git checkout -b release/<next>     # patch by default; rename it if the work
-   git dev release/<next>             # turns out to be a minor (new widget)
+   git checkout main && git pull        # the workflow's "release: vA.B.C" commit
+   git checkout -b dev
+   git push -u origin dev
    ```
 
-   The branch just released stays until its history stops being worth reading.
+   `release/A.B.C` stays behind as the archive of how the version was built.
+   Delete it once that history stops being worth reading — `git branch -D
+   release/A.B.C` and `git push origin :release/A.B.C`; the version itself lives
+   on `main` under its tag.
 
 To build a zip locally without releasing: `npm run pack` →
 `dist/<uuid>.shell-extension.zip`.
