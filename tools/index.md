@@ -17,8 +17,10 @@ Developer and build tooling for the GNOME Widget Panel. Parent:
   (404 until published) plus, with `EGO_USERNAME`/`EGO_LOGIN` and
   `EGO_PASSWORD`, the author-visible per-version status table, the **reviewer's
   comments** and the **Shexli** findings for every submitted version.
-  `--state FILE` diffs against the previous run and exits 20 on any change, so a
-  watcher can poll it. See
+  `--state FILE` diffs against the previous run and exits 20 on any change;
+  `--comparable` prints that same snapshot for a watcher that stores it itself
+  (and exits 2 with no output when the author pages cannot be read). Polled every
+  few hours by the dispatcher's `ego-review-monitoring` watch. See
   [`../docs/process/promotion.md`](../docs/process/promotion.md).
 - [`wiki-screenshots.sh`](wiki-screenshots.sh) — regenerates the published
   screenshots (panel, collapsed panel, settings window) headlessly on top of the

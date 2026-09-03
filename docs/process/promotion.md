@@ -104,12 +104,35 @@ the pages the public gets a 404 for:
 ```bash
 . ~/.profile                       # EGO_LOGIN / EGO_PASSWORD live there
 tools/ego-status.py                                  # human-readable
+tools/ego-status.py --comparable                     # the snapshot a watcher stores
 tools/ego-status.py --state ~/.cache/gwp-ego.json    # exit 20 when anything changed
 tools/ego-status.py --dump-html /tmp/ego             # keep the HTML when parsing fails
 ```
 
 `--state` is what a watcher polls: it stores the comparable part of the result
 and exits **20** the moment a status, a comment or a Shexli finding changes.
+`--comparable` prints that same part instead of keeping a file, for a watcher that
+stores the snapshot itself. It refuses to print a half-result: when the author
+pages cannot be read (login failed, EGO down) it exits **2** with an empty stdout,
+so a broken run is never mistaken for "the reviewer withdrew every comment".
+Shexli findings are compared by rule code and hit count, not by `file:line` —
+line numbers move with every rebuild and would otherwise flag a change on every
+upload.
+
+### The review state is watched for us
+
+Waiting for a verdict is not work, so it is not a session's job: the card
+`ego-review-monitoring` in the maintainer's local task dispatcher
+(`~/Projects/home/ai_dispatcher`, "Iron Uvarov") carries a `script` watch that
+runs `tools/ego-status.py --comparable` every few hours and messages Slack the
+moment a status, a reviewer comment or a Shexli finding moves. Set up with:
+
+```bash
+ai_dispatcher watch add ego-review-monitoring script \
+    --command "tools/ego-status.py --comparable" --every 4h \
+    --reason "вердикт ревьюера EGO по загруженной версии"
+ai_dispatcher watch list          # what it remembers about the review right now
+```
 
 The page markup is unversioned and changes without notice, so an unparsed page is
 reported as an error, never as "nothing to see"; re-fix the selectors from
