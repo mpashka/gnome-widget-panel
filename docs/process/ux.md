@@ -77,6 +77,24 @@ recorded there is what makes a regression in this page's rules visible.
 12. **Failure is quiet and local.** A broken entry is skipped and logged, never
     turned into a notification or a crashed widget; the rest of the menu stays
     usable.
+13. **Replacing the top bar means inheriting its duties.** This panel offers to
+    hide the GNOME top bar. Anything that was reachable *only* from that bar
+    stops being reachable the moment a user accepts the offer — so it has to
+    appear here instead. Taking the screen space is the easy half; taking the
+    responsibility is the part that makes the trade honest.
+
+    The case that produced this rule: GNOME shows a **red recording indicator**
+    in the top bar, and clicking it is how people stop a screen recording. With
+    the bar hidden, the only remaining way is `Ctrl+Shift+Alt+R`, which nothing
+    ever told the user about — while our own Screenshot widget, the thing that
+    *started* the recording, sat next to it showing a camera icon and doing
+    nothing. The answer is not documentation: the widget becomes a red stop
+    button while a recording runs (#33).
+
+    So whenever a change hides part of the shell, ask **what stopped being
+    reachable** and cover it here — for a state, by showing it; for an action,
+    by offering it. Mirroring the shell's own indicator (as the System Status
+    widget already does) is usually cheaper than reimplementing the feature.
 
 ## The three input routes, and what each is for
 
