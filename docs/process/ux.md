@@ -27,17 +27,22 @@ recorded there is what makes a regression in this page's rules visible.
 
 ## The rules
 
-1. **Count the steps.** Every interaction has a step count from the state the
-   user is already in — pointer moves, clicks, keystrokes, dialogs. The design
-   with the smaller count wins unless it costs clarity. Two clicks with no
-   dialog beat one click that opens a window.
+1. **Count the steps and weight them by frequency.** Every interaction has a
+   step count from the state the user is already in — pointer moves, clicks,
+   keystrokes, dialogs — plus an estimated frequency and confidence when no
+   measurement exists. Saving one gesture from something done fifty times a day
+   outranks saving three from a setting changed twice ever. The design with the
+   smaller count wins unless it costs clarity. Two clicks with no dialog beat
+   one click that opens a window.
 2. **The action lives on the object.** Acting on a thing starts by pointing at
    that thing — a right-click on the row, not a settings page listing rows. The
    object is already under the pointer; a settings page has to be found, opened
    and searched.
 3. **No dialogs for reversible actions, no confirmations for cheap ones.**
    Adding a favorite is one click and is undone by one click; asking "are you
-   sure" doubles a free action.
+   sure" doubles a free action. If an immediate action drops recoverable user
+   state, offer a non-blocking Undo that restores the exact state instead of
+   putting a confirmation in front of every deliberate action.
 4. **One item that toggles beats two items that don't.** The row is either a
    favorite or it is not — show the one action that applies now
    ("Add to Favorites" / "Remove from Favorites"), not both, greyed.
@@ -54,10 +59,13 @@ recorded there is what makes a regression in this page's rules visible.
 8. **Escape backs out one level.** Each layer — a context menu, a search query,
    the popup itself — is dismissed in that order by repeated `Escape`, never
    more than the layer the user is in.
-9. **The primary path has a keyboard route.** Opening a menu puts the keyboard
-   where typing is useful; `Enter` takes the obvious action, arrows move,
-   `Escape` backs out. A mouse-only feature is unusable to half its users, and
-   the keyboard route is usually the fewest steps of all.
+9. **Inside an open popup, the keyboard works; getting there is the mouse's job
+   or a shortcut's.** Opening a menu puts the keyboard where typing is useful;
+   `Enter` takes the obvious action, arrows move, `Escape` backs out. That much
+   costs the user nothing to learn — the focus is already there and the keys are
+   the same in every application. Reaching a control in the first place is a
+   different question, answered by
+   [the three input routes](#the-three-input-routes-and-what-each-is-for) below.
 10. **An update must not lose the user's place.** Rebuilding a menu because the
     world changed keeps the selected category, the typed query and the scroll
     position. Losing them turns one action into three.
@@ -69,6 +77,39 @@ recorded there is what makes a regression in this page's rules visible.
 12. **Failure is quiet and local.** A broken entry is skipped and logged, never
     turned into a notification or a crashed widget; the rest of the menu stays
     usable.
+
+## The three input routes, and what each is for
+
+Rule 9 used to read "the primary path has a keyboard route", which quietly
+treated all keyboard access as one thing. It is three things, with very
+different costs to the person using them:
+
+| Route | What it costs the user | What it is good for |
+| --- | --- | --- |
+| **Pointer** | nothing to remember — the control is visible, its meaning is on it, and the only skill needed is aiming | **the default for everything.** Discoverable by looking, which no other route is |
+| **Keyboard shortcut** | must be memorised, and kept from colliding with the shell's and every application's | **very frequent actions only** — there it is the fastest route by a wide margin, because there is no aiming at all |
+| **Full keyboard navigation** (tab/arrow through every control) | nothing to memorise in theory; in practice slow, fiddly, and expensive to build correctly | **not a goal here.** In a modern UI it costs a lot to do and is unpleasant to use even when done |
+
+So the rule is not "everything must be reachable from the keyboard". It is:
+
+- **A shortcut is earned by frequency, not by importance.** A combination spent
+  on something done twice a month is worse than no combination at all: it takes
+  a scarce, globally-shared resource and adds a thing to remember for an action
+  the pointer already handles fine. Open the applications menu, run a command,
+  switch a window — yes. Open a settings page — no.
+- **A shortcut must say its own name.** The user's memory cannot be the only
+  place a binding is recorded, so a bound shortcut appears in the widget's
+  tooltip, where the pointer already is when the question comes up.
+- **Not being keyboard-navigable is an acceptable answer for configuration.**
+  The preferences window is pointer-designed and was never built for keyboard
+  operation; adding "move earlier / move later" keyboard actions to the widget
+  list was considered and rejected on exactly this basis — a once-ever
+  operation, in a surface where the pointer is the intuitive route anyway.
+
+This is a deliberate departure from a "keyboard parity everywhere" reading of
+the GNOME HIG, and it is the reason a review finding of the form "X has no
+keyboard route" is not automatically a defect: the question is always *how often
+is X done*.
 
 ## Worked example: the applications menu
 

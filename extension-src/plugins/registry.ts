@@ -71,7 +71,7 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
     {
         id: 'gnome-menu',
         label: 'Applications menu',
-        description: 'Button that opens the GNOME application grid.',
+        description: 'Two-column categorised applications menu with search.',
         hasPreferences: true,
         loadPreferences: () =>
             import('./gnome-menu/prefs.js') as Promise<PluginPreferencesModule>,
