@@ -282,6 +282,17 @@ Deliberately out of scope for this widget: usage statistics and history, exercis
 suggestions during a break, sounds, per-application exemptions, and syncing
 counters between machines. Anyone who needs those wants Workrave itself.
 
+**Making the reminder cheaper to dismiss is also a non-goal.** A UX review
+observed that answering the stage-1 warning is the panel's most frequent
+interaction and its most expensive path — the pointer travels, the message
+steps aside, the buttons appear only then — and proposed a one-key postpone.
+Rejected deliberately: *the widget does not exist to be waved away*. Postponing
+is breaking the working pattern the timers are there to enforce, so it is
+correct that it costs more than taking the break, which costs nothing at all
+(stop typing and the timer resets by itself). Cheap dismissal is how a rest
+reminder becomes a reflex and then furniture. This is a decision, not an
+oversight: do not "fix" it.
+
 ---
 
 Back to the [user guide](index.md) · [widgets catalog](widgets.md).

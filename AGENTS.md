@@ -308,6 +308,29 @@ matching task:
   recurs or is worth reconsidering, rather than filing a fresh one. Keeping each
   concern in a single issue makes it easier to judge demand for it, decide
   whether to implement it, and prioritise the backlog.
+
+  Searching means reading, not glancing at titles — a request is a duplicate
+  when it shares the **need**, however differently it is worded. Dump every
+  issue once and search the bodies:
+
+  ```bash
+  gh issue list --state all --limit 100 --json number,title,body > /tmp/issues.json
+  # then grep that file for the concept, not just the words you would have used
+  ```
+
+  (`gh search issues --state all` is rejected by the CLI — it takes only
+  `open`/`closed`, which is how duplicates get filed.)
+
+  When one matches, **comment with what your version adds** — the new case, the
+  wider model, the constraint the original missed — so the issue grows into the
+  full request instead of collecting "+1". Say in the comment that it arrived as
+  a separate ask and was merged here. Only file a new issue when the *need*
+  differs, and then **link the neighbours both ways** ("complementary to #N,
+  not a substitute") so the next reader sees the cluster. Every feature request
+  states the **use case and its frequency**, and what the operation costs in
+  gestures today versus after — that is what the backlog is prioritised by; see
+  [`docs/process/ux.md`](docs/process/ux.md) and the
+  [use-case tree](docs/specification/use-cases/index.md).
 - **Filing bugs:** [`docs/process/bug-report-howto.md`](docs/process/bug-report-howto.md) — every
   bug report must include the configuration and a screenshot/screencast. The
   GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml))
