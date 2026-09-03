@@ -2,7 +2,9 @@
 
 `@tag:widget-ai-agent-usage`
 
-Back to the [user guide](index.md).
+Back to the [user guide](index.md). This page says what each widget **is**; for
+what people **do** with it — one page per goal, with the gestures it costs — see
+the [use cases](use-cases/index.md).
 
 Every item on the panel is a **widget**. You add, remove, reorder and configure
 them in the preferences UI (`gnome-extensions prefs
@@ -238,7 +240,7 @@ widgets are optional — add them from preferences.
   The counters survive a shell restart.
 - **Interactions:** hover shows each timer as `name: elapsed/limit`; overdue
   timers say `— break!`. **Right-click** postpones or skips the reminder that is
-  up and pauses the timers for 15 min, 1 h or 2 h (or resumes them). **A pause
+  up and pauses the timers for 30 min, 1 h or 1:30 (or resumes them). **A pause
   also keeps the screen awake** — the meeting a pause covers is exactly when a
   lock screen is unwelcome — and while it lasts the widget shows a **coffee cup
   and one bar** counting the pause down instead of the three timer bars. The

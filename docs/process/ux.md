@@ -18,6 +18,13 @@ favorites."* The design is then whatever serves that sentence in the fewest
 gestures. A feature list ("we need favorites management") produces a settings
 page; a use case produces a right-click item on the row the user is looking at.
 
+The ones already written down live in
+[`../specification/use-cases/`](../specification/use-cases/index.md) — one page
+per goal, each with the gestures its main path costs. Read the area your change
+touches before designing, and **add or update the case in the same change**: a
+use case nobody wrote down is a feature list waiting to happen, and a step count
+recorded there is what makes a regression in this page's rules visible.
+
 ## The rules
 
 1. **Count the steps.** Every interaction has a step count from the state the
@@ -85,6 +92,8 @@ the copy makes it harmless).
 ## Related
 
 - [`code-quality.md`](code-quality.md) — the code-side bar for the same changes.
+- [Use cases](../specification/use-cases/index.md) — the goals these rules are
+  applied to, and the step count each one costs today.
 - [Widget specifications](../specification/widgets.md) — what each widget does.
 - [`../../extension-src/plugins/gnome-menu/index.md`](../../extension-src/plugins/gnome-menu/index.md)
   — the menu these rules were first written against.

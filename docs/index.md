@@ -8,7 +8,9 @@ the links down to the code under [`../extension-src/index.md`](../extension-src/
 
 - [`specification/`](specification/index.md) — how the extension looks and
   behaves **for its users**: the widgets catalog, per-widget behaviour, settings
-  and the AI-graph walkthrough. Written for people using the extension.
+  the AI-graph walkthrough and the [use-case
+  tree](specification/use-cases/index.md) (one page per user goal, with the
+  gestures it costs). Written for people using the extension.
 - [`implementation/`](implementation/index.md) — how it is built **inside**:
   host/plugin architecture, runtime object model, the preferences mechanism and
   the upstream origin.
