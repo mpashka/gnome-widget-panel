@@ -20,7 +20,6 @@
 
 'use strict';
 
-import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
@@ -28,6 +27,8 @@ import St from 'gi://St';
 
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import {PanelText} from '../../panelText.js';
 
 const PANELBOX = Main.layoutManager.panelBox;
 const QUICKSETTINGS = Main.panel.statusArea['quickSettings'];
@@ -47,6 +48,11 @@ export const QuickButton = GObject.registerClass(
             });
 
             this._parent = parent;
+            // Panel layout as the drawn labels need it; remembered because
+            // _cloneIndicators() rebuilds them whenever the shell's quick
+            // settings change, long after the orientation was set.
+            this._vertical = false;
+            this._rotation = 'right';
 
             // START CODE VERTICAL
             this.orientStr = shellVersion > 47 ? 'orientation' : 'vertical';
@@ -185,11 +191,18 @@ export const QuickButton = GObject.registerClass(
                     visible: true,
                 });
             } else {
-                this._cloneInds[i] = new St.Label({
-                    y_expand: true,
-                    y_align: Clutter.ActorAlign.CENTER,
-                    visible: true,
+                // Drawn, not laid out: an St.Label of "100%" needs 40px, and
+                // in the 20px vertical strip Pango ellipsized it to a bare "…"
+                // — three dots at the end of the button and no battery
+                // percentage at all. PanelText turns with the strip instead
+                // (see ../../panelText.ts).
+                this._cloneInds[i] = new PanelText({
+                    styleClass: 'quick-status-text',
                 });
+                this._cloneInds[i].setPanelLayout(
+                    this._vertical,
+                    this._rotation
+                );
             }
 
             // Scrolling on output volume
@@ -229,12 +242,28 @@ export const QuickButton = GObject.registerClass(
             }
 
             this.add_child(this._cloneInds[i]);
-            this._orgInds[i].bind_property(
-                type,
-                this._cloneInds[i],
-                type,
-                GObject.BindingFlags.SYNC_CREATE
-            );
+            if (type === 'gicon') {
+                this._orgInds[i].bind_property(
+                    'gicon',
+                    this._cloneInds[i],
+                    'gicon',
+                    GObject.BindingFlags.SYNC_CREATE
+                );
+            } else {
+                // PanelText draws its text instead of holding it in a property,
+                // so it is fed rather than bound. The handler is owned by the
+                // clone: _cloneIndicators() rebuilds the clones whenever the
+                // shell adds or removes an indicator, and a handler outliving
+                // its clone would write into a destroyed actor.
+                const sync = () =>
+                    this._cloneInds[i].setText(this._orgInds[i].text);
+                this._orgInds[i].connectObject(
+                    'notify::text',
+                    sync,
+                    this._cloneInds[i]
+                );
+                sync();
+            }
             this._orgInds[i].bind_property(
                 'visible',
                 this._cloneInds[i],
@@ -243,10 +272,25 @@ export const QuickButton = GObject.registerClass(
             );
         }
 
+        // Called by the panel host on orientation/rotation changes: the icons
+        // need nothing (a symbolic glyph reads the same either way), the drawn
+        // labels turn with the strip.
+        setPanelLayout(info) {
+            this._vertical = !!(info && info.vertical);
+            this._rotation = info && info.rotation === 'left' ? 'left' : 'right';
+            // Over the children, not over `_cloneInds`: that array is indexed
+            // by the shell's indicator position and has holes where an
+            // indicator contributed no clone.
+            for (const clone of this.get_children())
+                clone.setPanelLayout?.(this._vertical, this._rotation);
+        }
+
         _cloneIndicators() {
             this._cloneInds = [];
             this._orgInds = [];
-            this.remove_all_children();
+            // Destroyed, not just removed: the clones own the handlers that
+            // feed them (see _create_clone), and those must go with them.
+            this.destroy_all_children();
 
             let quickInds = QUICKSETTINGS._indicators;
             let i = 0;

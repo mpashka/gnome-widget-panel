@@ -74,6 +74,19 @@ Done:
   UI (the preferences UI edits `widgets.json` via `configStore.ts`).
 - [ ] Isolate plugin failures and provide rollback to the previous pinned
   revision.
+- [ ] **Panel presets, and what the "Mini Panel" quick-settings tile is for.**
+  The tile (`extension.ts`, `QuickSettings.QuickMenuToggle`) is inherited from
+  Floating Mini Panel, where the panel was a stand-in for a hidden GNOME top bar
+  — hence its `Automatic` (show only while the top bar is hidden) and
+  `Permanent` modes, and hence a system-level entry point, since the panel had
+  no UI of its own. Here it has: the drag handle's menu, Collapse and the
+  preferences window. The tile now duplicates Collapse and exposes a *setting*
+  from a *quick-launch* surface, which is why it reads as noise.
+  What would earn its place instead: **named presets** (Office, Home, …) — a
+  saved widget set + position + orientation each — switched from that tile in
+  one click. Decide the tile's fate together with presets: either it becomes the
+  preset switcher, or it goes and the modes stay in preferences only. See the
+  `state` GSettings key and `docs/implementation/object-model.md`.
 
 ## Requested features (backlog)
 
@@ -103,17 +116,49 @@ Grouped work items requested for the panel and widgets.
 - [x] Token-usage indicator: show/hide toggle and colour selection.
 - [x] Window-reset (time-left) indicator: show/hide toggle and colour selection.
 
+### break-timer reminders
+
+Specification: [`../specification/break-timer.md`](../specification/break-timer.md).
+
+- [x] Stage 1 — advance warning: a passive, focus-free on-screen message with a
+  live countdown, appearing half a break before the break is due (5–30 s), and
+  cancelling itself when the user goes idle long enough.
+- [x] Stage 2 — break screen: an all-monitor dimmed modal that takes input but
+  not focus, counts the break down, offers Postpone/Skip (each switchable off),
+  and stands down for fullscreen apps, an active session idle inhibitor and the
+  lock screen.
+- [x] Persist the counters across a shell restart, with the restore rules in the
+  spec (daily by boot and long absence, micro/rest by their break length).
+- [x] Daily-counter reset: the boot is the day boundary, plus a long-absence
+  reset (default 6 h), replacing the midnight-only rollover.
+- [x] Update the defaults to rest 60 min, daily 8 h, daily enabled — three bars
+  out of the box.
+- [x] Settings rows for the reminder options (mode, lead time, postpone, skip,
+  end-the-day-after).
+- [ ] Revisit the daily-counter boundary from real use: a machine left on
+  overnight leans entirely on the long-absence rule, and a midday reboot forgets
+  the morning.
+
 ### clock settings
 
 - [x] Time format template (standard Linux `date`/strftime string, `options.format`).
 
 ### New widgets
 
-- [x] `gnome-menu` widget — opens the app grid; configurable icon / text.
+- [x] `gnome-menu` widget — categorised applications menu; configurable icon /
+  text. Search over every name an application carries (translated and
+  untranslated) and per-row right-click actions (`.desktop` actions, favorites
+  toggle, edit the entry) are built; see
+  [the widget page](../../extension-src/plugins/gnome-menu/index.md).
 - [x] `favorites` widget — Places menu (Home, XDG dirs, GTK bookmarks);
   configurable icon / text.
 - [x] `activities` widget — toggles the Activities overview; configurable
   icon / text.
+- [x] `app-windows` widget — the focused application's icon and window count on
+  the button, and a menu listing that application's windows **by title** (no
+  thumbnails), for telling apart several windows of the same IDE that Alt+Esc
+  shows as identical previews. Configurable order, row limit, menu width and
+  whether other workspaces are included.
 
 ### Cross-cutting settings groundwork
 

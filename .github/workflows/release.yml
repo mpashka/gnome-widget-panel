@@ -2,8 +2,9 @@
 # and tests, generates release notes from the release's GitHub issues, packs an
 # extensions.gnome.org-ready zip, commits + tags the bump (with the regenerated
 # CHANGELOG.md + docs/process/releases.json), publishes a GitHub Release with the notes
-# and zip, closes the release milestone, and (best-effort) submits the zip to
-# extensions.gnome.org for manual review. See ../../docs/process/release.md.
+# and zip, closes the release milestone, and — unless ego_upload is turned off —
+# submits the zip to extensions.gnome.org for manual review.
+# See ../../docs/process/release.md.
 name: Release
 
 on:
@@ -19,6 +20,10 @@ on:
         type: string
         required: false
         default: ''
+      ego_upload:
+        description: 'Submit to extensions.gnome.org (turn OFF while an earlier version is still in review — a new upload auto-rejects it)'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -117,8 +122,10 @@ jobs:
       # extensions.gnome.org has no official API; this drives the upload form and
       # only submits the version for GNOME's manual review. Non-fatal: the
       # GitHub Release above is the reliable artifact. Skipped when EGO_* secrets
-      # are not configured.
+      # are not configured, and when ego_upload is off — uploading a new version
+      # auto-rejects the one currently queued for review, sending it to the back
+      # of the queue.
       - name: Submit to extensions.gnome.org (manual review)
-        if: ${{ env.EGO_USERNAME != '' && env.EGO_PASSWORD != '' }}
+        if: ${{ inputs.ego_upload && env.EGO_USERNAME != '' && env.EGO_PASSWORD != '' }}
         continue-on-error: true
         run: python3 .github/scripts/ego-upload.py dist/*.shell-extension.zip

@@ -8,7 +8,7 @@ scheme and required secrets are in
 
 ## Files
 
-- `ci.yml` — build, type-check and unit-test on every push to `main` and pull
+- `ci.yml` — build, type-check and unit-test on every push (any branch) and pull
   request (`npm ci` → `npm run typecheck` → `npm test`).
 - `release.yml` — manually dispatched (`workflow_dispatch`, `bump` =
   patch/minor/major). Bumps the version, tests, packs the EGO zip, commits +

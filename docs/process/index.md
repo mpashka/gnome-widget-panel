@@ -11,8 +11,10 @@ the relevant page **before** the matching task.
 - [`development.md`](development.md) — the reload-without-logout developer
   workflow: symlink install, nested GNOME Shell runner, dev GSettings profile and
   the in-session screenshot driver (`@tag:dev`, `@tag:dev-screenshot`).
-- [`release.md`](release.md) — versioning scheme (integer EGO `version` vs.
-  human-readable `version-name`, the `alpha` release-channel badge), where the
+- [`release.md`](release.md) — the branch model (one commit per version on
+  `main`, one `release/A.B.C` branch per version beside it), the versioning
+  scheme (integer EGO
+  `version` vs. human-readable `version-name`, the `alpha` badge), where the
   version is shown, issue-based release notes (milestones → GitHub Release), the
   CHANGELOG / GNOME support matrix and the CI / Release GitHub Actions
   (`@tag:versioning`).
@@ -30,6 +32,10 @@ the relevant page **before** the matching task.
 - [`promotion.md`](promotion.md) — the public presence: the GitHub wiki, the
   extensions.gnome.org listing, how the published screenshots are regenerated
   and how a release is uploaded to the store by hand (`@tag:process`).
+- [`ux.md`](ux.md) — the interaction bar every widget is held to: design from
+  the use case, count the steps from where the user already is, act on the
+  object under the pointer, no dialogs for reversible actions, keyboard route
+  for the primary path (`@tag:ux`).
 - [`code-quality.md`](code-quality.md) — modularity, uniform naming across the
   codebase and per-widget documentation: the rules that keep the cost of change
   from growing (`@tag:process`).

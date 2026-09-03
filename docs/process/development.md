@@ -2,7 +2,7 @@
 
 `@tag:dev`
 
-Reinstalling with [`install.sh`](../../install.sh) copies files and then needs a
+Reinstalling with [`./gwp install`](../../gwp) copies files and then needs a
 logout/login on Wayland to take effect. That is because **GNOME Shell caches an
 extension's ES module for the life of the `gnome-shell` process**: disabling and
 re-enabling the extension re-runs `enable()`/`disable()` but reuses the already
@@ -12,31 +12,41 @@ imported code. New code is only loaded by a fresh shell process. On X11 that is
 The developer workflow loads new code in a second, throwaway `gnome-shell`
 process — running in a window — that you can restart freely.
 
+Work on the branch of the version being built (`release/A.B.C`), never on
+`main`: `main` keeps one commit per released version, the version branch keeps
+every commit that went into it. The model — several version branches in
+parallel, deleted once their history has done its job — and the release that
+squashes a branch onto `main` are in [`release.md`](release.md).
+
 ## One-time setup
 
 ```bash
 sudo apt install mutter-dev-bin   # provides /usr/libexec/mutter-devkit
-./dev-install.sh                  # or: npm run dev:install
+./gwp dev-install                 # or: npm run dev:install
 ```
 
-`dev-install.sh` builds and symlinks the built tree into an **isolated dev
+Every command lives in the one root script [`./gwp`](../../gwp); running it with
+no arguments prints what is built, installed and dev-linked right now, then the
+commands to pick from.
+
+`./gwp dev-install` builds and symlinks the built tree into an **isolated dev
 extensions dir** — `<repo>/.dev/data/gnome-shell/extensions/<uuid>` — **not** your
 main session's `~/.local/share/gnome-shell/extensions/`. The dev shell loads it
 from there via `XDG_DATA_HOME` (see below), so the widget is never installed into
 your main session. After this, every `npm run build` is immediately live on disk;
-only a shell (re)start loads it. (`dev-run.sh` also (re)creates this symlink each
-run, so running `dev-install.sh` first is optional.)
+only a shell (re)start loads it. (`./gwp dev` also (re)creates this symlink each
+run, so running `./gwp dev-install` first is optional.)
 
 ## Reload loop
 
 ```bash
-./dev-run.sh              # or: npm run dev
-./dev-run.sh --help       # all options and env knobs
-./dev-run.sh --theme dark # switch the dev shell light/dark (color-scheme in
+./gwp dev              # or: npm run dev
+./gwp dev --help       # every option
+./gwp dev --theme dark # switch the dev shell light/dark (color-scheme in
                           # the dev dconf profile; persists until changed)
 ```
 
-Each run `dev-run.sh`:
+Each run `./gwp dev`:
 
 1. rebuilds and recompiles the schema;
 2. symlinks the built tree into the isolated dev extensions dir
@@ -55,9 +65,9 @@ Settings…) — a settings window opened from your main session writes a differ
 dconf and will not reach the dev shell.
 
 The panel appears inside the nested window; interact with it directly. Reload:
-edit sources, close the window (or `Ctrl+C`), rerun `./dev-run.sh`. Optionally
+edit sources, close the window (or `Ctrl+C`), rerun `./gwp dev`. Optionally
 keep `npm run watch` for continuous TypeScript compilation (asset changes still
-need a build, which `dev-run.sh` does each launch).
+need a build, which `./gwp dev` does each launch).
 
 ### Window size
 
@@ -69,29 +79,30 @@ To shrink and freely resize it, open the window's primary menu → **Monitors** 
 the shell layout follow the window size. Because this is a *floating* mini panel,
 you can then drag the panel to a convenient corner of the smaller window.
 
-The full log is at `/tmp/gnome-widget-panel-dev.log` (override with `GWP_LOG`);
-the terminal shows only extension/error lines.
+The full log is at `/tmp/gnome-widget-panel-dev.log` (override with
+`--log PATH`); the terminal shows only extension/error lines.
 
-While running, `dev-run.sh` also writes `.dev/session-env` with the nested
+While running, `./gwp dev` also writes `.dev/session-env` with the nested
 shell's `DBUS_SESSION_BUS_ADDRESS`, `DCONF_PROFILE`, `GSETTINGS_SCHEMA_DIR` and
 `XDG_DATA_HOME`. Use
-[`../../dev-gsettings-diagnose.sh`](../../dev-gsettings-diagnose.sh) to inspect or poke
-panel GSettings on that same dev session bus; writing the dev dconf profile from
-the main GNOME session does not reliably deliver live GSettings notifications to
-the nested shell.
+[`./gwp dev-settings`](../../gwp) — `snapshot` (main session vs dev profile),
+`monitor`, `poke` (write and restore values the panel must react to) and `prefs`
+(open preferences on the dev bus) — to inspect or poke panel GSettings on that
+same dev session bus; writing the dev dconf profile from the main GNOME session
+does not reliably deliver live GSettings notifications to the nested shell.
 
 ### Parallel run (dev shell alongside a separate main-session install)
 
 The dev shell is isolated from your main session (separate extensions dir + dconf
 profile), so the two never interfere. If you ALSO install the widget into your
-main session (`./install.sh` + logout/login) and want both running live, give the
+main session (`./gwp install` + logout/login) and want both running live, give the
 dev widget a different Claude port so they don't clash on the localhost port:
 
 ```bash
-GWP_CLAUDE_PORT=17862 ./dev-run.sh
+./gwp dev --claude-port 17862
 ```
 
-- `GWP_CLAUDE_PORT=N` patches `ai-agent-usage`'s `claudePort` straight into the
+- `--claude-port N` patches `ai-agent-usage`'s `claudePort` straight into the
   dev shell's own `widgets` GSettings key, in the isolated `gwpdev` dconf
   profile — via a generated GJS helper (`.dev/patch-claude-port.js`) that reads,
   modifies and writes the key with `Gio.Settings`. Pick a port different from
@@ -116,8 +127,8 @@ session's configuration (previously `widgets.json` was shared between them).
 
 ## Alternatives
 
-- **Headless, log only.** `GWP_HEADLESS=1 ./dev-run.sh` runs the shell headless
-  with a virtual monitor (`GWP_MONITOR_SPEC`, default `1600x900`) and just tails
+- **Headless, log only.** `./gwp dev --headless` runs the shell headless
+  with a virtual monitor (`--monitor WxH`, default `1600x900`) and just tails
   the log — enough to confirm the extension loads and behaves without a window.
   Scripted screenshots are not available (`org.gnome.Shell.Screenshot` returns
   `AccessDenied` to external callers since GNOME 45), and headless RDP needs the
@@ -148,15 +159,15 @@ For anything reproducible without the real session, prefer the headless harness'
 ## Notes and caveats
 
 - A shell killed mid-startup leaves `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions`,
-  which forces safe mode (all extensions off) next time. `dev-run.sh` removes it
+  which forces safe mode (all extensions off) next time. `./gwp dev` removes it
   on start and on exit.
 - Dev-only artifacts (the isolated extensions dir `data/`, dconf profile, inner
   script, status file) live under `.dev/` and are gitignored.
 - The dev extensions dir is separate from your main session, so dev work never
   installs, enables, or disables the widget in your main session. For a real
-  main-session install use [`install.sh`](../../install.sh) (copies into
+  main-session install use [`./gwp install`](../../gwp) (copies into
   `~/.local/share/gnome-shell/extensions/`) + logout/login — independent of the
-  dev setup. Do NOT use `install.sh` for iterating; it copies (freezing the code)
+  dev setup. Do NOT use `./gwp install` for iterating; it copies (freezing the code)
   and needs a logout/login each time.
 
 Back to the [docs index](../index.md) and [architecture](../implementation/architecture.md).

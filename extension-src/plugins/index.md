@@ -34,8 +34,9 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
   panel.
 - [`ubuntu-system-status`](ubuntu-system-status/index.md) — Ubuntu quick
   settings indicators for Wi-Fi, sound, battery and related system state.
-- [`gnome-menu`](gnome-menu/index.md) — button that opens the GNOME application
-  grid.
+- [`gnome-menu`](gnome-menu/index.md) — button that opens a categorised
+  applications menu with a search box over every application name, translated
+  and untranslated.
 - [`gnome-action`](gnome-action/index.md) — "Gnome Action" button that runs a
   configurable GNOME action (windows overview, all applications, show desktop);
   multi-instance. Formerly `activities`; that id still resolves via a
@@ -49,8 +50,12 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
 - [`caffeine`](caffeine/index.md) — toggle button that manually inhibits the
   screensaver/suspend via `org.gnome.SessionManager` (not in the default
   config).
+- [`app-windows`](app-windows/index.md) — button listing the windows of the
+  application in focus by title, with its live icon and window count (not in the
+  default config).
 - [`break-timer`](break-timer/index.md) — Workrave-style micro/rest/daily
-  activity-based rest-reminder progress bars (not in the default config).
+  activity-based rest-reminder progress bars, with a focus-free warning and a
+  dimmed break screen when one comes due (not in the default config).
 
 Further per-widget settings work is tracked in
 [`../../docs/roadmap/backlog.md`](../../docs/roadmap/backlog.md).

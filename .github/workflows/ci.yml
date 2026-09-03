@@ -2,11 +2,15 @@
 # gi-free unit test suite on every push and pull request. UI tests (npm run
 # test:ui) need a live GNOME Shell host and are not run here. See
 # ../../docs/process/release.md.
+#
+# Every branch, not just main: work happens on the branch of the version being
+# built (main holds one commit per released version), so restricting CI to main
+# would test nothing until release day.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
 
 permissions:
@@ -24,7 +28,7 @@ jobs:
           cache: npm
 
       # Compiling the bundled GSettings schema during `npm run build` needs
-      # glib-compile-schemas (build.sh skips it when absent, but packing/CI
+      # glib-compile-schemas (./gwp build skips it when absent, but packing/CI
       # should exercise the real path).
       - name: Install glib schema compiler
         run: sudo apt-get update && sudo apt-get install -y libglib2.0-bin

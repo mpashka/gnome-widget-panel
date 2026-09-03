@@ -130,6 +130,16 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
             import('./caffeine/prefs.js') as Promise<PluginPreferencesModule>,
     },
     {
+        id: 'app-windows',
+        label: 'App windows',
+        description:
+            'Button listing the windows of the application in focus by title, '
+            + 'so several windows of the same app are told apart by caption.',
+        hasPreferences: true,
+        loadPreferences: () =>
+            import('./app-windows/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
         id: 'break-timer',
         label: 'Break timer',
         description: 'Workrave-style rest reminders: micro/rest/daily activity '

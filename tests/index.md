@@ -45,10 +45,51 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   which formatted times count as markup (a literal `&` or `<` does not), which
   tags belong to the supported subset, and salvaging the time from markup Pango
   rejects (`@tag:widget-clock`).
+- `breakTimerState.test.mjs` — the gi-free break-timer rules from
+  [`../extension-src/plugins/break-timer/breakTimerState.ts`](../extension-src/plugins/break-timer/breakTimerState.ts):
+  defaults and normalization, activity accumulation, idle-based resets (a longer
+  break resets the shorter timers), the daily counter's boot/long-absence rules,
+  the reminder state machine (warning → break screen → reset, suppressed →
+  message + retry), postpone/skip, the silence rules (a manual pause or a
+  session inhibitor stops the reminders while the counters keep running, and the
+  owed break arrives the moment the silence ends), the pause fraction the paused
+  widget draws (including the full bar a pre-`pausedFrom` state file gets), the
+  configurable pause lengths, the end-of-the-working-day threshold (when the day
+  is over, the bar filling from the first activity of the day, the reminder it
+  raises with hours left on the counter, and a new day clearing the old start),
+  and what a restart restores (`@tag:widget-break-timer`).
+- `duration.test.mjs` — `formatDuration`/`formatClock`/`durationStep`/
+  `stepDuration` from
+  [`../extension-src/duration.ts`](../extension-src/duration.ts): how a duration
+  is counted down (`M:SS`, `H:MM:SS`) versus how it is *edited* (`30 s`,
+  `45 min`, `1:30`), the step ladder that follows the value, snapping to a
+  multiple of the current step, and the range being enforced
+  (`@tag:prefs-duration`).
+- `panelRotation.test.mjs` — the gi-free panel-widget geometry from
+  [`../extension-src/panelRotation.ts`](../extension-src/panelRotation.ts): the
+  drawing box a widget gets for a surface (taken from the **surface**, not from
+  the size it asked for — the regression that clipped the break timer's daily
+  bar to one pixel in a vertical strip) and the corners the left/right rotation
+  maps that box onto (`@tag:ui`).
 - `props.test.mjs` — `definedProps` from
   [`../extension-src/props.ts`](../extension-src/props.ts): drops `undefined`-valued
   keys from a GObject initializer (regression for the cpu-load-monitor settings
   page failing to open on `tooltip_text: undefined`), keeps `null`/falsy values.
+- `appWindowEntries.test.mjs` — the gi-free app-windows rules from
+  [`../extension-src/plugins/app-windows/appWindowEntries.ts`](../extension-src/plugins/app-windows/appWindowEntries.ts):
+  option defaults, clamping and lenient parsing, most-recently-used vs title
+  order with the focused window always leading (and never dropped by the limit),
+  title collapsing/`Untitled window`, the row limit and its "N more" remainder,
+  the other-workspaces filter, and the tooltip fragments (singular/plural count,
+  the empty-state wording and the Pango escaping that stops a window title from
+  injecting markup) (`@tag:widget-app-windows`).
+- `appSearch.test.mjs` — the gi-free applications-menu search rules from
+  [`../extension-src/plugins/gnome-menu/appSearch.ts`](../extension-src/plugins/gnome-menu/appSearch.ts):
+  text folding (case, accents, `ё`), the term list built from an application's
+  names, finding an application by its translated **and** untranslated name (plus
+  executable and desktop id), every query word having to match in any order, the
+  ranking (shown name over keyword, prefix over substring, alphabetical ties) and
+  the result cap (`@tag:widget-gnome-menu`).
 - `hookStdin.test.mjs` — `READ_STDIN_FN` from
   [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
   the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input

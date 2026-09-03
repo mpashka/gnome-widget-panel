@@ -15,6 +15,10 @@ agent-facing tree starts at [`../index.md`](../index.md).
 - [`widgets.md`](widgets.md) — widgets catalog: every built-in widget, its icon,
   what it does and its settings. Update it in the same change that alters a
   widget's user-visible behaviour, icon or options.
+- [`break-timer.md`](break-timer.md) — how the break timers work: the three
+  timers, the reset rules (idle-based, plus the daily counter's own boundary)
+  and the two-stage rest reminder — a focus-free warning, then a dimmed break
+  screen (`@tag:widget-break-timer`).
 - [`ai-agent-usage.md`](ai-agent-usage.md) — reading the AI agent usage graph: a
   detailed walkthrough of the token-usage graph
   (`@tag:widget-ai-agent-usage`).

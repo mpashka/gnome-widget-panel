@@ -283,7 +283,11 @@ const FloatingMiniPanel = GObject.registerClass(
             this._fmpQuickToggle.checked = this._state;
 
             // Menu item clicked
-            this._fmpQuickToggle.menu.connect('activate', (obj, menuItem) => {
+            // Kept and disconnected in destroy(): destroying the toggle would
+            // take these handlers with it, but EGO's checker reads the source
+            // rather than the object graph and wants every connect() answered by
+            // a disconnect() in disable() (EGO-L-003).
+            this._qtMenuConId = this._fmpQuickToggle.menu.connect('activate', (obj, menuItem) => {
                 if (this._fmpQuickToggle.subtitle !== menuItem.label.text) {
                     QUICKSETTINGS.menu.close();
                     this._autoItem.setOrnament(PopupMenu.Ornament.NONE);
@@ -316,7 +320,7 @@ const FloatingMiniPanel = GObject.registerClass(
             });
 
             // Toggle clicked
-            this._fmpQuickToggle.connect('clicked', () => {
+            this._qtClickedConId = this._fmpQuickToggle.connect('clicked', () => {
                 QUICKSETTINGS.menu.close();
                 if (this._state !== State.OFF) {
                     this._hideFloatingMiniPanel();
@@ -1109,6 +1113,16 @@ const FloatingMiniPanel = GObject.registerClass(
 
             OVERVIEW.disconnect(this._ovConId2);
             this._ovConId2 = null;
+
+            if (this._qtMenuConId) {
+                this._fmpQuickToggle.menu.disconnect(this._qtMenuConId);
+                this._qtMenuConId = null;
+            }
+            if (this._qtClickedConId) {
+                this._fmpQuickToggle.disconnect(this._qtClickedConId);
+                this._qtClickedConId = null;
+            }
+            this._fmpQuickToggle = null;
 
             this._fmpQuickIndicator.quickSettingsItems.forEach(item =>
                 item.destroy()

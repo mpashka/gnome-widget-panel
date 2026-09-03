@@ -12,9 +12,12 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - [`lib.sh`](lib.sh) — harness library: session bootstrap (`ui_start`), shell
   JS evaluation (`ui_eval`), polling waits, GSettings helpers, virtual-pointer
   clicks (`ui_click` primary-button shorthand, `ui_click_button` for another
-  button and/or a press-and-hold duration), screenshots, assertions.
+  button and/or a press-and-hold duration, `ui_drag` for a press-move-release
+  drag), screenshots, assertions.
 - `t-01-panel-loads.sh` — panel loads, widgets in config order, no JS errors.
-- `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate.
+- `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate;
+  the standing strip is as thick as the lying one is tall (per-orientation sizing
+  in `stylesheet.css`).
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
 - `t-04-position-preset.sh` — `aligned` presets snap the panel.
 - `t-05-config-live-reload.sh` — `widgets` GSettings key edits live-reload;
@@ -44,9 +47,68 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   the handle stays visible, its menu still opens (the only way back), the state
   persists in the `collapsed` key, expanding restores every widget, and a widget
   live-reload does not silently expand a collapsed panel.
-- `t-16-clock-markup.sh` — the clock's markup subset: bold widens the **size
-  request** (measuring plain text would clip it), a colour span is accepted, and
-  invalid markup falls back to the plain time instead of blanking the widget.
+- `t-16-clock-markup.sh` — the clock's markup subset: the default weight is
+  plain (the shell theme's bold on `.button` must not reach the clock), bold
+  widens the **size request** (measuring plain text would clip it), a colour span
+  is accepted, and invalid markup falls back to the plain time instead of
+  blanking the widget.
+- `t-17-menu-size-stable.sh` — the gnome-menu popup asks for the same size for
+  every category and fits the monitor work area; a popup that grew with the
+  selection moved its own rows out from under the pointer and shook.
+- `t-18-break-timer-reminders.sh` — the break reminders: the focus-free warning
+  (no grab, no key focus), the modal break screen that takes input and resets
+  the timer when served, postpone keeping the break owed, skip starting the
+  interval over, a suppressed break screen degrading to the message, a session
+  inhibitor or a manual pause silencing both stages while the counters run on,
+  the pause also holding a session inhibitor (and handing the screen back on
+  resume and on its own expiry, without waiting for the stale IsInhibited poll),
+  the warning yielding exactly once when the pointer reaches it (and only then
+  growing its Postpone/Skip buttons — before the flight it is a bare hint),
+  its Postpone and Skip answering a **real pointer click** (an ancestor consuming the press
+  cancels St.Button's ClutterClickGesture, so a direct `onSkip()` call proves
+  nothing) while a drag of its body moves it and fires neither, the right-click
+  menu building with the configured pause lengths, and the end of the working day
+  (nothing before the deadline, the daily reminder and a full bar after it, and
+  silence with the limit switched off)
+  (`@tag:widget-break-timer`, `@tag:session-inhibitor`).
+- `t-19-caffeine-duration.sh` — caffeine's timed keep-awake: the right-click
+  menu of durations, the deadline and auto-off timer a duration arms, and
+  turning it off clearing both. The shared `SessionInhibitor`'s D-Bus calls are
+  stubbed, since a headless session has no session manager
+  (`@tag:widget-caffeine`, `@tag:session-inhibitor`).
+- `t-20-app-windows.sh` — the app-windows widget against three REAL GTK windows
+  of one application opened in the session: the widget tracks that application,
+  counts its windows on the button, lists their titles under the configured
+  limit with the remainder announced, keeps the window that had focus at the top
+  (the popup's own grab has already taken the focus by then), aligns every title
+  at the same x whether or not the row carries the focus mark, keeps the count
+  badge from widening the button, and activates the window whose row is clicked
+  (`@tag:widget-app-windows`).
+- `t-21-menu-search.sh` — the gnome-menu search box against the session's real
+  applications: typing finds an application by the name shown and by its
+  untranslated name, the matches replace the category listing with no category
+  marked selected, a query matching nothing says so, clearing the box or picking
+  a category returns to browsing — and none of it changes the popup's size
+  (`@tag:widget-gnome-menu`).
+- `t-22-menu-actions.sh` — the gnome-menu row actions: a real right-click opens
+  them inside the popup, only the favorites half that applies is listed, acting
+  on it updates the Favorites category in the still-open menu (and back again),
+  a click elsewhere dismisses the actions without launching anything, and
+  "Edit Application…" leaves a user copy of the `.desktop` entry in the
+  session's isolated `XDG_DATA_HOME` (`@tag:widget-gnome-menu`, `@tag:ux`).
+- `t-23-vertical-strip.sh` — what the VERTICAL strip does to widgets, from
+  three bugs seen there: the break-timer graph now gets the strip's full
+  thickness (its side margin swaps with the orientation) instead of 12 of 20px
+  with its daily bar clipped to a sliver, a cloned tray icon takes 26px of the
+  strip instead of 44, and a cloned quick-settings label turns with the strip
+  instead of ellipsizing to a bare `…` — all of it reverting cleanly when the
+  panel goes back to horizontal. Uses a fake `appindicator` role, since a
+  headless session has no tray applications (`@tag:widget-break-timer`,
+  `@tag:widget-app-notifications`, `@tag:widget-ubuntu-system-status`).
+- [`window-client.js`](window-client.js) — test client for `t-20`: opens one
+  GTK window per title argument under a single application id, spawned from
+  inside the shell so it reaches the session's compositor; it self-quits after
+  two minutes.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +

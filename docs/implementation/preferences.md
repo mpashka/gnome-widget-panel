@@ -96,6 +96,13 @@ is applied **live** to the running panel — no reload needed. It has these rows
   then relocates. (This single enum replaces the former separate `vertical` bool
   and `vertical-rotation` int; the control-button orientation gesture also just
   writes this one key.)
+  **Thickness is symmetric.** `stylesheet.css` fixes the strip's thickness on
+  *both* axes — `:horizontal { height }` and `:vertical { width }` — and every
+  per-widget rule that pads *along* the panel swaps its axis with the
+  orientation (`.system-status-icon`, `.system-status-icon-2`, `.clone`,
+  `.messages-indicator`). Without the vertical width the strip grew to its
+  widest child and stood noticeably fatter than it lies (28 px against 22 px);
+  `tests/ui/t-02-orientation-live.sh` now pins the two within a few pixels.
 - **Content padding** — an `Adw.SpinRow` for `content-padding`. User changes are
   written explicitly on `notify::value`, rounded to whole pixels, and external
   `changed::content-padding` updates sync the row back to the stored value.
@@ -125,26 +132,34 @@ It is applied **live** by the `MainPanelController` (the panel listens on
 Bar** extension (see [`object-model.md`](object-model.md)). Because both would
 fight over `panelBox`, the group also detects Hide Top Bar
 (`hidetopbar@mathieu.bidon.ca`) from the preferences process — which has no
-`ExtensionManager` — by reading `org.gnome.shell`'s `enabled-extensions` /
-`disabled-extensions` / `disable-user-extensions` keys plus the extension
-directories (`_hideTopBarStatus`):
+`ExtensionManager` — in `_hideTopBarStatus`:
 
-- **enabled** (actively controlling the bar): shows an `error`-styled warning row
-  and **disables** the combo (our controller stands down while it runs, so the
-  setting is meaningless);
-- **installed but disabled**: shows a softer `warning` row noting it can be
-  removed, and leaves the combo usable.
+- **installed** — its directory exists in one of the places GNOME Shell loads
+  extensions from (`GLib.get_user_data_dir()` and `GLib.get_system_data_dirs()`,
+  each `+ /gnome-shell/extensions/<uuid>`). Only the files count: a UUID stays in
+  `org.gnome.shell`'s `enabled-extensions` / `disabled-extensions` list after the
+  extension is uninstalled, and such a leftover used to raise this banner — with
+  a Remove button that could not work — for an extension no longer on the machine;
+- **enabled** — installed *and* switched on (in `enabled-extensions`, not in
+  `disabled-extensions`, `disable-user-extensions` off), i.e. actively
+  controlling the bar. Shows an `error`-styled row and **disables** the combo
+  (our controller stands down while it runs, so the setting is meaningless);
+  installed but disabled shows a softer `warning` row and leaves the combo usable.
 
 The warning row carries a **Remove…** button (`destructive-action`). It opens an
 `Adw.AlertDialog` confirmation, then uninstalls Hide Top Bar through the Shell's
 own `org.gnome.Shell.Extensions.UninstallExtension` D-Bus method — the same call
 the Extensions app makes (`_confirmRemoveHideTopBar` / `_uninstallHideTopBar`).
-That method only removes a user-installed copy (`~/.local/share`); a system copy
-under `/usr/share` returns `false`, and we toast that it must be removed manually.
+What that method **returns** is not the outcome: it answers `false` both when it
+refuses (a system copy under `/usr/share`) and when the shell does not know the
+UUID at all, so the extension directory afterwards is what decides. The uninstall
+therefore reports whatever `applyHtbStatus` finds when it repaints the banner: a
+short `Adw.Toast` on success, and on failure an `Adw.AlertDialog` — a toast title
+is a single ellipsized line, which cut the actionable half off the message.
 The banner (title/subtitle/`error`↔`warning` class, the combo's sensitivity and
 the whole row's visibility) is driven by a single `applyHtbStatus` closure that
-re-runs after an uninstall, so the UI updates in place without reopening
-preferences.
+re-runs after an uninstall and returns the status it rendered, so the UI updates
+in place without reopening preferences.
 
 ## About and GitHub issue integration
 
@@ -207,18 +222,40 @@ the Shell-only plugin modules. The pieces:
   `fillWidgetPreferences(context)`; it calls `context.window.add(page)` with its
   `Adw.PreferencesPage` and `context.save(options)` to persist its `options`
   object back into the `widgets` GSettings key. Widgets with settings today:
-  `ai-agent-usage`, `cpu-load-monitor` and `clock`.
+  `ai-agent-status`, `ai-agent-usage`, `app-windows`, `break-timer`,
+  `caffeine`, `clock`, `cpu-load-monitor`, `favorites`, `gnome-action`,
+  `gnome-menu`, `launch` and `printscreen`.
 
-The widget settings now open as an **in-window subpage**, not an
+The widget settings open as an **in-window subpage**, not an
 `Adw.PreferencesDialog`. `_openWidgetPreferences` builds an `Adw.NavigationPage`
 whose child is an `Adw.ToolbarView` + `Adw.HeaderBar` (so it gets the widget
 title and a working back button). The `context.window` handed to the widget is a
-small **shim** object whose `.add(page)` routes the widget's `Adw.PreferencesPage`
-into the toolbar's content (`toolbar.set_content(page)`). After the widget fills
-it, the subpage is pushed with `window.push_subpage(...)`. `context.save` is
-unchanged (persist to the `widgets` GSettings key), and the lazy
-`descriptor.loadPreferences()` import stays. This keeps the widget-prefs contract
-(`context.window.add(page)` + `context.save(options)`) intact.
+small **shim** object (typed as `WidgetPreferencesHost` in `contracts.ts`) with
+exactly three methods: `.add(page)` routes the widget's `Adw.PreferencesPage`
+into the toolbar's content (`toolbar.set_content(page)`), and
+`.push_subpage(page)` / `.pop_subpage()` forward to the real window, so a widget
+whose settings have sub-sections navigates the same way the panel's own pages
+do. After the widget fills it, the subpage is pushed with
+`window.push_subpage(...)`. `context.save` is unchanged (persist to the
+`widgets` GSettings key), and the lazy `descriptor.loadPreferences()` import
+stays.
+
+### One shape for "a thing you can switch on and configure"
+
+Wherever a list offers both an on/off switch and further settings — the panel's
+widget list, the break timer's three timers — the row is the **same**:
+
+- `Adw.ActionRow`, its **subtitle a one-line summary** of the current
+  configuration, so a list can be compared without opening anything;
+- a settings **button** (`emblem-system-symbolic`) in the suffix that pushes an
+  in-window subpage with that item's own settings;
+- a `Gtk.Switch` in the suffix, also set as the row's `activatable_widget`, so
+  activating the row toggles it.
+
+Do **not** use `Adw.ExpanderRow` for this. Expanding in place puts a switch and
+a disclosure on the same row (a click lands on whichever the user did not mean),
+and a page of expanded items is a long scroll in which it is unclear whose row
+is whose.
 
 Shell-side instantiation is unchanged: `pluginManager.ts` still maps ids to the
 Shell plugin modules and calls `create(parent, options)`.

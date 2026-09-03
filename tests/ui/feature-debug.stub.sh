@@ -12,7 +12,7 @@
 # `npm run build` (or run via tests/ui/run.sh which builds). Useful knobs:
 #   GWP_UI_KEEP=1     keep the artifacts dir (shell.log, screenshots)
 #   GWP_UI_MONITOR=WxH   virtual monitor size
-# For interactive/visual debugging use ./dev-run.sh instead (real window).
+# For interactive/visual debugging use ./gwp dev instead (real window).
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
 # --- 1. Boot with the widget set you are debugging -------------------------

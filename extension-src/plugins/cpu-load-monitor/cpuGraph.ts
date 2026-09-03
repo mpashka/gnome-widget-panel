@@ -13,6 +13,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {hexToRgb, toNumber} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
+import {applyRotation, drawingBox} from '../../panelRotation.js';
 
 // Async file reads keep the periodic /proc/stat and thermal-zone sampling off
 // the Shell main loop (EGO forbids synchronous file I/O there).
@@ -295,33 +296,16 @@ export const CpuGraph = GObject.registerClass(
             positionTooltip(this);
         }
 
-        // Rotate the vertical panel: when rotated the actor/surface is swapped
-        // (see setPanelLayout); draw in the base (unrotated) coordinate space and
-        // let the transform map it into the tall/narrow surface. Verified so the
-        // time axis runs top->bottom (right) or bottom->top (left).
-        _applyRotation(context, sw, sh) {
-            if (!this._rotated)
-                return;
-            if (this._rotateDir === 'left') {
-                context.translate(0, sh);
-                context.rotate(-Math.PI / 2);
-            } else {
-                context.translate(sw, 0);
-                context.rotate(Math.PI / 2);
-            }
-        }
-
         _draw() {
             const context = this.get_context();
             const [sw, sh] = this.get_surface_size();
-            const width = this._rotated ? this._baseWidth : sw;
-            const height = this._rotated ? this._baseHeight : sh;
+            const [width, height] = drawingBox(this._rotated, sw, sh);
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
             const fg = [color.red / 255, color.green / 255, color.blue / 255];
 
             context.save();
-            this._applyRotation(context, sw, sh);
+            applyRotation(context, this._rotated, this._rotateDir, sw, sh);
 
             // One column per sample, coloured by the temperature band that
             // sample was recorded in (not the current temperature).

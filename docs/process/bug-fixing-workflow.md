@@ -18,7 +18,7 @@ change costs the user a full logout/login (Wayland caches the extension module),
 so every avoidable prod round-trip is wasted user time.
 
 1. **Dev first.** Reproduce in the isolated dev profile — a failing
-   `npm run test:ui` / pure-logic test, or an interactive `./dev-run.sh` nested
+   `npm run test:ui` / pure-logic test, or an interactive `./gwp dev` nested
    shell (no logout). Rendering/logic bugs (e.g. the token-graph height, state
    colours, layout) are fully reproducible here with synthetic data — do **not**
    send the user through a relogin to observe something a dev run would show.
@@ -35,7 +35,7 @@ drive a real Claude session from the command line (`claude -p "<prompt>"` in a
 target `cwd`) to generate genuine hook traffic instead of asking the user to
 prompt an agent; capture the screen with the dev screenshot tool instead of
 asking for a screenshot; feed a widget synthetic events through `ui_eval` /
-`_applyEvent` in a `./dev-run.sh` or headless session. Reserve the user's manual
+`_applyEvent` in a `./gwp dev` or headless session. Reserve the user's manual
 input for what truly can't be automated (a physical lock/unlock, a subjective
 "does this look right"), and batch those into a single, clearly-listed ask.
 
@@ -87,7 +87,7 @@ conditions.
 ### 1. Reproduce
 Reproduce the bug from the report before touching code. Load the reporter's
 configuration into a dev profile ([`development.md`](development.md),
-`./dev-run.sh`). Prefer a **failing automated repro**: extend the headless UI
+`./gwp dev`). Prefer a **failing automated repro**: extend the headless UI
 suite ([`ui-testing.md`](../testing/ui-testing.md), `npm run test:ui`) or a pure-logic test
 ([`../../tests/index.md`](../../tests/index.md)) so the failure is a red test, not a
 screenshot.
@@ -129,7 +129,7 @@ test present; the test demonstrably fails when the fix is reverted.
 
 ### 5. Verify end-to-end
 Drive the real flow, not just the tests: reproduce the original steps in
-`./dev-run.sh` and confirm the bug is gone and nothing adjacent broke. Capture a
+`./gwp dev` and confirm the bug is gone and nothing adjacent broke. Capture a
 screenshot/screencast of the fixed state for the PR.
 
 **Exit:** the original repro no longer triggers the bug in a running shell.

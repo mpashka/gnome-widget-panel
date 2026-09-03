@@ -4,7 +4,7 @@
 // Build post-processor: reinsert blank lines into the generated
 // `extension/**/*.js`. `tsc` strips every blank line when it emits JS, so the
 // shipped extension would otherwise be an unreadable wall of code (the EGO
-// reviewers read the generated JS). This runs AFTER `tsc` in `build.sh` and
+// reviewers read the generated JS). This runs AFTER `tsc` in `./gwp build` and
 // restores the spacing required by AGENTS.md "Code formatting":
 //
 //   - TWO blank lines between top-level functions.

@@ -1,5 +1,11 @@
 #!/usr/bin/env gjs
-// @ts-nocheck
+// @tag:widget-ai-agent-usage
+//
+// A standalone GJS program, NOT a module of the extension: aiAgentUsageGraph.ts
+// spawns it with `gjs -m` as a child process (it polls files and must never do
+// that inside the shell). Hence the `.gjs` suffix — it is copied into the built
+// tree verbatim, is imported by nobody, and EGO's checker rightly expects every
+// shipped `.js` to be reachable from extension.js or prefs.js (EGO-P-007).
 'use strict';
 
 import Gio from 'gi://Gio';

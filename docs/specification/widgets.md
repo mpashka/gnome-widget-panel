@@ -30,9 +30,25 @@ widgets are optional — add them from preferences.
 - **Icon:** `start-here-symbolic` (the distributor "start" icon — the Ubuntu logo
   on Ubuntu). Each entry inside the menu shows its own app icon.
 - **What it does:** opens a two-column categorised application menu (like the
-  XFCE/Whisker menu): categories on the left, that category's apps on the right.
+  XFCE/Whisker menu): a search box above categories on the left and that
+  category's apps on the right.
 - **Interactions:** click toggles the menu; hovering a category previews its apps;
-  clicking an app launches it.
+  clicking an app launches it. The search box has the keyboard as soon as the
+  menu opens, so an application can be found by typing: matching applications
+  from **every** category replace the right pane, ranked best first. An
+  application is found under **either language** — the name shown in the menu,
+  the untranslated name from its `.desktop` file, its generic name, keywords,
+  executable or id — so a Russian desktop still finds "Settings" and an English
+  one "Настройки". `Enter` launches the top match, `↓` moves into the list,
+  `Escape` clears the search and then closes the menu; picking a category also
+  ends the search.
+  **Right-clicking an application** opens its actions where it sits: the entry's
+  own `.desktop` actions ("New Window", "New Document", …), one favorites item
+  (*Add to Favorites* / *Remove from Favorites*, whichever applies) and
+  *Edit Application…*, which copies a system entry into
+  `~/.local/share/applications` and opens it in the text editor. The Favorites
+  category updates in the open menu; a click elsewhere only dismisses the
+  actions. Newly installed or edited applications appear on their own.
 - **Settings:** icon, label.
 
 ### Gnome Action — `gnome-action`
@@ -58,6 +74,29 @@ widgets are optional — add them from preferences.
   several times to build a row of your own launch buttons.
 - **Interactions:** click runs the command (nothing happens if it is empty).
 - **Settings:** **command** (e.g. `gnome-terminal -- htop`), icon, label.
+
+### App windows — `app-windows`  *(optional)*
+- **Icon:** the icon of the application currently in focus, with the window count
+  as a small badge in its corner. `focus-windows-symbolic` until an application
+  has been focused, or always your own icon if you turn the application icon off.
+- **What it does:** lists the windows of **that application** by **title**. Made
+  for several windows of the same program — a few IDE projects, a few terminals —
+  where Alt+Esc shows you thumbnails that all look alike and a switcher that no
+  longer fits on screen.
+- **Interactions:** click opens the menu; the window you came from is marked with
+  a dot; selecting a row switches to that window (changing workspace and
+  unminimising it if needed). A window on another workspace, or a minimised one,
+  says so on the right of its title.
+- **Order:** by **title** out of the box — the list stays the same between
+  openings, so the window you want ends up in a place you remember. Switch it to
+  **most recently used** for switcher-style order, where the window you came from
+  is always the first row.
+- **Settings:** **use the application's icon** (off = always your own icon),
+  **order** (by title / most recently used), **maximum windows** (the rest are
+  counted as "N more"), **menu width** (a longer title is ellipsized), **windows
+  on other workspaces**, **window count** (a badge in the corner of the icon),
+  **tooltip template** (`{app}`, `{count}`, `{window}` — empty means no
+  tooltip), icon, label.
 
 ### Screenshot — `printscreen`  *(optional)*
 - **Icon:** `camera-photo-symbolic`.
@@ -175,22 +214,47 @@ widgets are optional — add them from preferences.
 - **What it does:** a toggle that keeps your session awake — inhibits the
   screensaver (and, by default, automatic suspend). Useful as a manual fallback
   for video calls that fail to keep the screen on.
-- **Interactions:** click toggles it on/off (the button looks "pressed" when on).
+- **Interactions:** click toggles it on/off indefinitely (the button looks
+  "pressed" when on). **Right-click** picks a duration instead — 15 min, 30 min,
+  1 h, 2 h, or until turned off — and it switches itself off when the time is
+  up. Hovering shows what it is doing and how long is left. While it is on, the
+  [Break Timer](break-timer.md) widget stays silent, so one click before a
+  meeting keeps the screen on *and* the reminders away. It works the other way
+  round too: pausing the Break Timer keeps the screen awake for as long as the
+  pause lasts, so either widget alone covers a meeting.
 - **Settings:** off-state **icon**, optional **label**, and **inhibit suspend**
   (default on — also blocks auto-suspend, not just the screensaver).
 
 ### Break Timer — `break-timer`  *(optional)*
-- **Icon:** a self-drawn set of up to three **progress bars** (no icon) — micro
+- **Icon:** a self-drawn set of three **progress bars** (no icon) — micro
   break `#4ca6ff`, rest break `#3dc752`, daily limit `#ffb82e`, turning red
-  `#f03333` when overdue.
+  `#f03333` when overdue. A disabled timer drops its bar.
 - **What it does:** Workrave-style rest reminders. Three activity-based timers
   (micro / rest / daily) fill as you type and move, and reset when you step away
-  long enough.
+  long enough. The daily one can also watch the **clock**: switch on *end of the
+  working day* (21:30 by default) and its bar shows whichever comes first —
+  the hours worked, or the hour itself. When one comes due it warns you with a message that never steals
+  focus, then dims the screen for the break itself (Postpone / Skip / `Esc`).
+  The counters survive a shell restart.
 - **Interactions:** hover shows each timer as `name: elapsed/limit`; overdue
-  timers say `— break!`.
-- **Settings:** per-timer enable, work minutes, break seconds and colours
-  (defaults: micro 10 min/30 s, rest 50 min/8 min, daily off); graph width,
-  tooltip options.
+  timers say `— break!`. **Right-click** postpones or skips the reminder that is
+  up and pauses the timers for 15 min, 1 h or 2 h (or resumes them). **A pause
+  also keeps the screen awake** — the meeting a pause covers is exactly when a
+  lock screen is unwelcome — and while it lasts the widget shows a **coffee cup
+  and one bar** counting the pause down instead of the three timer bars. The
+  warning message steps aside once if the pointer comes for it, and can be
+  dragged anywhere.
+- **Settings:** per-timer enable, work interval, break length, reminder mode,
+  warning lead, postpone/skip and colours (defaults: micro 10 min/30 s,
+  rest 1:00/8 min, daily 8:00) — each timer on its own settings page; the end of
+  the working day (off by default, 21:30), the three pause lengths, the idle that
+  ends the day, warning position, graph width, tooltip options. **Every duration
+  is edited the same way:** it is written as `30 s`, `45 min` or `1:30`, and the
+  `±` buttons step by more the larger the value is — a minute at a time under ten
+  minutes, half an hour at eight.
+- **Full behaviour:** [`break-timer.md`](break-timer.md) — the three timers,
+  when each resets (including the daily counter's own rules) and the two-stage
+  reminder.
 
 ---
 

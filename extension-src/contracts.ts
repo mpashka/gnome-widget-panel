@@ -35,10 +35,25 @@ export interface PluginModule {
     create(parent: unknown, options: Record<string, unknown>): PluginActor;
 }
 
+/**
+ * The preferences host a widget's settings module talks to. It is a shim over
+ * the real `Adw.PreferencesWindow` (see `prefs.ts` `_openWidgetPreferences`),
+ * so these three methods are the whole surface a widget may rely on. Names
+ * follow the Adw ones the shim forwards to.
+ */
+export interface WidgetPreferencesHost {
+    /** Show this widget's own `Adw.PreferencesPage`. */
+    add(page: unknown): void;
+    /** Open a sub-section as an in-window subpage (an `Adw.NavigationPage`). */
+    push_subpage(page: unknown): void;
+    /** Return from a subpage this widget pushed. */
+    pop_subpage(): void;
+}
+
 /** Passed to a widget's preferences module when its settings UI is opened. */
 export interface WidgetPreferencesContext {
-    /** Adw dialog/window hosting this widget's preference pages. */
-    window: unknown;
+    /** Adw window (shim) hosting this widget's preference pages. */
+    window: WidgetPreferencesHost;
     /** Current per-widget options from `widgets.json` (never mutated in place). */
     options: Record<string, unknown>;
     /** Persist replacement options for this widget into `widgets.json`. */

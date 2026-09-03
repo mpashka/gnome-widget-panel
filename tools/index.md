@@ -6,7 +6,7 @@ Developer and build tooling for the GNOME Widget Panel. Parent:
 ## Files
 
 - [`format-generated.mjs`](format-generated.mjs) — build post-processor run after
-  `tsc` in [`../build.sh`](../build.sh). `tsc` strips every blank line when it
+  `tsc` in [`../gwp build`](../gwp). `tsc` strips every blank line when it
   emits JS, so it reinserts the AGENTS.md "Code formatting" spacing into every
   generated `extension/**/*.js` (two blank lines between top-level functions,
   three between top-level classes including `GObject.registerClass(...)`

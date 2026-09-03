@@ -17,6 +17,7 @@ import {claudePromptRequest, normalizeClaudeStatusLine} from './claudeStatusLine
 import {hexToRgb, nowSeconds} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
+import {applyRotation, drawingBox} from '../../panelRotation.js';
 
 const WIDTH = 54;
 const MIN_WIDTH = 24;
@@ -489,7 +490,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 'plugins',
                 'ai-agent-usage',
                 'helpers',
-                'codex-usage-helper.js',
+                'codex-usage-helper.gjs',
             ]);
             if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
                 return;
@@ -554,7 +555,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 'plugins',
                 'ai-agent-usage',
                 'helpers',
-                'gemini-usage-helper.js',
+                'gemini-usage-helper.gjs',
             ]);
             if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
                 return;
@@ -810,20 +811,6 @@ export const AiAgentUsageGraph = GObject.registerClass(
             positionTooltip(this);
         }
 
-        // Rotate for a vertical panel: when rotated the actor/surface is swapped
-        // (see setPanelLayout); draw in the base coordinate space and let the
-        // transform map it into the tall/narrow surface.
-        _applyRotation(context, sw, sh) {
-            if (!this._rotated)
-                return;
-            if (this._rotateDir === 'left') {
-                context.translate(0, sh);
-                context.rotate(-Math.PI / 2);
-            } else {
-                context.translate(sw, 0);
-                context.rotate(Math.PI / 2);
-            }
-        }
 
         // Called by the panel host on orientation/rotation changes.
         setPanelLayout(info) {
@@ -847,13 +834,12 @@ export const AiAgentUsageGraph = GObject.registerClass(
         _draw() {
             const context = this.get_context();
             const [sw, sh] = this.get_surface_size();
-            const width = this._rotated ? this._baseWidth : sw;
-            const height = this._rotated ? this._baseHeight : sh;
+            const [width, height] = drawingBox(this._rotated, sw, sh);
             const themeNode = this.get_theme_node();
             const color = themeNode.get_foreground_color();
 
             context.save();
-            this._applyRotation(context, sw, sh);
+            applyRotation(context, this._rotated, this._rotateDir, sw, sh);
 
             context.setLineWidth(1);
             const foreground = [color.red / 255, color.green / 255, color.blue / 255];
