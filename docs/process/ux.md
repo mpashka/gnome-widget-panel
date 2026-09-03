@@ -89,6 +89,35 @@ application is already under the pointer), a built-in `.desktop` editor
 knows does it), a confirmation before editing a system entry (rules 3 and 5 —
 the copy makes it harmless).
 
+## Worked example: what earns a row in the handle menu
+
+The panel handle's right-click menu is small on purpose, and it is **not** the
+place to surface a gesture that has no visible route. A menu row costs every
+user who opens the menu a line to read past, forever; so a row is earned in one
+of exactly three ways:
+
+| Why it is there | Rows | The test it passes |
+| --- | --- | --- |
+| **Needs to be fast**, even if it is not frequent | Collapse / Expand | The panel is suddenly in the way — collapse it and move on. Rarely done, but when it is wanted it is wanted *now*, and a trip to preferences is the wrong shape for it. |
+| **Convention** | Settings… | Right-click → *Settings* is where every modern interface keeps this. Being where people already look costs one row and saves a search. |
+| **Giving the extension a chance** | version header, Release notes, extensions.gnome.org, Report a bug, Suggest a feature | For someone who installed it to "just try it". The version answers "is my problem already fixed in a newer one" before they write the report; the rest turn a shrug into a report, a request or a rating instead of an uninstall. |
+
+**Configuration does not earn a row**, however hidden its current gesture is.
+The indicator drawer and the panel orientation are configuration: they are
+decided once and then left alone, so their home is the preferences window —
+where orientation already lives — and the fix for an undiscoverable gesture is
+*a setting*, not a menu item. Adding rows for them would push the three
+categories above further down the menu to serve operations performed once ever.
+
+Two consequences worth stating:
+
+- **A hidden gesture is not evidence that a menu row is missing.** Ask which of
+  the three tests the action passes. If none, it belongs in preferences, and the
+  gesture is either kept as a shortcut for whoever learned it, or dropped.
+- **The cheap gestures are a scarce resource.** There are only so many things a
+  pointer can do to one handle, so they should go to what needs to be fast
+  (per the first row above), not to what was implemented first.
+
 ## Related
 
 - [`code-quality.md`](code-quality.md) — the code-side bar for the same changes.
