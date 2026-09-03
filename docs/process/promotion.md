@@ -68,8 +68,7 @@ instead of green. Verify credentials and the endpoint without queueing a
 submission:
 
 ```bash
-. ~/.profile
-python3 .github/scripts/ego-upload.py --dry-run dist/*.shell-extension.zip
+cfg secret run ego -- python3 .github/scripts/ego-upload.py --dry-run dist/*.shell-extension.zip
 ```
 
 To upload by hand — the GitHub Release stays the reliable artifact:
@@ -102,12 +101,22 @@ the pages the public gets a 404 for:
   every file:line it hit.
 
 ```bash
-. ~/.profile                       # EGO_LOGIN / EGO_PASSWORD live there
-tools/ego-status.py                                  # human-readable
-tools/ego-status.py --comparable                     # the snapshot a watcher stores
-tools/ego-status.py --state ~/.cache/gwp-ego.json    # exit 20 when anything changed
-tools/ego-status.py --dump-html /tmp/ego             # keep the HTML when parsing fails
+cfg secret run ego -- tools/ego-status.py                # human-readable
+cfg secret run ego -- tools/ego-status.py --comparable   # the snapshot a watcher stores
+cfg secret run ego -- tools/ego-status.py --state ~/.cache/gwp-ego.json
+cfg secret run ego -- tools/ego-status.py --dump-html /tmp/ego   # keep the HTML on a parse failure
 ```
+
+### Where the credentials come from
+
+The script only ever reads `EGO_USERNAME`/`EGO_LOGIN` and `EGO_PASSWORD` from the
+environment, which keeps this repository free of any credential handling — CI
+supplies them as GitHub secrets. **Locally they are not exported anywhere**: they
+live encrypted in the maintainer's private secret store, and `cfg secret run ego`
+(the household CLI in `~/Projects/home/home-infra`) reads them at call time and
+hands them to the child process, so no shell profile or file on disk holds the
+password. Without that wrapper the script simply reports the author pages as
+unavailable and falls back to the credential-free "is it published yet?" probe.
 
 `--state` is what a watcher polls: it stores the comparable part of the result
 and exits **20** the moment a status, a comment or a Shexli finding changes.
@@ -125,11 +134,13 @@ Waiting for a verdict is not work, so it is not a session's job: the card
 `ego-review-monitoring` in the maintainer's local task dispatcher
 (`~/Projects/home/ai_dispatcher`, "Iron Uvarov") carries a `script` watch that
 runs `tools/ego-status.py --comparable` every few hours and messages Slack the
-moment a status, a reviewer comment or a Shexli finding moves. Set up with:
+moment a status, a reviewer comment or a Shexli finding moves. It goes through
+`cfg secret run` for the same reason as above — the systemd service holds no
+password. Set up with:
 
 ```bash
 ai_dispatcher watch add ego-review-monitoring script \
-    --command "tools/ego-status.py --comparable" --every 4h \
+    --command "cfg secret run ego -- tools/ego-status.py --comparable" --every 4h \
     --reason "вердикт ревьюера EGO по загруженной версии"
 ai_dispatcher watch list          # what it remembers about the review right now
 ```
