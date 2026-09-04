@@ -33,6 +33,8 @@ Inherited by every case in this directory:
   pointing at it.
 - [`find-application.md`](find-application.md) — "I know its name, not its
   category."
+- [`launch-favorite.md`](launch-favorite.md) — "Start one of the applications
+  I use every day."
 - [`favorites.md`](favorites.md) — "Keep the ones I use to hand."
 - [`edit-application.md`](edit-application.md) — "Its name, icon or command is
   wrong."

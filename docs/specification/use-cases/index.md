@@ -26,6 +26,9 @@ Every case page has the same shape:
   elsewhere is a link into [`steps.md`](steps.md) instead of prose.
 - **Cost** — the gesture count for the main path, so a design change that makes
   it longer is visible.
+- **Frequency** — when known, how often the goal occurs and where that estimate
+  came from. An unmeasured estimate is labelled as such rather than presented as
+  telemetry.
 - **Variants** — the near-neighbour goals that reuse the same steps.
 - **Result** — what the user sees afterwards, and what persists.
 

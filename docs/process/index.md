@@ -33,9 +33,10 @@ the relevant page **before** the matching task.
   extensions.gnome.org listing, how the published screenshots are regenerated
   and how a release is uploaded to the store by hand (`@tag:process`).
 - [`ux.md`](ux.md) — the interaction bar every widget is held to: design from
-  the use case, count the steps from where the user already is, act on the
-  object under the pointer, no dialogs for reversible actions, keyboard route
-  for the primary path (`@tag:ux`).
+  the use case, weight steps by frequency from where the user already is, act on
+  the object under the pointer, preserve exact state through Undo, spend a
+  keyboard shortcut only on what is frequent enough to earn one, and know what
+  earns a row in the handle menu (`@tag:ux`).
 - [`code-quality.md`](code-quality.md) — modularity, uniform naming across the
   codebase and per-widget documentation: the rules that keep the cost of change
   from growing (`@tag:process`).

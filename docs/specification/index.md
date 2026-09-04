@@ -82,7 +82,7 @@ gnome-extensions prefs gnome-widget-panel@mpashka.github.com
 or open **GNOME Widget Panel** in the Extensions / Extension Manager app and
 click its settings (gear) button. Changes apply **live** — no logout needed.
 Widgets that have their own settings (for example the AI agent usage widget) show
-a settings button that opens their own dialog.
+a settings button that opens an in-window settings subpage.
 
 ## Reporting a problem
 

@@ -31,9 +31,10 @@ Both AI widgets on the panel: the **status** dot
 
 - **Everything is red the whole time.** More sessions than you can answer;
   the dot is honest, and the queue is the problem.
-- **Agents from different providers.** Both widgets keep provider identity — the
-  dot's table lists sessions, the graph's colours attribute spend — so a mixed
-  fleet is still readable.
+- **Agents from different providers.** The usage graph keeps provider identity,
+  so its colours attribute spend across Claude Code, Codex and Gemini CLI. The
+  status dot is honestly Claude-only in v1: Codex and Gemini do not provide the
+  push lifecycle events needed to say reliably that a session is waiting.
 - **I want an audible alert.** Not offered: the widget's contract is a light,
   not a notification. If interruption is what you want, that is a
   [request](../configure/request-widget.md).

@@ -40,6 +40,8 @@ this directory is not a substitute for updating them.
 - `ui-bugs-and-single-cli/` — the bold clock, the dead Hide Top Bar Remove
   button and the shaking applications menu, plus folding the five root shell
   scripts into the single `gwp` CLI.
+- `ux-review/` — panel-wide UX audits, use-case cost
+  analysis and proposed feature requests.
 - `widget-settings-ux/` — the original request behind the GNOME-like
   menu/places/activities widgets and the live-apply settings work.
 

@@ -30,8 +30,8 @@ The **Places** widget is on the panel — it is not one of the defaults, so
   [Launch button](run-command.md).
 - **Applications, not folders.** [Favorites](favorites.md) in the applications
   menu.
-- **Rename the button.** The widget's **label** defaults to `Places`; the icon
-  and label are [tunable](../configure/tune-widget.md) like any button widget's.
+- **Label the button.** It is icon-only by default; the icon and optional label
+  are [tunable](../configure/tune-widget.md) like any button widget's.
 
 ## Result
 
