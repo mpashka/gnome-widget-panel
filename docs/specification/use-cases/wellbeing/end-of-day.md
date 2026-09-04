@@ -21,9 +21,15 @@ The **Break timer** widget with its **daily** timer enabled
    Nothing dims and nothing is enforced — there is no useful way to enforce the
    end of a day — and while the limit stands the message returns at most once an
    hour of work.
-3. [S4](../steps.md#s4) at any point for `daily: elapsed/limit`.
+3. **If you switched on the end of the working day**, that hour brings a window
+   that **stays until you answer it**: the day's numbers (time at the keyboard,
+   how much is past the limit, when you started) and one button — *Wrapping up —
+   10 min*. There is no close button and `Escape` does nothing; the chevron
+   beside the button offers longer answers, up to "work until 23:00".
+4. [S4](../steps.md#s4) at any point for `daily: elapsed/limit`.
 
-**Cost.** Zero gestures; the decision stays yours.
+**Cost.** Zero gestures to be told; **one click** to answer — the only
+interaction here you cannot skip.
 
 ## Variants
 
@@ -31,6 +37,17 @@ The **Break timer** widget with its **daily** timer enabled
   (off by default, 21:30) on the daily timer's page: the bar then shows whichever
   comes first — the hours worked or the hour itself. Two people mean different
   things by "the end of the day", so the widget does not pick one for you.
+- **I need another hour tonight.** The chevron menu: 20 / 30 / 60 minutes, a
+  length of your own with `±`, or a time to work until. It moves **tonight
+  only** — your usual end of day is unchanged, and the menu's last item is where
+  you change that on purpose.
+- **It is covering something.** Drag it, or let it step aside: it moves out of
+  the pointer's way, and unlike the break warning it may do so again later.
+- **I am presenting / recording / on a call.** It stays away entirely, and
+  arrives when that is over — a window you cannot close must not appear on a
+  shared screen.
+- **Why does it not dim the screen like a rest break?** Because it asks you to
+  close your work and shut down, and that needs a working screen.
 - **8 hours at the keyboard is not 8 hours of wall clock.** Correct, and
   deliberate: idle seconds are not counted, so the daily limit measures a real
   day's work spread over a longer, more irregular stretch.

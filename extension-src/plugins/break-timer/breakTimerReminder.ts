@@ -16,19 +16,38 @@
 // nothing. See ../../../docs/specification/break-timer.md.
 
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {formatDuration} from '../../duration.js';
-import {MESSAGE_ANCHORS, TIMER_TITLES, normalizeAnchor} from './breakTimerState.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+import {formatClock, formatDuration, stepDuration} from '../../duration.js';
+import {
+    DAY_END_POSTPONE_MINUTES,
+    DAY_END_WRAP_UP_SECONDS,
+    MESSAGE_ANCHORS,
+    TIMER_TITLES,
+    normalizeAnchor,
+} from './breakTimerState.js';
 
 const MESSAGE_MARGIN = 64;
 const FADE_MS = 200;
 // One short flight, not a chase: long enough for the eye to follow, short
 // enough not to be in the way of what the user was about to click.
 const YIELD_MS = 150;
+
+// The end-of-day window's own free-length stepper: from five minutes to four
+// hours. The step itself grows with the value (`stepDuration`), the way every
+// other duration in this widget is edited.
+const CUSTOM_RANGE = [5 * 60, 4 * 3600];
+// "Work until": a time of day moves in quarters of an hour. A ladder that
+// jumps by half-hours past three hours is right for "work for two more hours"
+// and wrong for "stop at 22:45".
+const UNTIL_STEP_SECONDS = 15 * 60;
+const UNTIL_MAX_SECONDS = 6 * 3600;
 
 
 function anchorPosition(anchor, monitor, width, height) {
@@ -86,6 +105,12 @@ export class BreakReminderUi {
         // flight in progress (which _placeMessage must not fight), and a
         // position the user dragged it to (which wins over the anchor).
         this._yielded = false;
+        this._yieldArmed = true;
+        this._messagePersistent = false;
+        this._details = null;
+        this._detailsBox = null;
+        this._detailsKey = '';
+        this._postponeMenu = null;
         this._yielding = false;
         this._dragged = false;
         this._dragOffset = null;
@@ -107,12 +132,17 @@ export class BreakReminderUi {
         this._actionsKey = '';
     }
 
-    /** Render the reminder the state machine currently holds (null hides all). */
-    sync(reminder, timer) {
+    /**
+     * Render the reminder the state machine currently holds (null hides all).
+     * `details` carries the end-of-day numbers — today's keyboard time, the
+     * overtime and when the day started — which only the widget can work out.
+     */
+    sync(reminder, timer, details = null) {
         if (!reminder || !timer) {
             this.hide();
             return;
         }
+        this._details = details;
         if (reminder.stage === 'break') {
             this._hideMessage();
             this._showScreen(reminder, timer);
@@ -143,6 +173,7 @@ export class BreakReminderUi {
             track_hover: true,
         });
         this._message.connect('enter-event', () => this._onMessageEnter());
+        this._message.connect('leave-event', () => this._onMessageLeave());
         // Drag to put it wherever the work is not: the dragged position then
         // wins over the anchor for as long as the widget lives. Clutter's
         // implicit pointer grab keeps the motion events coming while the button
@@ -153,11 +184,31 @@ export class BreakReminderUi {
         this._message.connect('motion-event', (actor, event) =>
             this._onDragMotion(event));
         this._message.connect('button-release-event', () => this._onDragRelease());
-        this._messageLabel = new St.Label({
-            style_class: 'break-timer-message-text',
+        // Header: an icon (end-of-day only) beside the message text.
+        const header = new St.BoxLayout({
+            style_class: 'break-timer-message-header',
             x_align: Clutter.ActorAlign.CENTER,
         });
-        this._message.add_child(this._messageLabel);
+        this._messageIcon = new St.Icon({
+            icon_name: 'weather-clear-night-symbolic',
+            style_class: 'break-timer-message-icon',
+            visible: false,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(this._messageIcon);
+        this._messageLabel = new St.Label({
+            style_class: 'break-timer-message-text',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(this._messageLabel);
+        this._message.add_child(header);
+        // Today's numbers, between the sentence and the answer.
+        this._detailsBox = new St.BoxLayout({
+            style_class: 'break-timer-details',
+            orientation: Clutter.Orientation.VERTICAL,
+            visible: false,
+        });
+        this._message.add_child(this._detailsBox);
         this._messageActions = new St.BoxLayout({
             style_class: 'break-timer-actions',
             x_align: Clutter.ActorAlign.CENTER,
@@ -176,11 +227,17 @@ export class BreakReminderUi {
         // A new showing starts unyielded: it may step aside once again — and
         // must do so before its actions are built, or a warning following a
         // yielded one would flash the buttons for a tick.
-        if (firstShowing)
+        if (firstShowing) {
             this._yielded = false;
+            this._yieldArmed = true;
+        }
         this._messageStage = reminder.stage;
         this._messageTimer = timer;
+        // The end-of-day window is the one that stays until it is answered, so
+        // it is also the one allowed to step aside more than once.
+        this._messagePersistent = reminder.reason === 'day-end';
         this._messageLabel.text = messageText(reminder, timer);
+        this._syncMessageDetails();
         this._syncMessageActions();
         this._placeMessage();
         if (!firstShowing)
@@ -203,8 +260,65 @@ export class BreakReminderUi {
     // that is when they appear. The owed-break message ('due') offers them from
     // the start: there the break is already owed.
     _messageOffersActions() {
+        // The end-of-day window follows the *warning's* rule, not the owed
+        // break's, even though its stage is `due`: it stands for hours, so
+        // buttons on the first showing would sit in the path of a pointer that
+        // is not coming for them — and the window steps aside from that pointer
+        // anyway, which would take them out from under it mid-click.
+        if (this._messagePersistent)
+            return this._yielded;
         return this._messageStage !== 'prelude' || this._yielded;
     }
+
+    // The three numbers the window argues with, and the only ones it has:
+    // today's time at the keyboard, how much of it is past the limit, and when
+    // the day began. Today's only — usage history is a non-goal of this widget,
+    // and none of it is kept.
+    _syncMessageDetails() {
+        const details = this._messagePersistent ? this._details : null;
+        this._messageIcon.visible = !!details;
+        if (!details) {
+            this._detailsBox.visible = false;
+            this._detailsKey = '';
+            return;
+        }
+        const rows = [
+            ['At the keyboard today', formatDuration(details.workedSeconds ?? 0)],
+        ];
+        if ((details.overtimeSeconds ?? 0) > 0) {
+            rows.push([
+                `Over your ${formatDuration(details.limitSeconds ?? 0)} limit`,
+                `+${formatDuration(details.overtimeSeconds)}`,
+            ]);
+        }
+        if (details.startedLabel)
+            rows.push(['Started at', details.startedLabel]);
+
+        // Rebuild only when something actually changed: this runs once a second
+        // and the window may be under the pointer.
+        const key = rows.map(row => row.join('\u0000')).join('|');
+        if (this._detailsKey === key) {
+            this._detailsBox.visible = true;
+            return;
+        }
+        this._detailsKey = key;
+        this._detailsBox.destroy_all_children();
+        for (const [label, value] of rows) {
+            const line = new St.BoxLayout({style_class: 'break-timer-details-row'});
+            line.add_child(new St.Label({
+                text: label,
+                style_class: 'break-timer-details-label',
+                x_expand: true,
+            }));
+            line.add_child(new St.Label({
+                text: value,
+                style_class: 'break-timer-details-value',
+            }));
+            this._detailsBox.add_child(line);
+        }
+        this._detailsBox.visible = true;
+    }
+
 
     _syncMessageActions() {
         if (!this._messageTimer)
@@ -236,10 +350,32 @@ export class BreakReminderUi {
     // eye is exactly what someone finishing a sentence does not need; one
     // predictable hop frees the screen and leaves Postpone/Skip reachable.
     _onMessageEnter() {
-        if (this._yielded || !this._messageVisible || this._dragged)
+        if (!this._canYield())
             return Clutter.EVENT_PROPAGATE;
         this._yielded = true;
+        this._yieldArmed = false;
         this._yieldFromPointer();
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    // Who may step aside, and how often. A 30-second message yields **once per
+    // showing** — the rule the reminder tests pin down, and the reason its
+    // buttons stay under the pointer that came for them. Only the end-of-day
+    // window, which stands for hours, may yield again on a later approach.
+    _canYield() {
+        if (!this._messageVisible || this._dragged)
+            return false;
+        return this._messagePersistent ? this._yieldArmed : !this._yielded;
+    }
+
+    // A 30-second message steps aside once and is gone; the end-of-day window
+    // stays up for hours, so freezing it where it first landed would leave it
+    // sitting on whatever is underneath for the rest of the evening. It may
+    // move again — but only once per approach, so it never flutters while the
+    // pointer is on it. Once dragged, the place the user chose wins over both.
+    _onMessageLeave() {
+        if (this._messagePersistent && !this._dragged)
+            this._yieldArmed = true;
         return Clutter.EVENT_PROPAGATE;
     }
 
@@ -474,6 +610,11 @@ export class BreakReminderUi {
             container.visible = false;
             return;
         }
+        if (this._messagePersistent && container === this._messageActions) {
+            this._fillDayEndActions(container);
+            container.visible = true;
+            return;
+        }
         if (timer.allowPostpone) {
             container.add_child(this._actionButton(
                 `Postpone ${timer.postponeMinutes} min`,
@@ -489,6 +630,146 @@ export class BreakReminderUi {
         container.visible = container.get_n_children() > 0;
     }
 
+    // One answer, not three. "Wrapping up" is what nine evenings in ten need —
+    // ten minutes to close the windows and shut the machine down — and it is
+    // named for what the user is doing rather than for brushing the window
+    // away, because the cheapest button is the one that teaches the habit. The
+    // rest live behind the chevron: same action, different number.
+    _fillDayEndActions(container) {
+        const split = new St.BoxLayout({style_class: 'break-timer-split'});
+        const main = new St.Button({
+            style_class: 'button break-timer-action break-timer-split-main',
+            label: `Wrapping up — ${formatClock(DAY_END_WRAP_UP_SECONDS)}`,
+            can_focus: false,
+        });
+        main.connect('clicked', () =>
+            this._actions.onDayEndPostpone?.(DAY_END_WRAP_UP_SECONDS));
+        split.add_child(main);
+
+        const more = new St.Button({
+            style_class: 'button break-timer-action break-timer-split-more',
+            child: new St.Icon({
+                icon_name: 'pan-down-symbolic',
+                style_class: 'break-timer-split-arrow',
+            }),
+            can_focus: false,
+        });
+        more.connect('clicked', () => this._openPostponeMenu(more));
+        split.add_child(more);
+        container.add_child(split);
+    }
+
+
+    _openPostponeMenu(source) {
+        if (this._postponeMenu) {
+            this._postponeMenu.destroy();
+            this._postponeMenu = null;
+        }
+        const menu = new PopupMenu.PopupMenu(source, 0.5, St.Side.BOTTOM);
+        Main.uiGroup.add_child(menu.actor);
+        menu.actor.hide();
+        this._postponeMenu = menu;
+
+        for (const minutes of DAY_END_POSTPONE_MINUTES) {
+            const item = new PopupMenu.PopupMenuItem(formatClock(minutes * 60));
+            item.connect('activate', () =>
+                this._actions.onDayEndPostpone?.(minutes * 60));
+            menu.addMenuItem(item);
+        }
+
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        // A length of my own, stepped the way every duration in this widget is
+        // stepped: the step grows with the value.
+        this._addStepperItem(menu, {
+            label: 'Another length…',
+            initial: 90 * 60,
+            format: seconds => formatClock(seconds),
+            step: (seconds, direction) => stepDuration(seconds, direction, CUSTOM_RANGE),
+            apply: seconds => this._actions.onDayEndPostpone?.(seconds),
+        });
+        // A time of day instead of a length. Same operation underneath: the
+        // window works out the seconds and postpones by them.
+        this._addStepperItem(menu, {
+            label: 'Work until…',
+            initial: UNTIL_STEP_SECONDS * 2,
+            format: seconds => this._clockLabelIn(seconds),
+            step: (seconds, direction) => Math.min(
+                UNTIL_MAX_SECONDS,
+                Math.max(UNTIL_STEP_SECONDS, seconds + direction * UNTIL_STEP_SECONDS)
+            ),
+            apply: seconds => this._actions.onDayEndPostpone?.(seconds),
+        });
+
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        // Tonight is only tonight: the habitual end of the working day is a
+        // decision, and decisions are made in preferences, not at 21:30 by
+        // someone who wants the window gone.
+        const settings = new PopupMenu.PopupMenuItem('Change my usual end of day…');
+        settings.connect('activate', () => this._actions.onOpenPreferences?.());
+        menu.addMenuItem(settings);
+
+        menu.open();
+    }
+
+
+    // A menu row that is a stepper, not a choice: [−] value [+] and a tick that
+    // commits it. The ± presses must not close the menu, so they are St.Buttons
+    // inside the row and the row itself never activates.
+    _addStepperItem(menu, {label, initial, format, step, apply}) {
+        const item = new PopupMenu.PopupBaseMenuItem({activate: false});
+        item.setOrnament(PopupMenu.Ornament.HIDDEN);
+        let value = initial;
+
+        item.add_child(new St.Label({
+            text: label,
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        const minus = this._stepButton('list-remove-symbolic');
+        const valueLabel = new St.Label({
+            text: format(value),
+            style_class: 'break-timer-stepper-value',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const plus = this._stepButton('list-add-symbolic');
+        const commit = this._stepButton('object-select-symbolic');
+        minus.connect('clicked', () => {
+            value = step(value, -1);
+            valueLabel.text = format(value);
+        });
+        plus.connect('clicked', () => {
+            value = step(value, 1);
+            valueLabel.text = format(value);
+        });
+        commit.connect('clicked', () => {
+            menu.close();
+            apply(value);
+        });
+        item.add_child(minus);
+        item.add_child(valueLabel);
+        item.add_child(plus);
+        item.add_child(commit);
+        menu.addMenuItem(item);
+    }
+
+
+    _stepButton(iconName) {
+        return new St.Button({
+            style_class: 'break-timer-stepper-button',
+            child: new St.Icon({icon_name: iconName, icon_size: 14}),
+            can_focus: false,
+        });
+    }
+
+
+    // "Work until 22:45" — the wall-clock time `seconds` from now, so the menu
+    // says the thing the user is deciding rather than the arithmetic.
+    _clockLabelIn(seconds) {
+        const when = GLib.DateTime.new_now_local().add_seconds(seconds);
+        return when ? when.format('%H:%M') : formatClock(seconds);
+    }
+
+
     _actionButton(label, onClick) {
         const button = new St.Button({
             style_class: 'button break-timer-action',
@@ -501,6 +782,10 @@ export class BreakReminderUi {
 
     destroy() {
         this._releaseGrab();
+        if (this._postponeMenu) {
+            this._postponeMenu.destroy();
+            this._postponeMenu = null;
+        }
         if (this._message) {
             Main.layoutManager.removeChrome(this._message);
             this._message.destroy();

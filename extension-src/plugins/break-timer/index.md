@@ -86,6 +86,38 @@ over — stop for today" rather than claiming a limit was reached.
 `dayEndFraction()` fills the bar from `dayStartedAt` to the deadline; before the
 first activity of the day there is nothing to measure from, so it stays empty.
 
+#### The window that does not expire (#45)
+
+A `day-end` reminder is built with `remaining: 0`, and `advanceReminder()`
+returns early for it: it is the one reminder with no countdown, because the end
+of the day is the one threshold no amount of idling satisfies. Everything that
+follows hangs off that:
+
+- **`state.dayEndSnoozedUntil`** (wall-clock epoch seconds) is the only answer.
+  `postponeDayEnd(state, until)` sets it; `isDayEndSnoozed()` gates
+  `isDayEndDue()`. Wall-clock rather than the activity seconds `quietUntil`
+  counts in — ten minutes away from the keyboard must still be ten minutes.
+  `resetTimer('daily')` clears it: a new working day forgets last night.
+- **It never writes the configured end of day.** `dayEndAt` is an input computed
+  by the graph from the setting; nothing in the postpone path touches it.
+- **Suppression is not an answer.** `isDayEndDue()` requires `input.canInterrupt`,
+  and `advance()` drops a `day-end` reminder already on screen when that goes
+  false, leaving `dayEndSnoozedUntil` alone — so it returns by itself. The
+  hourly `quietUntil` does not apply while the window is only waiting for a free
+  screen: it was never shown, so there is nothing to be quiet about.
+- **The UI half** (`breakTimerReminder.ts`) marks the showing
+  `_messagePersistent`, which changes three things: `_messageOffersActions()`
+  follows the *warning's* rule (no buttons until it has yielded) even though the
+  stage is `due`; `_canYield()` allows one step-aside **per pointer approach**
+  instead of one per showing (`_yieldArmed`, re-armed on `leave-event`); and
+  `_syncMessageDetails()` renders the day's numbers, which the graph works out
+  in `_dayEndDetails()`.
+- **The answer is a split button** built by `_fillDayEndActions()`:
+  `DAY_END_WRAP_UP_SECONDS` (10 min, fixed) plus a chevron opening
+  `_openPostponeMenu()` — `DAY_END_POSTPONE_MINUTES`, two `_addStepperItem()`
+  rows (a free length via `stepDuration`, a time of day in quarter-hours) and
+  the route into preferences, which is the only place the habitual time changes.
+
 ## Reminders
 
 ### Silence: the pause and the session inhibitor

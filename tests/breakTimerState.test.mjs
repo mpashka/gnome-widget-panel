@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import {formatDuration} from '../extension/duration.js';
 import {
+    DAY_END_WRAP_UP_SECONDS,
     DEFAULT_DAY_END_MINUTES,
     DEFAULT_PAUSE_MINUTES,
     DUE_MESSAGE_SECONDS,
@@ -13,6 +14,7 @@ import {
     createState,
     dayEndFraction,
     dayEndRemainingSeconds,
+    isDayEndSnoozed,
     isDayOver,
     normalizeDayEnd,
     normalizePauseMinutes,
@@ -22,6 +24,8 @@ import {
     pauseFraction,
     pauseRemainingSeconds,
     pauseReminders,
+    overtimeSeconds,
+    postponeDayEnd,
     postponeReminder,
     restoreElapsed,
     resumeReminders,
@@ -415,4 +419,96 @@ test('a new working day clears the previous day start', () => {
     });
     assert.equal(away.elapsed.daily, 0);
     assert.equal(away.dayStartedAt, 0);
+});
+
+
+// --- The end-of-day window: it stays until it is answered -------------------
+
+const DAILY = TIMERS[2];
+
+test('the end-of-day window does not expire the way a break message does', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    assert.equal(over.reminder.reason, 'day-end');
+    // No countdown at all: the field that makes every other message leave.
+    assert.equal(over.reminder.remaining, 0);
+    // Far longer than DUE_MESSAGE_SECONDS, and still there.
+    const later = runClock(over, DUE_MESSAGE_SECONDS * 4, 2001, {dayEndAt: 2000});
+    assert.equal(later.reminder?.reason, 'day-end');
+});
+
+test('postponing the end of the day silences it for exactly that long', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    const snoozed = postponeDayEnd(over, 2000 + DAY_END_WRAP_UP_SECONDS);
+    assert.equal(snoozed.reminder, null);
+    assert.equal(isDayEndSnoozed(snoozed, 2500), true);
+
+    // Quiet for the whole ten minutes...
+    const during = runClock(snoozed, 60, 2100, {dayEndAt: 2000});
+    assert.equal(during.reminder, null);
+    // ...and back the second they are up.
+    const after = run(during, 1, {now: 2000 + DAY_END_WRAP_UP_SECONDS, dayEndAt: 2000});
+    assert.equal(after.reminder?.reason, 'day-end');
+});
+
+test('postponing waits out wall-clock time, not time at the keyboard', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    const snoozed = postponeDayEnd(over, 2600);
+    // Away from the machine for the whole postponement: no activity accrues,
+    // so an activity-based quiet period would never end. This one does.
+    const back = run(snoozed, 1, {now: 2600, idleSeconds: 600, dayEndAt: 2000});
+    assert.equal(back.reminder?.reason, 'day-end');
+});
+
+test('postponing never moves the configured end of the working day', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    const snoozed = postponeDayEnd(over, 9999);
+    // The only thing that changed is tonight's snooze; dayEndAt is an input,
+    // computed by the widget from the setting, and nothing here writes it.
+    assert.equal(snoozed.dayEndSnoozedUntil, 9999);
+    assert.deepEqual(Object.keys(snoozed).sort(), Object.keys(over).sort());
+});
+
+test('a shared or fullscreen screen holds the window back without answering it', () => {
+    const busy = run(createState(), 5, {now: 2000, dayEndAt: 2000, canInterrupt: false});
+    assert.equal(busy.reminder, null);
+    // Nothing was marked as said, so it arrives the moment the screen is free.
+    const free = run(busy, 1, {now: 2100, dayEndAt: 2000});
+    assert.equal(free.reminder?.reason, 'day-end');
+});
+
+test('a window already up comes down when the screen stops being the user\'s own', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    assert.equal(over.reminder.reason, 'day-end');
+    const shared = run(over, 1, {now: 2001, dayEndAt: 2000, canInterrupt: false});
+    assert.equal(shared.reminder, null);
+    assert.equal(isDayEndSnoozed(shared, 2001), false);
+});
+
+test('a pause and a session inhibitor silence it too', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    const inhibited = run(over, 1, {now: 2001, dayEndAt: 2000, inhibited: true});
+    assert.equal(inhibited.reminder, null);
+    const paused = run(pauseReminders(over, 1800, 2000), 1, {now: 2001, dayEndAt: 2000});
+    assert.equal(paused.reminder, null);
+});
+
+test('a new working day forgets yesterday\'s postponement', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    const snoozed = postponeDayEnd(over, 99999);
+    const away = run(snoozed, 1, {
+        now: 40000,
+        idleSeconds: 7 * 3600,
+        dailyIdleResetSeconds: 6 * 3600,
+        dayEndAt: 2000,
+    });
+    assert.equal(away.dayEndSnoozedUntil, 0);
+    assert.equal(isDayEndSnoozed(away, 40000), false);
+});
+
+test('overtime is what the window has to argue with', () => {
+    const inside = run(createState(), 60, {now: 1000, dayEndAt: 0});
+    assert.equal(overtimeSeconds(inside, TIMERS), 0);
+    const over = {...inside, elapsed: {...inside.elapsed, daily: limitSeconds(DAILY) + 2700}};
+    assert.equal(overtimeSeconds(over, TIMERS), 2700);
+    assert.equal(formatDuration(overtimeSeconds(over, TIMERS)), '45:00');
 });

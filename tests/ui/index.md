@@ -113,6 +113,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
   local golden comparisons).
+- `t-24-day-end-window.sh` — the end-of-day window (#45): the clock raises it,
+  it does not expire the way a break message does, it takes neither focus nor
+  input, its first showing carries no buttons until it has stepped aside, only a
+  chosen time puts it away, and a screen that is not the user's own holds it back
+  without counting as an answer.
 
 ## Directories
 

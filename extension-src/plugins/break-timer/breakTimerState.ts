@@ -80,6 +80,17 @@ export interface BreakTimerState {
      * 0 before the first activity of the day.
      */
     dayStartedAt: number;
+    /**
+     * Wall-clock second until which the end-of-day window stays away, after the
+     * user answered it with "ten more minutes" or "work until 23:00". 0 when
+     * nothing was postponed.
+     *
+     * Wall-clock rather than the activity seconds `quietUntil` counts in,
+     * because this threshold is a time of day: a user who walks away for the
+     * ten minutes they asked for must still be met by the window when they sit
+     * back down, and activity seconds would not have moved.
+     */
+    dayEndSnoozedUntil: number;
 }
 
 export interface TickInput {
@@ -134,6 +145,14 @@ const DAILY_REPEAT_SECONDS = 3600;
 // Activity seconds before retrying a break screen that could not be shown
 // (fullscreen application, session inhibitor, locked session).
 const SUPPRESSED_RETRY_SECONDS = 60;
+
+// The one fixed answer the end-of-day window offers: long enough to close the
+// windows and shut the machine down. Deliberately not configurable — its whole
+// value is that it needs no thought at the end of a long day.
+export const DAY_END_WRAP_UP_SECONDS = 10 * 60;
+
+// The lengths its menu offers beyond that, in minutes.
+export const DAY_END_POSTPONE_MINUTES = [20, 30, 60];
 
 export const DEFAULT_DAILY_IDLE_RESET_HOURS = 6;
 
@@ -341,6 +360,7 @@ export function createState(): BreakTimerState {
         pausedUntil: 0,
         pausedFrom: 0,
         dayStartedAt: 0,
+        dayEndSnoozedUntil: 0,
     };
 }
 
@@ -353,6 +373,7 @@ function cloneState(state: BreakTimerState): BreakTimerState {
         pausedUntil: state.pausedUntil ?? 0,
         pausedFrom: state.pausedFrom ?? 0,
         dayStartedAt: state.dayStartedAt ?? 0,
+        dayEndSnoozedUntil: state.dayEndSnoozedUntil ?? 0,
     };
 }
 
@@ -369,8 +390,11 @@ function resetTimer(state: BreakTimerState, name: TimerName): void {
     delete state.quietUntil[name];
     // A new working day starts when the daily counter does, so the end-of-day
     // bar fills from the moment work actually resumes.
-    if (name === 'daily')
+    if (name === 'daily') {
         state.dayStartedAt = 0;
+        // Yesterday's "ten more minutes" has nothing to say about today.
+        state.dayEndSnoozedUntil = 0;
+    }
     if (state.reminder && state.reminder.timer === name)
         state.reminder = null;
 }
@@ -392,6 +416,50 @@ function repeatSeconds(timer: TimerConfig, canInterrupt: boolean): number {
  */
 export function isDayOver(input: {dayEndAt: number; now: number}): boolean {
     return input.dayEndAt > 0 && input.now >= input.dayEndAt;
+}
+
+
+/**
+ * Is the end-of-day window postponed right now? "Ten more minutes" and "work
+ * until 23:00" are the same thing in two words — a wall-clock second before
+ * which the window says nothing.
+ */
+export function isDayEndSnoozed(
+    state: BreakTimerState,
+    now: number
+): boolean {
+    return (state.dayEndSnoozedUntil ?? 0) > now;
+}
+
+
+/**
+ * The end-of-day window is the one reminder that never expires, so it is also
+ * the one that must not be able to appear where it cannot be answered: on a
+ * shared screen, over a fullscreen presentation, or on the lock screen. Both
+ * `canInterrupt` and the snooze gate it — a suppressed window returns by itself
+ * the moment the obstacle is gone, and nothing is marked as "said".
+ */
+function isDayEndDue(
+    state: BreakTimerState,
+    timer: TimerConfig,
+    input: TickInput
+): boolean {
+    return timer.name === 'daily'
+        && isDayOver(input)
+        && input.canInterrupt
+        && !isDayEndSnoozed(state, input.now);
+}
+
+
+/** Activity seconds worked beyond the daily limit; 0 while inside it. */
+export function overtimeSeconds(
+    state: BreakTimerState,
+    timers: TimerConfig[]
+): number {
+    const daily = findTimer(timers, 'daily');
+    if (!daily)
+        return 0;
+    return Math.max(0, (state.elapsed.daily ?? 0) - limitSeconds(daily));
 }
 
 
@@ -436,10 +504,14 @@ function isOffered(
     // The daily limit has a second way of coming due: the clock. Whichever
     // arrives first raises the same reminder, on the same timer, so nothing is
     // said twice.
-    const overdue = elapsed >= limitSeconds(timer) - leadSeconds(timer)
-        || (timer.name === 'daily' && isDayOver(input));
-    if (!overdue)
+    const worked = elapsed >= limitSeconds(timer) - leadSeconds(timer);
+    if (!worked && !isDayEndDue(state, timer, input))
         return false;
+    // A day-end window that is only waiting for the screen to be free is not
+    // subject to the hourly quiet period the counter's own message uses: it was
+    // never shown, so there is nothing to be quiet about.
+    if (!worked)
+        return true;
     return elapsed >= (state.quietUntil[timer.name] ?? 0);
 }
 
@@ -461,14 +533,21 @@ function startedReminder(
     // The clock beat the counter to it: no advance warning (the warning belongs
     // to a break one is about to owe, not to a time of day) and a message of its
     // own, so "call it a day" is not confused with "you have worked 8 hours".
-    if (timer.name === 'daily' && isDayOver(input)
-        && (state.elapsed[timer.name] ?? 0) < limitSeconds(timer)) {
+    //
+    // It carries no countdown: `remaining: 0` marks the one reminder that does
+    // not expire. The end of the day cannot be taken the way a break can — no
+    // amount of idling satisfies it — so a message that leaves by itself would
+    // let the day close with nothing decided. It stays until it is answered.
+    // The clock outranks the counter here: past the end of the day, "you have
+    // worked 8 hours" is the smaller half of what the window has to say, and it
+    // is in there as the overtime line anyway.
+    if (isDayEndDue(state, timer, input)) {
         return {
             timer: timer.name,
             reason: 'day-end',
             stage: 'due',
-            remaining: DUE_MESSAGE_SECONDS,
-            total: DUE_MESSAGE_SECONDS,
+            remaining: 0,
+            total: 0,
         };
     }
     const lead = leadSeconds(timer);
@@ -519,6 +598,11 @@ function advanceReminder(
         state.reminder = null;
         return;
     }
+    // The end-of-day window has no countdown to advance: it stays until the
+    // user answers it, or until something makes it unshowable (handled in
+    // `advance`, which drops it the way a pause does).
+    if (reminder.reason === 'day-end')
+        return;
     reminder.remaining -= input.tickSeconds;
     if (reminder.remaining > 0)
         return;
@@ -583,6 +667,12 @@ export function advance(
     }
     const silent = isSilent(next, input);
     if (silent)
+        next.reminder = null;
+    // A window that cannot be closed must not be able to sit on a shared
+    // screen, a fullscreen presentation or the lock screen. It is only hidden,
+    // never answered: `dayEndSnoozedUntil` is untouched, so it comes back by
+    // itself as soon as the screen is the user's own again.
+    if (next.reminder?.reason === 'day-end' && !input.canInterrupt)
         next.reminder = null;
     const inBreak = !silent && state.reminder?.stage === 'break';
     const working = input.idleSeconds < ACTIVE_IDLE_THRESHOLD_SECONDS;
@@ -686,6 +776,28 @@ export function postponeReminder(
     next.quietUntil[timer.name] =
         (next.elapsed[timer.name] ?? 0) + timer.postponeMinutes * 60;
     next.reminder = null;
+    return next;
+}
+
+
+/**
+ * The end-of-day window was answered: stay away until `until` (a wall-clock
+ * second), and say nothing more about it before then.
+ *
+ * This is the only answer the window has — "ten more minutes", "an hour",
+ * "until 23:00" are one operation with a different number, and none of them
+ * touches the configured end of the working day. A window that rewrote that
+ * setting every evening would walk it to 1 a.m. inside a week and quietly
+ * dismantle the feature it belongs to; tonight is only tonight.
+ */
+export function postponeDayEnd(
+    state: BreakTimerState,
+    until: number
+): BreakTimerState {
+    const next = cloneState(state);
+    next.dayEndSnoozedUntil = Math.max(next.dayEndSnoozedUntil ?? 0, Math.round(until));
+    if (next.reminder?.reason === 'day-end')
+        next.reminder = null;
     return next;
 }
 

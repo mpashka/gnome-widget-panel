@@ -207,6 +207,70 @@
   spacing: 8px;
 }
 
+/* The end-of-day window: an icon beside the sentence, today's numbers under it
+   and one split button. Wider than a break message on purpose — it is read,
+   not glanced at. */
+.break-timer-message-header {
+  spacing: 10px;
+}
+
+.break-timer-message-icon {
+  icon-size: 22px;
+  color: #ffb82e;
+}
+
+.break-timer-details {
+  spacing: 4px;
+  padding: 4px 2px 2px 2px;
+  min-width: 260px;
+}
+
+.break-timer-details-row {
+  spacing: 16px;
+}
+
+.break-timer-details-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.break-timer-details-value {
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.break-timer-split {
+  spacing: 1px;
+}
+
+.break-timer-split-main {
+  border-radius: 6px 0 0 6px;
+}
+
+.break-timer-split-more {
+  min-width: 28px;
+  padding: 4px 6px;
+  border-radius: 0 6px 6px 0;
+}
+
+.break-timer-split-arrow {
+  icon-size: 14px;
+}
+
+.break-timer-stepper-value {
+  min-width: 62px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.break-timer-stepper-button {
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.break-timer-stepper-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
 .break-timer-action {
   min-width: 90px;
   padding: 4px 14px;

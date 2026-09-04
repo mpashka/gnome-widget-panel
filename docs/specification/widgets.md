@@ -68,7 +68,7 @@ widgets are optional — add them from preferences.
   Downloads, Pictures…) and your file-manager bookmarks.
 - **Interactions:** click opens the menu; selecting an entry opens it in your file
   manager.
-- **Settings:** icon, label (default `Places`).
+- **Settings:** icon, label (empty by default, so the button is icon-only).
 
 ### Launch — `launch`  *(optional)*
 - **Icon:** `application-x-executable-symbolic`.
@@ -237,6 +237,11 @@ widgets are optional — add them from preferences.
   working day* (21:30 by default) and its bar shows whichever comes first —
   the hours worked, or the hour itself. When one comes due it warns you with a message that never steals
   focus, then dims the screen for the break itself (Postpone / Skip / `Esc`).
+  **The end of the working day is the exception**: its window stays until you
+  answer it — no close button, no timeout — and the answer is a time (*Wrapping
+  up — 10 min*, or a longer one from the chevron menu). It never dims the
+  screen, because closing your work needs one, and it stays away from a shared
+  or fullscreen screen.
   The counters survive a shell restart.
 - **Interactions:** hover shows each timer as `name: elapsed/limit`; overdue
   timers say `— break!`. **Right-click** postpones or skips the reminder that is
