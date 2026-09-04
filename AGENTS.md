@@ -84,12 +84,19 @@ second root script — new build/install/dev actions become `gwp` subcommands.
 npm run typecheck   # tsc --noEmit
 npm test            # build, then node --test on gi-free pure-logic modules
 npm run test:ui     # headless GNOME Shell UI regression suite (docs/testing/ui-testing.md)
+npm run test:prefs  # build every widget's settings page and click through it
 ```
 
 Tests (`npm test`, Node's built-in runner) cover only the **gi-free** pure-logic
 modules (`tooltipTemplate.ts`, `widgetConfig.ts`); see [`tests/`](tests/index.md).
 UI behaviour (panel layout, live-apply settings, clicks) is covered by the
 headless UI suite `npm run test:ui` — see [`docs/testing/ui-testing.md`](docs/testing/ui-testing.md).
+Anything reached from the **preferences window** is covered by
+`npm run test:prefs` ([`tests/prefs/`](tests/prefs/index.md)): it opens every
+widget's settings page and presses every control on it. Run it after touching
+`prefs.ts`, a widget's `prefs.ts` or a shared row builder — a page that throws is
+swallowed by the subpage loader, so the only symptom is a settings button that
+does nothing.
 Prefer extracting pure logic into a gi-free module and testing it there over
 loading Shell-only code. Most of the extension is dynamic GJS/Shell code and is
 verified by running it (see below). A plain `./gwp install` needs a logout/login on Wayland to

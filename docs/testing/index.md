@@ -10,6 +10,10 @@ Test cases and the harnesses that run them. Two layers cover the extension:
 - **Headless UI tests** — behaviour that needs a running GNOME Shell (panel
   layout, live-apply settings, clicks), run with `npm run test:ui`. Cases are
   catalogued in [`../../tests/ui/index.md`](../../tests/ui/index.md).
+- **Preferences smoke test** — the GTK4/libadwaita settings pages, run with
+  `npm run test:prefs`: every widget's page is built and clicked through, because
+  a page that throws is swallowed by the subpage loader and looks like a dead
+  button. See [`../../tests/prefs/index.md`](../../tests/prefs/index.md).
 
 ## Files
 
@@ -21,6 +25,9 @@ Test cases and the harnesses that run them. Two layers cover the extension:
 
 - Prefer extracting pure logic into a gi-free module and covering it with a unit
   test in [`../../tests/index.md`](../../tests/index.md).
+- Anything reached from the **preferences window** belongs in
+  [`../../tests/prefs/index.md`](../../tests/prefs/index.md) — it is the only suite that
+  loads the Adw widgets.
 - Shell-only behaviour gets a `t-NN-*.sh` script in
   [`../../tests/ui/index.md`](../../tests/ui/index.md), listed in that index with the
   behaviour it pins down and the issue it regresses.

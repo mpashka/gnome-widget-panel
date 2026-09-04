@@ -11,6 +11,7 @@
     "pretest": "npm run build",
     "test": "node --test tests/*.test.mjs",
     "test:ui": "bash tests/ui/run.sh",
+    "test:prefs": "bash tests/prefs/run.sh",
     "pack": "./.github/scripts/pack.sh",
     "dev:install": "./gwp dev-install",
     "dev": "./gwp dev"

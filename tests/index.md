@@ -12,8 +12,9 @@ Two test layers:
 ## Running
 
 ```bash
-npm test          # unit: `npm run build` first, then `node --test tests/*.test.mjs`
-npm run test:ui   # UI regression suite (needs a GNOME 50 host; ~2-3 min)
+npm test           # unit: `npm run build` first, then `node --test tests/*.test.mjs`
+npm run test:ui    # UI regression suite (needs a GNOME 50 host; ~2-3 min)
+npm run test:prefs # every widget's settings page opens and survives clicking
 ```
 
 Tests import the compiled output from `../extension/` (a build artifact), so the
@@ -99,6 +100,9 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 
 - [`ui/`](ui/index.md) — headless GNOME Shell UI test harness, regression tests
   (`t-*.sh`) and the feature-debug stub.
+- [`prefs/`](prefs/index.md) — the preferences process: builds and clicks
+  through every widget's settings page, catching the `undefined`-in-initializer
+  class that makes a settings button silently do nothing.
 
 ## Adding tests
 
