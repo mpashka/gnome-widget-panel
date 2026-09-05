@@ -48,20 +48,24 @@ ui_eval "$TICK(120)" >/dev/null
 assert_eq "$(ui_eval "$STATE.reminder.reason")" '"day-end"' 'it is still there long past DUE_MESSAGE_SECONDS'
 assert_true "$UI._messageVisible" 'and still on screen'
 
-# --- no buttons until it has stepped aside once ----------------------------
-assert_true "!$UI._messageActions.visible" 'the first showing carries no buttons'
-ui_eval "$UI._onMessageEnter(); 'yielded'" >/dev/null
-ui_eval "$TICK(1)" >/dev/null
-assert_true "$UI._messageActions.visible" 'after it steps aside, the answer appears'
+# --- it is answerable from the first moment --------------------------------
+# A question that stands until it is answered shows the answer straight away.
+assert_true "$UI._messageActions.visible" 'the answer is on it from the first showing'
 assert_eq "$(ui_eval "$UI._messageActions.get_children().length")" '1' 'one split button, not three'
 
-# --- and it stays answerable for the rest of the evening -------------------
-assert_true "$UI._yielded === true" 'it remembers that it has yielded'
-ui_eval "$UI._onMessageLeave(); 'left'" >/dev/null
-assert_true "$UI._yieldArmed === true" 'the pointer leaving re-arms the step-aside'
-ui_eval "$UI._onMessageEnter(); 'yielded again'" >/dev/null
+# --- and it never runs from the pointer ------------------------------------
+# The regression this pins: it used to step aside on every approach. The yield
+# moves the window out from under the pointer, which fires `leave`, which re-armed
+# the step-aside — so every approach was a first approach, the window fled
+# forever and its buttons could not be clicked at all.
+ANCHOR_BEFORE="$(ui_eval "$UI._anchor")"
+for _ in 1 2 3; do
+    ui_eval "$UI._onMessageEnter(); 'approached'" >/dev/null
+done
 ui_eval "$TICK(1)" >/dev/null
-assert_true "$UI._messageActions.visible" 'moving again does not take the answer away'
+assert_true "$UI._yielded === false" 'the end-of-day window does not step aside'
+assert_eq "$(ui_eval "$UI._anchor")" "$ANCHOR_BEFORE" 'it stays where it is, however often it is approached'
+assert_true "$UI._messageActions.visible" 'so its answer stays under the pointer that came for it'
 
 # --- today's numbers are on it --------------------------------------------
 assert_true "$UI._detailsBox.visible" 'it shows what the day cost'
@@ -91,10 +95,7 @@ ui_eval "$TICK(1)" >/dev/null
 assert_eq "$(ui_eval "$STATE.reminder.reason")" '"day-end"' 'it comes back once the screen is the user own again'
 
 # --- the menu builds, and nothing in it closes the window without a time ---
-# A fresh showing starts without buttons again, by the same rule as the first.
-assert_true "!$UI._messageActions.visible" 'a returning window is buttonless until it moves again'
-ui_eval "$UI._onMessageEnter(); 'yielded'" >/dev/null
-ui_eval "$TICK(1)" >/dev/null
+assert_true "$UI._messageActions.visible" 'a returning window is answerable at once, like the first'
 ui_eval "$UI._openPostponeMenu($UI._messageActions.get_children()[0].get_children()[1]); 'opened'" >/dev/null
 assert_true "$UI._postponeMenu !== null" 'the chevron opens the postpone menu'
 assert_true "$UI._postponeMenu.numMenuItems >= 6" 'it offers the fixed lengths, the two steppers and preferences'

@@ -216,11 +216,11 @@ stays until it is answered:
 - **It never takes focus and never grabs input.** It is the stage-1 message,
   with all of that behaviour: keep typing, the keystrokes go where they were
   going.
-- **On the first showing it carries no buttons**, and it steps aside once when
-  the pointer comes for it — then its answer appears. Because it stands for
-  hours rather than seconds, it may step aside **again on a later approach**,
-  so it never ends up frozen on top of something you need. Dragging it still
-  wins over both.
+- **Its answer is on it from the first moment, and it never runs from the
+  pointer.** Unlike the advance warning, this window is a question rather than a
+  hint, so stepping aside from the pointer would be stepping aside from the
+  answer. If it is in the way, drag it — or answer it, which is what it is there
+  for.
 - **There is no close button, and `Escape` does nothing.** Every answer is a
   time; "make it go away without deciding" is not one of them.
 - **It shows what the day cost** — time at the keyboard today, how much of that

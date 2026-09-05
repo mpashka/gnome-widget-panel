@@ -105,7 +105,6 @@ export class BreakReminderUi {
         // flight in progress (which _placeMessage must not fight), and a
         // position the user dragged it to (which wins over the anchor).
         this._yielded = false;
-        this._yieldArmed = true;
         this._messagePersistent = false;
         this._details = null;
         this._detailsBox = null;
@@ -173,7 +172,6 @@ export class BreakReminderUi {
             track_hover: true,
         });
         this._message.connect('enter-event', () => this._onMessageEnter());
-        this._message.connect('leave-event', () => this._onMessageLeave());
         // Drag to put it wherever the work is not: the dragged position then
         // wins over the anchor for as long as the widget lives. Clutter's
         // implicit pointer grab keeps the motion events coming while the button
@@ -229,7 +227,6 @@ export class BreakReminderUi {
         // yielded one would flash the buttons for a tick.
         if (firstShowing) {
             this._yielded = false;
-            this._yieldArmed = true;
         }
         this._messageStage = reminder.stage;
         this._messageTimer = timer;
@@ -257,16 +254,12 @@ export class BreakReminderUi {
     // Postpone/Skip act on nothing one can see yet; they are also unreachable
     // in practice, since the pointer that comes for them makes the message move
     // away first. Once it HAS moved they are both meaningful and clickable, so
-    // that is when they appear. The owed-break message ('due') offers them from
-    // the start: there the break is already owed.
+    // that is when they appear.
+    //
+    // Everything else ('due', including the end-of-day window) offers them from
+    // the start: the break is already owed, or the question is already asked,
+    // and neither of those messages runs from the pointer.
     _messageOffersActions() {
-        // The end-of-day window follows the *warning's* rule, not the owed
-        // break's, even though its stage is `due`: it stands for hours, so
-        // buttons on the first showing would sit in the path of a pointer that
-        // is not coming for them — and the window steps aside from that pointer
-        // anyway, which would take them out from under it mid-click.
-        if (this._messagePersistent)
-            return this._yielded;
         return this._messageStage !== 'prelude' || this._yielded;
     }
 
@@ -353,30 +346,28 @@ export class BreakReminderUi {
         if (!this._canYield())
             return Clutter.EVENT_PROPAGATE;
         this._yielded = true;
-        this._yieldArmed = false;
         this._yieldFromPointer();
         return Clutter.EVENT_PROPAGATE;
     }
 
-    // Who may step aside, and how often. A 30-second message yields **once per
-    // showing** — the rule the reminder tests pin down, and the reason its
-    // buttons stay under the pointer that came for them. Only the end-of-day
-    // window, which stands for hours, may yield again on a later approach.
+    // Who may step aside, and how often.
+    //
+    // A transient warning yields **once per showing**: the pointer that came for
+    // its buttons must find them where it is going, not one hop further on.
+    //
+    // The end-of-day window never yields at all. It is not a hint one works
+    // around — it is a question that stands until it is answered, so running
+    // from the pointer is running from the answer. It used to re-arm its
+    // step-aside whenever the pointer left, which read well and was unusable:
+    // **the yield itself moves the window out from under the pointer, so a
+    // `leave` fires immediately and re-arms it.** Every approach was a first
+    // approach, the window fled forever, and its buttons could not be clicked at
+    // all. What keeps it from sitting on the work underneath is that it can be
+    // dragged and, above all, answered.
     _canYield() {
-        if (!this._messageVisible || this._dragged)
+        if (!this._messageVisible || this._dragged || this._messagePersistent)
             return false;
-        return this._messagePersistent ? this._yieldArmed : !this._yielded;
-    }
-
-    // A 30-second message steps aside once and is gone; the end-of-day window
-    // stays up for hours, so freezing it where it first landed would leave it
-    // sitting on whatever is underneath for the rest of the evening. It may
-    // move again — but only once per approach, so it never flutters while the
-    // pointer is on it. Once dragged, the place the user chose wins over both.
-    _onMessageLeave() {
-        if (this._messagePersistent && !this._dragged)
-            this._yieldArmed = true;
-        return Clutter.EVENT_PROPAGATE;
+        return !this._yielded;
     }
 
     // --- Dragging -----------------------------------------------------------

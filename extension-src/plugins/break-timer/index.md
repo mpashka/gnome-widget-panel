@@ -106,12 +106,19 @@ follows hangs off that:
   hourly `quietUntil` does not apply while the window is only waiting for a free
   screen: it was never shown, so there is nothing to be quiet about.
 - **The UI half** (`breakTimerReminder.ts`) marks the showing
-  `_messagePersistent`, which changes three things: `_messageOffersActions()`
-  follows the *warning's* rule (no buttons until it has yielded) even though the
-  stage is `due`; `_canYield()` allows one step-aside **per pointer approach**
-  instead of one per showing (`_yieldArmed`, re-armed on `leave-event`); and
-  `_syncMessageDetails()` renders the day's numbers, which the graph works out
-  in `_dayEndDetails()`.
+  `_messagePersistent`, which changes two things: `_canYield()` returns false —
+  the window **never steps aside** — and `_syncMessageDetails()` renders the
+  day's numbers, which the graph works out in `_dayEndDetails()`. Its answer is
+  on it from the first moment, by the ordinary `due`-stage rule.
+
+  It used to do the opposite: no buttons until it had yielded, and one
+  step-aside re-armed on every `leave-event` so it could move again later. That
+  read well and was unusable — **the yield moves the window out from under the
+  pointer, so `leave` fires at once and re-arms it.** Every approach was a first
+  approach: the window fled across the screen forever and its buttons could
+  never be clicked. A question that stands until it is answered must not run
+  from the answer; what keeps it off the work underneath is dragging, and being
+  answered.
 - **The answer is a split button** built by `_fillDayEndActions()`:
   `DAY_END_WRAP_UP_SECONDS` (10 min, fixed) plus a chevron opening
   `_openPostponeMenu()` — `DAY_END_POSTPONE_MINUTES`, two `_addStepperItem()`
@@ -178,7 +185,8 @@ inhibitor (async `org.gnome.SessionManager.IsInhibited(4)`, refreshed at most
 every 30 s while a reminder is on screen — the same signal the
 [caffeine](../caffeine/index.md) widget raises).
 
-The message **yields once per showing**: it is reactive, and on `enter-event` it
+The **transient** message **yields once per showing**: it is reactive, and on
+`enter-event` it
 eases (150 ms) to the anchor furthest from `global.get_pointer()`, then sets
 `_yielded` and stays. The yield is also what **unlocks the warning's buttons**:
 `_messageOffersActions()` is false for the `prelude` stage until `_yielded`, so
