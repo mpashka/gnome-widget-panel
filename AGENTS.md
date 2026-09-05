@@ -152,8 +152,12 @@ Provider collection that can block stays outside Shell. The plugin is GJS-only:
 
 - **Claude Code:** the widget runs a localhost-only `Soup.Server` with a
   per-session secret, writes `~/.claude/gnome-widget-panel-claude-hook.js`, and
-  points Claude's `statusLine` at it. The hook forwards stdin JSON to the widget
-  and prints the returned status line. No cache file; data lives only in memory.
+  points Claude's `statusLine` at it. The hook **renders the status line itself**
+  from its own stdin and prints nothing the widget returned — the status line
+  must survive a disabled, crashed or restarting widget. It POSTs the payload to
+  the widget only when an AI widget is enabled in the panel configuration, and
+  appends a red lamp to the line when one is enabled but no endpoint answered
+  2xx. No cache file; data lives only in memory.
 - **Codex:** the widget spawns `helpers/codex-usage-helper.js` as a `gjs -m`
   child via `Gio.Subprocess`. The helper scans `~/.codex/sessions/**/*.jsonl`,
   extracts the newest `token_count` event, and streams normalized JSON Lines to

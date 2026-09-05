@@ -8,7 +8,9 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {defaultWidgetConfig} from '../../widgetConfig.js';
 import {READ_STDIN_FN} from './hookStdin.js';
+import {FORMAT_STATUS_LINE_FN} from './statusLineText.js';
 
 Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
@@ -57,11 +59,51 @@ export function isClaudeInstalled() {
     return GLib.file_test(claudeDir(), GLib.FileTest.IS_DIR);
 }
 
-// Port-independent hook: it reads the shared registry at run time and POSTs the
-// Claude stdin payload to every registered endpoint, printing the first OK
-// status line. Because the hook file content no longer embeds a port/secret,
-// multiple running widgets no longer overwrite each other's hook — they only add
-// their endpoint to the registry.
+// The GSettings schema is installed with the extension, not into the system
+// schema source, so the generated hook — a standalone gjs process — has to load
+// it from a directory. This module is `<extension>/plugins/ai-agent-usage/
+// claudeHook.js`, so the schema directory is three levels up plus `schemas`;
+// deriving it from `import.meta.url` keeps every caller (widget and prefs
+// process alike) from having to pass an extension path down.
+function schemasDir() {
+    const [self] = GLib.filename_from_uri(import.meta.url);
+    const pluginDir = GLib.path_get_dirname(self);
+    const pluginsDir = GLib.path_get_dirname(pluginDir);
+    return GLib.build_filenamev([GLib.path_get_dirname(pluginsDir), 'schemas']);
+}
+
+export const SETTINGS_SCHEMA_ID = 'org.gnome.shell.extensions.floating-mini-panel';
+
+// The widgets that answer `/claude-statusline`: the usage graph feeds on the
+// payload, the status dot on the fact that one arrived. Either being enabled
+// means the panel expects delivery.
+const AI_WIDGET_IDS = ['ai-agent-usage', 'ai-agent-status'];
+
+// What an empty `widgets` key means — the key is empty on a fresh install and
+// stands for `defaultWidgetConfig()`. Read from that function instead of
+// repeating its answer, so changing the default cannot leave the hook lying.
+function aiWidgetEnabledByDefault() {
+    return defaultWidgetConfig().plugins.some(
+        (plugin) => AI_WIDGET_IDS.includes(plugin?.id) && plugin?.enabled !== false
+    );
+}
+
+// Port-independent hook. It renders the status line **itself**, from the payload
+// Claude passes on stdin, and never prints anything the panel sent back: a
+// disabled, crashed or not-yet-started widget used to leave the user with an
+// empty status line, because the old hook printed the first widget's HTTP answer
+// and had nothing to print without one.
+//
+// The panel is now an optional consumer of the same payload. The hook POSTs to
+// the registered endpoints only when an AI widget is enabled in the panel
+// configuration, and appends a red lamp to the line when a widget is enabled but
+// no endpoint accepted the payload (crashed widget, dead port, stale registry
+// entry). Everything disabled means no POST and no lamp — an unused feature is
+// not a fault.
+//
+// Because the hook file content embeds no port/secret, multiple running widgets
+// no longer overwrite each other's hook — they only add their endpoint to the
+// registry.
 //
 // The shebang MUST be `env -S gjs -m`: Claude Code invokes this file directly
 // (honouring the shebang), and the body below uses ES module `import`
@@ -76,8 +118,14 @@ import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
 const REGISTRY = ${JSON.stringify(portsRegistryPath())};
+const SCHEMA_DIR = ${JSON.stringify(schemasDir())};
+const SCHEMA_ID = ${JSON.stringify(SETTINGS_SCHEMA_ID)};
+const AI_WIDGET_IDS = ${JSON.stringify(AI_WIDGET_IDS)};
+const AI_WIDGET_DEFAULT = ${JSON.stringify(aiWidgetEnabledByDefault())};
 
 ${READ_STDIN_FN}
+
+${FORMAT_STATUS_LINE_FN}
 
 function readEndpoints() {
     try {
@@ -91,26 +139,71 @@ function readEndpoints() {
     }
 }
 
-const stdin = readStdin();
-const session = new Soup.Session();
-let output = null;
-for (const endpoint of readEndpoints()) {
-    const port = Number(endpoint && endpoint.port);
-    if (!Number.isFinite(port) || port <= 0)
-        continue;
+// Whether the panel is configured to run a widget that wants this payload. The
+// ports registry cannot answer this: an entry survives a crashed GNOME Shell
+// (deregistration happens in destroy()), so a stale one would light the lamp for
+// a widget the user deliberately turned off.
+function widgetExpected() {
     try {
-        const message = Soup.Message.new('POST', \`http://127.0.0.1:\${port}/claude-statusline\`);
-        message.request_headers.append('X-Gnome-Widget-Panel-Token', String(endpoint.secret ?? ''));
-        message.set_request_body_from_bytes('application/json', GLib.Bytes.new(stdin));
-        const bytes = session.send_and_read(message, null);
-        if (message.get_status() === Soup.Status.OK && output === null)
-            output = new TextDecoder().decode(bytes.get_data());
+        const source = Gio.SettingsSchemaSource.new_from_directory(
+            SCHEMA_DIR, Gio.SettingsSchemaSource.get_default(), false);
+        const schema = source.lookup(SCHEMA_ID, true);
+        if (!schema)
+            return false;
+        const raw = new Gio.Settings({settings_schema: schema}).get_string('widgets').trim();
+        if (!raw)
+            return AI_WIDGET_DEFAULT;
+        const plugins = JSON.parse(raw)?.plugins;
+        if (!Array.isArray(plugins))
+            return AI_WIDGET_DEFAULT;
+        return plugins.some(
+            (plugin) => AI_WIDGET_IDS.includes(plugin?.id) && plugin?.enabled !== false);
     } catch (error) {
-        // Skip an unreachable endpoint (stale registry entry).
+        // The extension is gone or its settings are unreadable: nothing is
+        // expected to listen, so nothing is reported as broken.
+        return false;
     }
 }
-if (output !== null)
-    print(output);
+
+const stdin = readStdin();
+let payload = {};
+try {
+    payload = JSON.parse(new TextDecoder().decode(stdin)) ?? {};
+} catch (error) {
+    // An unparseable payload still gets a (nearly empty) status line rather
+    // than none: Claude shows exactly what this script prints.
+    payload = {};
+}
+
+const expected = widgetExpected();
+let delivered = false;
+if (expected) {
+    // A timeout, because this runs on Claude's status-line path: a widget that
+    // accepts the connection and then hangs must not hang the status line.
+    const session = new Soup.Session({timeout: 3});
+    for (const endpoint of readEndpoints()) {
+        const port = Number(endpoint && endpoint.port);
+        if (!Number.isFinite(port) || port <= 0)
+            continue;
+        try {
+            const message = Soup.Message.new('POST', \`http://127.0.0.1:\${port}/claude-statusline\`);
+            message.request_headers.append('X-Gnome-Widget-Panel-Token', String(endpoint.secret ?? ''));
+            message.set_request_body_from_bytes('application/json', GLib.Bytes.new(stdin));
+            session.send_and_read(message, null);
+            // Any 2xx counts: the usage graph answers 200, the status dot 204.
+            const status = message.get_status();
+            if (status >= 200 && status < 300)
+                delivered = true;
+        } catch (error) {
+            // Skip an unreachable endpoint (stale registry entry).
+        }
+    }
+}
+
+print(formatClaudeStatusLine(payload, {
+    home: GLib.get_home_dir(),
+    lamp: expected && !delivered,
+}));
 `;
 }
 

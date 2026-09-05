@@ -41,6 +41,13 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   token/context/rate-limit mapping (including the null-`current_usage` and
   missing-`rate_limits` cases) and `UserPromptSubmit` → request-marker
   extraction (`@tag:widget-ai-agent-usage`, issue #6).
+- `statusLineText.test.mjs` — `formatClaudeStatusLine` from
+  [`../extension-src/plugins/ai-agent-usage/statusLineText.ts`](../extension-src/plugins/ai-agent-usage/statusLineText.ts):
+  the Codex-shaped line (model, `~`-abbreviated directory, context, both
+  windows), rate limits shown as remaining, omitted rather than zeroed segments,
+  the delivery lamp, and that `FORMAT_STATUS_LINE_FN` — the source embedded into
+  the generated hook — still runs with no module scope around it
+  (`@tag:widget-ai-agent-usage`).
 - `clockMarkup.test.mjs` — `hasMarkup`/`stripMarkup` from
   [`../extension-src/plugins/clock/clockMarkup.ts`](../extension-src/plugins/clock/clockMarkup.ts):
   which formatted times count as markup (a literal `&` or `<` does not), which

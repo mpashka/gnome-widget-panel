@@ -27,12 +27,20 @@ telling you which file to edit would be one more step *and* a research task.
   no setup: it writes session files the panel reads directly.
 - **It worked, then stopped.** Press **Configure** again — that repairs the hook
   — or restart GNOME Shell, which also repairs it.
+- **A red lamp appeared at the end of my Claude status line.** The widget is
+  switched on, the hook has data for it, and nothing accepted it: the widget
+  crashed, its port is taken, or GNOME Shell restarted without it. Press
+  **Configure**, or restart GNOME Shell. Switching the widget off clears the lamp
+  too — with no widget enabled the hook neither sends nor reports.
 - **Two widgets, one hook each.** The usage graph and the status dot each have
   their own **Configure** button for their own hook; connecting one does not
   connect the other.
-- **I use a custom status line already.** The hook is what Claude's
-  `statusLine` runs; it prints a status line back, so a session keeps having
-  one.
+- **I use a custom status line already.** The hook is what Claude's `statusLine`
+  runs, and connecting the widget replaces that setting. What the hook prints is
+  its own line — model, directory, context percentage and both usage windows —
+  built from Claude's own data, not from anything this extension is doing, so it
+  keeps working when the panel is closed, the widget is off or GNOME Shell is
+  restarting.
 - **Which providers can appear at all?** Claude Code, Codex and Gemini CLI, each
   with its own switch and colour in the settings
   ([`../configure/tune-widget.md`](../configure/tune-widget.md)).

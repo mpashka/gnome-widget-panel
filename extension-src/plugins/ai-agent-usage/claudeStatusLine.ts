@@ -20,7 +20,15 @@ export interface ClaudeRateLimitWindow {
 
 /** Raw JSON Claude posts to the statusLine command hook (subset used here). */
 export interface ClaudeStatusLinePayload {
-    model?: {id?: string};
+    // `display_name`/`effort` are what the rendered status line shows
+    // (`statusLineText.ts`); `id` is what this widget keys its per-provider
+    // sample by.
+    model?: {id?: string; display_name?: string; effort?: string};
+    // The session's working directory, shown in the status line. Claude reports
+    // it twice; `workspace.current_dir` follows `/add-dir`, `cwd` does not, so
+    // the former wins.
+    workspace?: {current_dir?: string};
+    cwd?: string;
     context_window?: {
         used_percentage?: number;
         context_window_size?: number;

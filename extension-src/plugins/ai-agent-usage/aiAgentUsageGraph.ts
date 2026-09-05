@@ -156,12 +156,6 @@ function eventAgeSeconds(value) {
     return Math.max(0, nowSeconds() - Math.floor(timestamp / 1000));
 }
 
-function formatStatusLine(value) {
-    const tokens = parseTokens(value);
-    const context = Math.round(parseContext(value) * 100);
-    return `Claude ${tokens} tok ctx:${context}%`;
-}
-
 function escapeMarkup(text) {
     return String(text)
         .replace(/&/g, '&amp;')
@@ -413,12 +407,10 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 this._ingestRequests(value);
                 this.queue_repaint();
 
+                // Status only, no body: the hook renders Claude's status line
+                // from its own stdin (`statusLineText.ts`) and reads nothing but
+                // the status code, which tells it whether the payload arrived.
                 msg.set_status(Soup.Status.OK, null);
-                msg.set_response(
-                    'text/plain',
-                    Soup.MemoryUse.COPY,
-                    new TextEncoder().encode(formatStatusLine(value))
-                );
             } catch (error) {
                 logError(error, 'GNOME Widget Panel Claude request failed');
                 msg.set_status(Soup.Status.BAD_REQUEST, null);

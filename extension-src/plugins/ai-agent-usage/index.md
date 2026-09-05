@@ -42,6 +42,14 @@ and Gemini CLI.
   `limits.primary`/`secondary`) and `claudePromptRequest`
   (`UserPromptSubmit` → an `AgentRequest` marker). Unit-tested in
   [`../../../tests/claudeStatusLine.test.mjs`](../../../tests/claudeStatusLine.test.mjs).
+- `statusLineText.ts` — gi-free renderer of the status line Claude shows:
+  `formatClaudeStatusLine(payload, {home, lamp})` and `FORMAT_STATUS_LINE_FN`,
+  the same function's own source (`Function.prototype.toString()`), embedded
+  verbatim into the generated hook — which has no module scope to import from,
+  and a hand-copied string constant would drift from the function it mirrors.
+  Unit-tested in
+  [`../../../tests/statusLineText.test.mjs`](../../../tests/statusLineText.test.mjs),
+  including that the embedded source still runs standalone.
 - `aiAgentUsageGraph.ts` — in-memory provider state, Claude HTTP hook server,
   Codex helper process management and graph rendering.
 - `helpers/*.gjs` — the two out-of-process helpers below. **`.gjs`, not `.ts`:**
@@ -176,7 +184,7 @@ Claude uses a generated statusLine command hook
 [`claudeHook.ts`](claudeHook.ts)) that forwards stdin JSON to the widget's
 localhost HTTP server. The hook is **port-independent**: it reads a shared
 endpoint registry `~/.claude/gnome-widget-panel-ports.json` and fans the request
-out to every registered `{port, secret}`, printing the first OK status line. Each
+out to every registered `{port, secret}`. Each
 running widget registers its own `{claudePort, claudeSecret}` when it starts its
 server and deregisters on `destroy()` (deduped by port). This lets several panel
 instances on different `claudePort`s (e.g. a main session and a dev session) each
@@ -186,6 +194,30 @@ button persists a secret into the widget options and registers the endpoint so
 the widget prefers `options.claudeSecret` after a reload. Codex uses stdout JSON
 Lines from the helper. No cache file or persistence is part of the active
 architecture.
+
+**What the hook prints is its own work, not the server's answer.** It renders the
+status line from its stdin with `formatClaudeStatusLine`
+([`statusLineText.ts`](statusLineText.ts)) — model, working directory, context
+percentage and both rate-limit windows, in the shape Codex uses:
+
+```
+Opus 5 (1M context) · ~/Projects/home · Context 8% used · 5h 97% left · weekly 89% left
+```
+
+Delivery to the panel is gated and checked. The hook reads the panel's `widgets`
+GSettings key (schema `org.gnome.shell.extensions.floating-mini-panel`, loaded
+from the installed extension's `schemas/` directory — it is not in the system
+schema source); it POSTs only when `ai-agent-usage` or `ai-agent-status` is
+enabled, counts any **2xx** as delivered (the usage graph answers 200, the status
+dot 204), and appends ` · 🔴` when a widget is enabled but nothing accepted the
+payload — a crashed widget, a dead port, a stale registry entry. With both
+widgets disabled there is no POST and no lamp.
+
+The ports registry deliberately does **not** gate that: an entry outlives a
+crashed GNOME Shell (deregistration happens in `destroy()`), so a stale one would
+light the lamp for a widget the user turned off on purpose. The `Soup.Session`
+carries a 3 s timeout, because this code runs on Claude's status-line path and a
+widget that accepts a connection and then hangs must not hang the status line.
 
 The widget's own `Soup.Server` also has an `/agent-event` handler for the
 `UserPromptSubmit` lifecycle event (see "Requests" above); both server

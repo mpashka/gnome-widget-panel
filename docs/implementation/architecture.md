@@ -53,10 +53,22 @@ Claude Code uses a command hook because Claude statusLine invokes a command, not
 an HTTP endpoint directly. The widget starts a localhost-only `Soup.Server`,
 generates a per-session secret, writes
 `~/.claude/gnome-widget-panel-claude-hook.js`, and updates
-`~/.claude/settings.json` to call that hook. The hook is intentionally thin:
-stdin JSON is posted to the widget HTTP endpoint and the HTTP response is printed
-to stdout for Claude's status line. The widget stores Claude token data only in
-memory.
+`~/.claude/settings.json` to call that hook. The widget stores Claude token data
+only in memory.
+
+**The status line itself does not depend on this extension.** The hook renders it
+from its own stdin (`statusLineText.ts`, embedded verbatim into the generated
+script) and prints nothing the widget returned. It reads the panel's `widgets`
+GSettings key to decide whether an AI widget is enabled, POSTs the payload only
+then, and appends a red lamp to the line when a widget is enabled but no endpoint
+accepted the payload. Everything disabled means no POST and no lamp.
+
+The direction of that dependency is the point. The widget used to author the
+status line, so its owner had to be alive for the user to have one at all — a
+disabled or crashed widget showed up in Claude as an empty status line, which
+reads as a broken Claude rather than as a missing GNOME widget. Now the panel is
+an optional consumer of a payload the hook already holds, and the only thing it
+contributes back is one bit: whether delivery worked.
 
 Codex log parsing is isolated from GNOME Shell. The widget starts
 `extension/plugins/ai-agent-usage/helpers/codex-usage-helper.gjs` as a `gjs -m`

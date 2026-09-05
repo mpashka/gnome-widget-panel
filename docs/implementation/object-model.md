@@ -184,8 +184,10 @@ Plugin-local object: `AiAgentUsageGraph`.
 Owns in-memory provider state and rendering:
 
 - Claude Code provider: the widget starts a localhost `Soup.Server`, generates a
-  session secret, writes a thin `~/.claude/gnome-widget-panel-claude-hook.js`
-  command hook and receives statusLine JSON over HTTP.
+  session secret, writes the `~/.claude/gnome-widget-panel-claude-hook.js`
+  command hook and receives statusLine JSON over HTTP. It answers with a status
+  code and no body — the hook renders Claude's status line itself and reads only
+  the code, as its evidence that delivery worked.
 - Codex provider: the widget starts
   `plugins/ai-agent-usage/helpers/codex-usage-helper.gjs` as a `gjs -m` child
   process and reads stdout JSON Lines asynchronously.

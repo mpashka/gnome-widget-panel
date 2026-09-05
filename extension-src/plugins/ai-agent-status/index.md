@@ -62,10 +62,11 @@ the statusLine hook's — see [`../ai-agent-usage/index.md`](../ai-agent-usage/i
 Coexistence with the statusLine hook (both fan out to all registered
 endpoints):
 
-- This widget answers `POST /claude-statusline` with **204 No Content**, never
-  200, so the statusLine fan-out (which prints the *first 200 body*) never
-  takes this widget's empty body as the status line text; the payload is still
-  used as busy-activity evidence.
+- This widget answers `POST /claude-statusline` with **204 No Content**; the
+  payload is used as busy-activity evidence. No response body is read any more —
+  the hook renders the status line itself and only looks at the status code, and
+  any 2xx (204 included) counts as delivered, so answering here keeps the hook's
+  red delivery lamp off.
 - The usage widget also has an `/agent-event` handler (for its own request
   markers): it only reacts to `UserPromptSubmit`, ignoring every other event
   this widget cares about (`Stop`, `Notification`, `SessionEnd`).
