@@ -7,15 +7,12 @@
 // the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
-import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
-import * as ClaudeHook from './claudeHook.js';
 import {colorButton} from '../../prefsColor.js';
 import {addTemplateEditor} from '../../prefsTemplate.js';
 
 const DEFAULT_MIN_ACTIVE_TOKENS = 10_000;
-const DEFAULT_CLAUDE_PORT = 17861;
 // Keep in sync with aiAgentUsageGraph.ts DEFAULT_TOOLTIP_TEMPLATE.
 const DEFAULT_TOOLTIP_TEMPLATE = '{agent}: {usage}{reset}\n{requests}';
 // Representative coloured fragments for the live template preview.
@@ -34,47 +31,13 @@ const DEFAULT_COLORS = {
     windowColor: '#4ca6ff',
 };
 
-function statusImage() {
-    return new Gtk.Image({valign: Gtk.Align.CENTER});
-}
-
-function setStatus(image, state) {
-    for (const css of ['success', 'error', 'dim-label'])
-        image.remove_css_class(css);
-    if (state === 'ok') {
-        image.icon_name = 'emblem-ok-symbolic';
-        image.add_css_class('success');
-        image.tooltip_text = 'Configured';
-    } else if (state === 'unconfigured') {
-        image.icon_name = 'dialog-warning-symbolic';
-        image.add_css_class('error');
-        image.tooltip_text = 'Not configured — press Configure';
-    } else {
-        image.icon_name = 'action-unavailable-symbolic';
-        image.add_css_class('dim-label');
-        image.tooltip_text = 'Not found on this system';
-    }
-}
-
-function codexInstalled() {
-    return GLib.file_test(
-        GLib.build_filenamev([GLib.get_home_dir(), '.codex', 'sessions']),
-        GLib.FileTest.IS_DIR
-    );
-}
-
-function geminiInstalled() {
-    return GLib.file_test(
-        GLib.build_filenamev([GLib.get_home_dir(), '.gemini', 'tmp']),
-        GLib.FileTest.IS_DIR
-    );
-}
-
+// Show/hide toggle used by the indicator rows, whose switch sits beside the
+// row's colour button rather than filling the row.
 function enableSwitch(current, key, commit) {
     const toggle = new Gtk.Switch({
         active: current[key] !== false,
         valign: Gtk.Align.CENTER,
-        tooltip_text: 'Enabled',
+        tooltip_text: 'Shown',
     });
     toggle.connect('notify::active', () => {
         current[key] = toggle.active;
@@ -94,72 +57,30 @@ export function fillWidgetPreferences(context) {
     });
     window.add(page);
 
-    // --- Providers --------------------------------------------------------
+    // --- Provider colours -------------------------------------------------
+    // Colours only. *Whether* a provider is collected from, and configuring
+    // Claude's hook, are the collector's settings (Settings → AI collector):
+    // collection is not this widget's to switch on, since it keeps running when
+    // the widget is removed. See ../../aiCollector.ts.
     const providers = new Adw.PreferencesGroup({
-        title: 'Providers',
-        description: 'Enable providers, pick their graph colour, and configure '
-            + 'Claude Code. The status dot is green when configured, red when '
-            + 'not, grey when the provider is not found on this system.',
+        title: 'Provider colours',
+        description: 'The colour each agent\u2019s columns and request markers are '
+            + 'drawn in. Which agents are collected from is set in the panel\u2019s '
+            + 'AI collector settings.',
     });
     page.add(providers);
 
-    // Claude: status + Configure button.
-    const claudeRow = new Adw.ActionRow({
-        title: 'Claude Code',
-        subtitle: 'Localhost hook for Claude statusLine',
-    });
-    const claudeStatus = statusImage();
-    claudeRow.add_prefix(claudeStatus);
-    claudeRow.add_suffix(colorButton(current, 'claudeColor', DEFAULT_COLORS.claudeColor, commit, 'Graph colour'));
-    const configure = new Gtk.Button({
-        label: 'Configure',
-        valign: Gtk.Align.CENTER,
-    });
-    const refreshClaude = async () => setStatus(claudeStatus, await ClaudeHook.configStatus());
-    configure.connect('clicked', async () => {
-        try {
-            if (!current.claudeSecret)
-                current.claudeSecret = GLib.uuid_string_random();
-            const port = Number(current.claudePort) || DEFAULT_CLAUDE_PORT;
-            // Install the port-independent hook and register this endpoint so
-            // Claude feeds it; a running widget re-registers on reload.
-            await ClaudeHook.installHook();
-            await ClaudeHook.registerPort(port, current.claudeSecret);
-            commit();
-        } catch (error) {
-            logError(error, 'Cannot configure Claude Code hook');
-        }
-        refreshClaude();
-    });
-    configure.sensitive = ClaudeHook.isClaudeInstalled();
-    claudeRow.add_suffix(configure);
-    claudeRow.add_suffix(enableSwitch(current, 'enableClaude', commit));
-    refreshClaude();
-    providers.add(claudeRow);
-
-    // Codex: detection only (no per-user configuration needed).
-    const codexRow = new Adw.ActionRow({
-        title: 'Codex',
-        subtitle: 'Reads ~/.codex/sessions via a helper process',
-    });
-    const codexStatus = statusImage();
-    setStatus(codexStatus, codexInstalled() ? 'ok' : 'not-installed');
-    codexRow.add_prefix(codexStatus);
-    codexRow.add_suffix(colorButton(current, 'codexColor', DEFAULT_COLORS.codexColor, commit, 'Graph colour'));
-    codexRow.add_suffix(enableSwitch(current, 'enableCodex', commit));
-    providers.add(codexRow);
-
-    // Gemini: detection only (reads ~/.gemini/tmp via a helper process).
-    const geminiRow = new Adw.ActionRow({
-        title: 'Gemini CLI',
-        subtitle: 'Reads ~/.gemini/tmp via a helper process',
-    });
-    const geminiStatus = statusImage();
-    setStatus(geminiStatus, geminiInstalled() ? 'ok' : 'not-installed');
-    geminiRow.add_prefix(geminiStatus);
-    geminiRow.add_suffix(colorButton(current, 'geminiColor', DEFAULT_COLORS.geminiColor, commit, 'Graph colour'));
-    geminiRow.add_suffix(enableSwitch(current, 'enableGemini', commit));
-    providers.add(geminiRow);
+    for (const provider of [
+        {key: 'claudeColor', title: 'Claude Code'},
+        {key: 'codexColor', title: 'Codex'},
+        {key: 'geminiColor', title: 'Gemini CLI'},
+    ]) {
+        const row = new Adw.ActionRow({title: provider.title});
+        row.add_suffix(
+            colorButton(current, provider.key, DEFAULT_COLORS[provider.key], commit, 'Graph colour')
+        );
+        providers.add(row);
+    }
 
     // --- Indicators -------------------------------------------------------
     const indicators = new Adw.PreferencesGroup({
@@ -279,20 +200,4 @@ export function fillWidgetPreferences(context) {
         commit();
     });
     advanced.add(idle);
-    const port = new Adw.SpinRow({
-        title: 'Claude hook port',
-        subtitle: 'Localhost port for the Claude statusLine endpoint',
-        adjustment: new Gtk.Adjustment({
-            lower: 1024,
-            upper: 65535,
-            step_increment: 1,
-            page_increment: 100,
-            value: Number(current.claudePort ?? DEFAULT_CLAUDE_PORT),
-        }),
-    });
-    port.connect('notify::value', () => {
-        current.claudePort = port.value;
-        commit();
-    });
-    advanced.add(port);
 }

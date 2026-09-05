@@ -294,3 +294,11 @@
   font-size: 72px;
   font-weight: 300;
 }
+
+/* Dev-only build indicator (see plugins/version-status). Only the warning state
+   is coloured: "a relogin is pending" has to catch the eye from across the
+   screen, while "you are running what you installed" must not compete with the
+   widgets that carry real information. */
+.version-status-stale {
+  color: #ffb82e;
+}

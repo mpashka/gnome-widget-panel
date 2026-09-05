@@ -35,6 +35,12 @@ SCHEMA = "org.gnome.shell.extensions.floating-mini-panel"
 SESSION_TARGET = Path.home() / ".local/share/gnome-shell/extensions" / UUID
 INSTALL_MARKER = SESSION_TARGET / ".installed-version"
 
+# Identity of one build, written into the built tree and travelling with it into
+# the install. The running extension reads it back to tell whether the code
+# GNOME Shell loaded at login is still the code on disk; see the version-status
+# widget (@tag:build-stamp). Kept out of the EGO zip by .github/scripts/pack.sh.
+BUILD_STAMP_NAME = "build-stamp.json"
+
 # The dev shell's private world: its own extensions dir (via XDG_DATA_HOME), its
 # own dconf profile and the environment file other commands reuse to talk to it.
 DEV = ROOT / ".dev"
@@ -124,23 +130,61 @@ def build():
     # rmtree above wipes it, and the dev install exposes this very directory to
     # the shell, so a stale or missing schema would hide new settings keys.
     compile_schemas(OUT / "schemas")
+
+    # Written last, when the tree is complete: it says "this is the build those
+    # files are". A shell that loaded an older one finds a stamp newer than
+    # itself and knows a logout/login is pending.
+    write_build_stamp()
     print(f"Built GNOME extension into {OUT}")
+
+
+def write_build_stamp():
+    """Record which build this tree is, for the version-status widget.
+
+    `builtAtMs` is the wall clock the build finished at; the widget compares it
+    with the moment its own module was loaded (ES modules are cached for the
+    life of the gnome-shell process, so that is when the running code started
+    running). A stamp newer than that means an install happened since login.
+
+    `commit`/`dirty` are the same identity in fields rather than in prose: the
+    handle menu shows the commit id next to the version, which it cannot do with
+    a formatted label alone.
+    """
+    _version, commit, dirty = build_identity()
+    stamp = {
+        "label": build_label(),
+        "builtAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "builtAtMs": int(time.time() * 1000),
+        "commit": commit,
+        "dirty": dirty,
+    }
+    (OUT / BUILD_STAMP_NAME).write_text(json.dumps(stamp, indent=2) + "\n")
 
 
 # --- install ---------------------------------------------------------------
 
 
-def build_label():
-    """version-name plus the commit it was built from.
+def build_identity():
+    """Who this build is: version-name, the commit, and whether the tree was dirty.
 
     version-name only moves on a release, so on its own it cannot tell two
-    installs of unreleased work apart.
+    installs of unreleased work apart. The commit and the dirty flag are kept as
+    separate fields — the handle menu shows them on their own, and a formatted
+    label nobody can take apart again is not an identity (see
+    extension-src/buildStamp.ts).
     """
     version = json.loads((SRC / "metadata.json").read_text())["version-name"]
     commit = git("rev-parse", "--short", "HEAD")
-    if commit and git("status", "--porcelain"):
-        commit += "-dirty"
-    return f"{version} ({commit})" if commit else version
+    dirty = bool(commit and git("status", "--porcelain"))
+    return version, commit, dirty
+
+
+def build_label():
+    """The identity as one line, `0.1.2 (6308c4b-dirty)`, for install messages."""
+    version, commit, dirty = build_identity()
+    if not commit:
+        return version
+    return f"{version} ({commit}-dirty)" if dirty else f"{version} ({commit})"
 
 
 def git(*args):
@@ -206,40 +250,6 @@ def dev_install():
 # Patches the dev widget's Claude port straight into the dev dconf profile.
 # GJS (the project's native stack) so it goes through Gio.Settings exactly as
 # the extension does; env comes from the inner script that invokes it.
-CLAUDE_PORT_JS = """\
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import system from 'system';
-
-const [portArg] = system.programArgs;
-const port = Number(portArg);
-const schemaDir = GLib.getenv('GSETTINGS_SCHEMA_DIR');
-const source = Gio.SettingsSchemaSource.new_from_directory(
-    schemaDir, Gio.SettingsSchemaSource.get_default(), false);
-const schema = source.lookup(
-    'org.gnome.shell.extensions.floating-mini-panel', false);
-const settings = new Gio.Settings({settings_schema: schema});
-
-let data = null;
-try {
-    const raw = settings.get_string('widgets');
-    data = raw ? JSON.parse(raw) : null;
-} catch (e) {
-    data = null;
-}
-if (!data || !Array.isArray(data.plugins))
-    data = {schema: 1, plugins: []};
-let ai = data.plugins.find(p => p.id === 'ai-agent-usage');
-if (!ai) {
-    ai = {id: 'ai-agent-usage', enabled: true};
-    data.plugins.push(ai);
-}
-ai.enabled = true;
-ai.options = {...(ai.options ?? {}), claudePort: port};
-settings.set_string('widgets', JSON.stringify(data));
-Gio.Settings.sync();
-"""
-
 # The shell has to start inside `dbus-run-session`, so the launch lives in a
 # generated bash script rather than in this process.
 INNER_SH = """\
@@ -271,7 +281,7 @@ rm -f "{disable_flag}"
 gsettings set org.gnome.shell disable-user-extensions false 2>/dev/null || true
 gsettings set org.gnome.shell enabled-extensions "['{uuid}']" 2>/dev/null || true
 {theme_cmd}
-{claude_port_cmd}
+{collector_port_cmd}
 
 {shell_cmd} >>"{logfile}" 2>&1 &
 shell_pid=$!
@@ -333,16 +343,16 @@ def dev_run(args):
         )
         print(f"Dev shell theme: {args.theme} ({scheme})")
 
-    claude_port_cmd = ""
-    if args.claude_port:
-        # The widget configuration lives in the `widgets` GSettings key of the
-        # dev profile, so the port is patched right there. ~/.claude (the hook
+    collector_port_cmd = ""
+    if args.collector_port:
+        # One settings key in the dev dconf profile. ~/.claude (the hook
         # registry) stays under HOME, so Claude's status line still fans out to
         # this instance and to a main-session install at the same time.
-        script = DEV / "patch-claude-port.js"
-        script.write_text(CLAUDE_PORT_JS)
-        claude_port_cmd = f'gjs -m "{script}" "{args.claude_port}" || true'
-        print(f"Dev widget Claude port: {args.claude_port} (in the dev profile)")
+        collector_port_cmd = (
+            f"gsettings set {SCHEMA} ai-collector-port "
+            f"{args.collector_port} 2>/dev/null || true"
+        )
+        print(f"Dev AI collector port: {args.collector_port} (in the dev profile)")
 
     runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
     # Present after a crash, this file forces safe mode (all extensions off).
@@ -356,7 +366,7 @@ def dev_run(args):
             disable_flag=disable_flag,
             uuid=UUID,
             theme_cmd=theme_cmd,
-            claude_port_cmd=claude_port_cmd,
+            collector_port_cmd=collector_port_cmd,
             shell_cmd=shell_cmd,
             logfile=args.log,
             statusfile=DEV_STATUS,
@@ -580,11 +590,11 @@ def main():
         "--log", default=DEFAULT_LOG, metavar="PATH", help=f"log (default {DEFAULT_LOG})"
     )
     dev.add_argument(
-        "--claude-port",
+        "--collector-port",
         type=int,
         metavar="N",
-        help="run the dev ai-agent-usage widget on this Claude port, so it can "
-        "run beside a main-session install without clashing on the port",
+        help="run the dev shell's AI collector on this port, so it can run "
+        "beside a main-session install without clashing on the port",
     )
 
     settings = sub.add_parser(

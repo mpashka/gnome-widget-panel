@@ -1,133 +1,31 @@
-# UX rules
+# UX rules — this panel
 
 `@tag:ux`
 
-What every widget and menu in this panel is held to. The panel exists to save
-its user gestures — a panel that costs more clicks than the thing it replaces
-has no reason to be installed. So the bar is not "does it work" but **how many
-steps does it take, counted from where the user already is.**
+**The general rules are not here.** They live in
+[`.claude/rules/ux/`](../../.claude/rules/ux/) — an installed copy of the
+[ux-principles](https://github.com/mpashka/home-incubator) convention. Claude
+Code loads them automatically; other agents must read them there. Start with
+[`core.md`](../../.claude/rules/ux/core.md) (any interface) and
+[`desktop.md`](../../.claude/rules/ux/desktop.md) (pointer, keyboard, windows,
+shell), then come back here.
 
-Read this before designing an interaction; the per-widget pages describe what
-was built, this page says why it has that shape.
+This page holds what is **true of this panel and nowhere else**: the rules that
+name its parts, the worked examples with the gestures they cost, and any
+deliberate departure from a general rule.
 
-## Design from the use case, not from the feature
+The bar the panel is held to: it exists to save its user gestures — one that
+costs more clicks than the thing it replaces has no reason to be installed. So
+the question is never "does it work" but **how many steps does it take, counted
+from where the user already is.**
 
-Write the use case down first, in the user's words and with the state they are
-already in: *"I have the applications menu open and I want this one in my
-favorites."* The design is then whatever serves that sentence in the fewest
-gestures. A feature list ("we need favorites management") produces a settings
-page; a use case produces a right-click item on the row the user is looking at.
+## The panel's own use cases
 
-The ones already written down live in
+The cases already written down live in
 [`../specification/use-cases/`](../specification/use-cases/index.md) — one page
 per goal, each with the gestures its main path costs. Read the area your change
 touches before designing, and **add or update the case in the same change**: a
-use case nobody wrote down is a feature list waiting to happen, and a step count
-recorded there is what makes a regression in this page's rules visible.
-
-## The rules
-
-1. **Count the steps and weight them by frequency.** Every interaction has a
-   step count from the state the user is already in — pointer moves, clicks,
-   keystrokes, dialogs — plus an estimated frequency and confidence when no
-   measurement exists. Saving one gesture from something done fifty times a day
-   outranks saving three from a setting changed twice ever. The design with the
-   smaller count wins unless it costs clarity. Two clicks with no dialog beat
-   one click that opens a window.
-2. **The action lives on the object.** Acting on a thing starts by pointing at
-   that thing — a right-click on the row, not a settings page listing rows. The
-   object is already under the pointer; a settings page has to be found, opened
-   and searched.
-3. **No dialogs for reversible actions, no confirmations for cheap ones.**
-   Adding a favorite is one click and is undone by one click; asking "are you
-   sure" doubles a free action. If an immediate action drops recoverable user
-   state, offer a non-blocking Undo that restores the exact state instead of
-   putting a confirmation in front of every deliberate action.
-4. **One item that toggles beats two items that don't.** The row is either a
-   favorite or it is not — show the one action that applies now
-   ("Add to Favorites" / "Remove from Favorites"), not both, greyed.
-5. **Never dead-end on a precondition.** If an action needs something prepared
-   first — a system `.desktop` file copied into the user's own directory before
-   it can be edited — the action does the preparation itself. Telling the user
-   what to do first is one more step *and* a research task.
-6. **Never destroy what you touch.** The same rule read the other way: work on a
-   user-local copy, leave the system's file alone, and never overwrite an edit
-   the user already made.
-7. **Show the result where the user is looking.** State changed by an action is
-   visible immediately in the menu that caused it; the user should not have to
-   reopen anything to see whether it worked.
-8. **Escape backs out one level.** Each layer — a context menu, a search query,
-   the popup itself — is dismissed in that order by repeated `Escape`, never
-   more than the layer the user is in.
-9. **Inside an open popup, the keyboard works; getting there is the mouse's job
-   or a shortcut's.** Opening a menu puts the keyboard where typing is useful;
-   `Enter` takes the obvious action, arrows move, `Escape` backs out. That much
-   costs the user nothing to learn — the focus is already there and the keys are
-   the same in every application. Reaching a control in the first place is a
-   different question, answered by
-   [the three input routes](#the-three-input-routes-and-what-each-is-for) below.
-10. **An update must not lose the user's place.** Rebuilding a menu because the
-    world changed keeps the selected category, the typed query and the scroll
-    position. Losing them turns one action into three.
-11. **The layout may not move under the pointer.** A popup that resizes with its
-    own content pushes rows out from under the pointer and shakes; give it one
-    fixed size. See [the gnome-menu
-    widget](../../extension-src/plugins/gnome-menu/index.md) for the case that
-    taught this.
-12. **Failure is quiet and local.** A broken entry is skipped and logged, never
-    turned into a notification or a crashed widget; the rest of the menu stays
-    usable.
-13. **Replacing the top bar means inheriting its duties.** This panel offers to
-    hide the GNOME top bar. Anything that was reachable *only* from that bar
-    stops being reachable the moment a user accepts the offer — so it has to
-    appear here instead. Taking the screen space is the easy half; taking the
-    responsibility is the part that makes the trade honest.
-
-    The case that produced this rule: GNOME shows a **red recording indicator**
-    in the top bar, and clicking it is how people stop a screen recording. With
-    the bar hidden, the only remaining way is `Ctrl+Shift+Alt+R`, which nothing
-    ever told the user about — while our own Screenshot widget, the thing that
-    *started* the recording, sat next to it showing a camera icon and doing
-    nothing. The answer is not documentation: the widget becomes a red stop
-    button while a recording runs (#33).
-
-    So whenever a change hides part of the shell, ask **what stopped being
-    reachable** and cover it here — for a state, by showing it; for an action,
-    by offering it. Mirroring the shell's own indicator (as the System Status
-    widget already does) is usually cheaper than reimplementing the feature.
-
-## The three input routes, and what each is for
-
-Rule 9 used to read "the primary path has a keyboard route", which quietly
-treated all keyboard access as one thing. It is three things, with very
-different costs to the person using them:
-
-| Route | What it costs the user | What it is good for |
-| --- | --- | --- |
-| **Pointer** | nothing to remember — the control is visible, its meaning is on it, and the only skill needed is aiming | **the default for everything.** Discoverable by looking, which no other route is |
-| **Keyboard shortcut** | must be memorised, and kept from colliding with the shell's and every application's | **very frequent actions only** — there it is the fastest route by a wide margin, because there is no aiming at all |
-| **Full keyboard navigation** (tab/arrow through every control) | nothing to memorise in theory; in practice slow, fiddly, and expensive to build correctly | **not a goal here.** In a modern UI it costs a lot to do and is unpleasant to use even when done |
-
-So the rule is not "everything must be reachable from the keyboard". It is:
-
-- **A shortcut is earned by frequency, not by importance.** A combination spent
-  on something done twice a month is worse than no combination at all: it takes
-  a scarce, globally-shared resource and adds a thing to remember for an action
-  the pointer already handles fine. Open the applications menu, run a command,
-  switch a window — yes. Open a settings page — no.
-- **A shortcut must say its own name.** The user's memory cannot be the only
-  place a binding is recorded, so a bound shortcut appears in the widget's
-  tooltip, where the pointer already is when the question comes up.
-- **Not being keyboard-navigable is an acceptable answer for configuration.**
-  The preferences window is pointer-designed and was never built for keyboard
-  operation; adding "move earlier / move later" keyboard actions to the widget
-  list was considered and rejected on exactly this basis — a once-ever
-  operation, in a surface where the pointer is the intuitive route anyway.
-
-This is a deliberate departure from a "keyboard parity everywhere" reading of
-the GNOME HIG, and it is the reason a review finding of the form "X has no
-keyboard route" is not automatically a defect: the question is always *how often
-is X done*.
+step count recorded there is what makes a later regression visible.
 
 ## Worked example: the applications menu
 
@@ -142,11 +40,11 @@ The use cases, and what each costs (from "the menu is open"):
 | "Its name / icon / command is wrong" | right-click → *Edit Application…*: the system entry is copied into `~/.local/share/applications` and opened in the text editor | 2 |
 | "Open a private window / a new document" | right-click → the entry's own `.desktop` actions, at the top | 2 |
 
-What was rejected and why: a preferences page for favorites (rule 2 — the
-application is already under the pointer), a built-in `.desktop` editor
-(rule 1 — a whole form to build and learn where the text editor the user already
-knows does it), a confirmation before editing a system entry (rules 3 and 5 —
-the copy makes it harmless).
+What was rejected and why: a preferences page for favorites (the action lives on
+the object — the application is already under the pointer), a built-in `.desktop`
+editor (a whole form to build and learn where the text editor the user already
+knows does it), a confirmation before editing a system entry (the copy makes it
+harmless, and it is reversible).
 
 ## Worked example: what earns a row in the handle menu
 
@@ -159,14 +57,13 @@ of exactly three ways:
 | --- | --- | --- |
 | **Needs to be fast**, even if it is not frequent | Collapse / Expand | The panel is suddenly in the way — collapse it and move on. Rarely done, but when it is wanted it is wanted *now*, and a trip to preferences is the wrong shape for it. |
 | **Convention** | Settings… | Right-click → *Settings* is where every modern interface keeps this. Being where people already look costs one row and saves a search. |
-| **Giving the extension a chance** | version header, Release notes, extensions.gnome.org, Report a bug, Suggest a feature | For someone who installed it to "just try it". The version answers "is my problem already fixed in a newer one" before they write the report; the rest turn a shrug into a report, a request or a rating instead of an uninstall. |
+| **Giving the extension a chance** | build header, Release notes, extensions.gnome.org, Report a bug, Suggest a feature | For someone who installed it to "just try it". The version answers "is my problem already fixed in a newer one" before they write the report; the rest turn a shrug into a report, a request or a rating instead of an uninstall. |
 
 **Configuration does not earn a row**, however hidden its current gesture is.
 The indicator drawer and the panel orientation are configuration: they are
 decided once and then left alone, so their home is the preferences window —
 where orientation already lives — and the fix for an undiscoverable gesture is
-*a setting*, not a menu item. Adding rows for them would push the three
-categories above further down the menu to serve operations performed once ever.
+*a setting*, not a menu item.
 
 Two consequences worth stating:
 
@@ -174,16 +71,59 @@ Two consequences worth stating:
   the three tests the action passes. If none, it belongs in preferences, and the
   gesture is either kept as a shortcut for whoever learned it, or dropped.
 - **The cheap gestures are a scarce resource.** There are only so many things a
-  pointer can do to one handle, so they should go to what needs to be fast
-  (per the first row above), not to what was implemented first.
+  pointer can do to one handle, so they should go to what needs to be fast, not
+  to what was implemented first.
+
+## The case behind "inheriting the top bar's duties"
+
+The general rule is in [`desktop.md`](../../.claude/rules/ux/desktop.md); this
+is the case that produced it.
+
+This panel offers to hide the GNOME top bar. GNOME shows a **red recording
+indicator** there, and clicking it is how people stop a screen recording. With
+the bar hidden the only remaining way is `Ctrl+Shift+Alt+R`, which nothing ever
+told the user about — while our own Screenshot widget, the thing that *started*
+the recording, sat next to it showing a camera icon and doing nothing. The
+answer was not documentation: the widget becomes a red stop button while a
+recording runs (#33).
+
+## The case behind "a warning is shown only while it stands"
+
+The developer widget
+[`version-status`](../../extension-src/plugins/version-status/index.md) says one
+thing: the build on disk is newer than the one this Shell is running, so testing
+what you see is pointless until you log out and back in. Once the two agree it
+has nothing to say, so it takes no panel space at all — the general rule in
+`core.md` was written from this.
+
+## The case behind "the layout may not move under the pointer"
+
+Two, and the second is the expensive one:
+
+- The **applications menu** used to ask for a size that followed its selection,
+  so switching category moved rows out from under the pointer and the popup
+  shook. It now asks for one size, chosen for the widest category.
+- The **end-of-day window** stepped aside from an approaching pointer and
+  re-armed that step whenever the pointer left. The yield itself moves the window
+  out from under the pointer, so `leave` fired immediately and re-armed it: every
+  approach was a first approach, the window fled forever, and its buttons could
+  never be clicked. It no longer steps aside at all — a question that stands
+  until it is answered must not run from the answer. The transient warning keeps
+  the once-per-showing yield, which is what that rule permits.
+
+## Departures from the general rules
+
+None recorded. When one is needed, it goes here with its reason — never by
+editing the installed copy in `.claude/rules/ux/`, which is a copy of a shared
+convention.
 
 ## Related
 
+- [`.claude/rules/ux/`](../../.claude/rules/ux/) — the general rules this page
+  sharpens.
 - [`code-quality.md`](code-quality.md) — the code-side bar for the same changes.
 - [Use cases](../specification/use-cases/index.md) — the goals these rules are
   applied to, and the step count each one costs today.
 - [Widget specifications](../specification/widgets.md) — what each widget does.
-- [`../../extension-src/plugins/gnome-menu/index.md`](../../extension-src/plugins/gnome-menu/index.md)
-  — the menu these rules were first written against.
 
 Back to the [process index](index.md).

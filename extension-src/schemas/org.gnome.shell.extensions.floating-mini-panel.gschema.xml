@@ -89,6 +89,49 @@
         long-press that hid the whole panel for five seconds.
       </description>
     </key>
+    <key name="ai-collector" type="b">
+      <default>true</default>
+      <summary>Collect AI agent activity</summary>
+      <description>
+        Whether the panel collects what the AI coding agents on this machine are
+        doing: the Claude Code hooks and the Codex/Gemini helper processes. It is
+        deliberately independent of which widgets are in the panel — the AI
+        widgets are views of this collector, and removing them does not stop
+        collection. Off means no hooks are posted to, no helper processes run,
+        and the AI widgets say so instead of showing an empty result that looks
+        exactly like a quiet day. See aiCollector.ts.
+      </description>
+    </key>
+    <key name="ai-collector-port" type="i">
+      <default>17861</default>
+      <summary>AI collector port</summary>
+      <description>
+        Localhost-only TCP port the collector listens on for Claude Code's
+        status-line and lifecycle-event hooks. Change it when another program
+        already uses this one; the running collector rebinds immediately.
+      </description>
+    </key>
+    <key name="ai-collector-claude" type="b">
+      <default>true</default>
+      <summary>Collect from Claude Code</summary>
+      <description>
+        Whether the collector installs Claude Code's hooks and listens for them.
+      </description>
+    </key>
+    <key name="ai-collector-codex" type="b">
+      <default>true</default>
+      <summary>Collect from Codex</summary>
+      <description>
+        Whether the collector runs the helper that reads ~/.codex/sessions.
+      </description>
+    </key>
+    <key name="ai-collector-gemini" type="b">
+      <default>true</default>
+      <summary>Collect from Gemini CLI</summary>
+      <description>
+        Whether the collector runs the helper that reads ~/.gemini/tmp.
+      </description>
+    </key>
     <key name="open" type="b">
       <default>false</default>
       <summary>Drawer opened</summary>

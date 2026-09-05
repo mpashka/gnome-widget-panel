@@ -37,6 +37,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
+import {AiCollector} from './aiCollector.js';
 import {migrateLegacyConfigIfNeeded} from './configStore.js';
 import * as ControlButton from './controlButton.js';
 import * as MainPanel from './mainPanel.js';
@@ -155,6 +156,15 @@ const FloatingMiniPanel = GObject.registerClass(
                 () => this._mainPanel.setMode(this._getMainPanelMode())
             );
 
+            // AI activity collector --------------------------------------------
+            // Built before the widgets, because the AI widgets are views of it
+            // and read it in `create()`. It belongs to the panel and not to any
+            // widget on purpose: collection follows the `ai-collector` setting,
+            // so removing or editing an AI widget does not stop it, and a widget
+            // can tell "nothing is happening" from "nobody is collecting".
+            // See aiCollector.ts.
+            this.aiCollector = new AiCollector(extensionPath, this._sets);
+
             // Control Button --------------------------------------------------
             this._ctlBtn = new ControlButton.ControlButton(this);
             this.add_child(this._ctlBtn);
@@ -200,7 +210,7 @@ const FloatingMiniPanel = GObject.registerClass(
             this._collapsedChangedId = this._sets.connect(
                 'changed::collapsed',
                 () => {
-                    this._applyCollapsed();
+                    this._applyChildVisibility();
                     try {
                         this._relocate(false);
                     } catch (e) {
@@ -211,7 +221,7 @@ const FloatingMiniPanel = GObject.registerClass(
                     }
                 }
             );
-            this._applyCollapsed();
+            this._applyChildVisibility();
 
             // Apply the saved alignment on startup ----------------------------
             // The constructor above only restored the raw pos-x / pos-y. The
@@ -676,20 +686,19 @@ const FloatingMiniPanel = GObject.registerClass(
             );
         }
 
-        // Rebuild the configured plugin actors from the (possibly changed)
-        // `widgets` GSettings key. Destroy the OLD actors FIRST, then build the
-        // new ones. Fixed-port plugins (ai-agent-usage / ai-agent-status) bind a
-        // Soup.Server on construction; building the replacements before the old
-        // instances released their ports made the rebind race and fail on every
-        // settings change, leaving the surviving widget with a dead server. This
-        // "destroy old, then build new" order is safe because the pre-validation
-        // below already guarantees a broken/half-edited config bails out before
-        // anything is torn down — that guarantee, not "build new before destroy
-        // old", is what protects the working panel from an invalid config now.
-        // The control button and every non-plugin child stay in place: they were
-        // added first and are untouched here, so re-adding the new plugin actors
-        // in array (config) order preserves "control button, then plugins in
-        // order". Never throws out of the timeout callback.
+        // Bring the plugin actors in line with the (possibly changed) `widgets`
+        // GSettings key. Only the instances the change actually touched are
+        // rebuilt: an edit rewrites the whole key, so rebuilding everything
+        // restarted widgets nobody had edited, throwing away their accumulated
+        // state and making the panel visibly re-settle around the one widget
+        // being adjusted. `updateConfiguredPlugins` does the matching and owns
+        // the "destroy what is going before building what replaces it" order
+        // that fixed-port widgets depend on; see pluginManager.ts.
+        //
+        // The control button stays child 0 throughout — it is never a plugin
+        // actor — so placing the plugins at 1..n below reproduces "control
+        // button, then plugins in configuration order". Never throws out of the
+        // timeout callback.
         _reloadPlugins() {
             // A broken/half-edited `widgets` value must keep the CURRENT
             // widgets (loadWidgetConfig would gracefully fall back to the
@@ -707,37 +716,39 @@ const FloatingMiniPanel = GObject.registerClass(
                 return;
             }
 
-            // Validation passed: it is now safe to tear down the current plugin
-            // actors — releasing any fixed ports/signals/cookies they hold —
-            // before building the replacements that may need those same
-            // resources (e.g. rebinding the same Soup.Server port).
-            for (const {actor} of this._plugins)
-                actor.destroy();
-            this._plugins = [];
-
             try {
-                this._plugins = PluginManager.createConfiguredPlugins(
+                this._plugins = PluginManager.updateConfiguredPlugins(
                     this,
                     this._extensionPath,
-                    this._sets
+                    this._sets,
+                    this._plugins
                 );
             } catch (e) {
+                // Nothing was torn down: the matching happens before the first
+                // destroy, so the panel still holds exactly what it had.
                 logError(
                     e,
-                    'widget-panel: failed to build reloaded widgets, panel continues with control button only'
+                    'widget-panel: failed to apply the new widget configuration, keeping current widgets'
                 );
-                this._plugins = [];
+                return;
             }
 
-            for (const {actor} of this._plugins)
-                this.add_child(actor);
+            // Reused actors are already children in some order; new ones are not
+            // children at all. Put each at its configured position after the
+            // control button.
+            this._plugins.forEach(({actor}, index) => {
+                if (actor.get_parent() === this)
+                    this.set_child_at_index(actor, index + 1);
+                else
+                    this.insert_child_at_index(actor, index + 1);
+            });
             this._indsDrawer =
                 this._plugins.find(p => p.id === 'app-notifications')
                     ?.actor ?? null;
             this._applyPanelLayoutToPlugins();
             // The rebuilt actors are visible by default; re-hide them when the
             // panel is collapsed, or a settings edit would silently expand it.
-            this._applyCollapsed();
+            this._applyChildVisibility();
 
             // Widget set changed, so the panel size likely changed; keep the
             // saved alignment applied. Guarded so it can never throw here.
@@ -882,18 +893,43 @@ const FloatingMiniPanel = GObject.registerClass(
             });
         }
 
-        // Apply the current `collapsed` value to the child actors. Every child
-        // except the control button is hidden — including the indicators drawer,
-        // whose open/closed state is its own child actor and therefore hides
-        // with it, so expanding restores exactly what was on screen before.
+        // Decide, for every child, whether it is on screen right now. Two things
+        // can hide a widget and this is the only place that resolves them:
+        //
+        //  - the panel is collapsed — every child except the control button goes,
+        //    including the indicators drawer, whose open/closed state is its own
+        //    child actor and therefore hides with it, so expanding restores
+        //    exactly what was on screen before;
+        //  - the widget itself has nothing to show (`selfHidden` on the actor,
+        //    see contracts.ts) — a warning widget with no warning to give:
+        //    a warning is shown only while it stands.
+        //
+        // A widget's own choice must be re-applied here rather than left to the
+        // widget: expanding used to set `visible = true` on every child, which
+        // silently put a self-hidden widget back on screen.
+        //
         // Visibility only: the panel's size changes, so the caller relocates
         // (startup and live reload already do, and neither may relocate before
         // the actor is on the stage).
-        _applyCollapsed() {
+        _applyChildVisibility() {
             const collapsed = this.isCollapsed();
             for (const child of this.get_children()) {
                 if (child !== this._ctlBtn)
-                    child.visible = !collapsed;
+                    child.visible = !collapsed && child.selfHidden !== true;
+            }
+        }
+
+        // A widget reports that it has started or stopped having something to
+        // show. Part of the host contract widgets may call (see contracts.ts):
+        // the panel re-resolves visibility and takes up the new size, which the
+        // widget cannot do for itself because only the panel knows about
+        // collapse and alignment.
+        updateWidgetVisibility() {
+            this._applyChildVisibility();
+            try {
+                this._relocate(false);
+            } catch (e) {
+                logError(e, 'widget-panel: relocate after a widget hid itself failed');
             }
         }
 
@@ -1047,6 +1083,14 @@ const FloatingMiniPanel = GObject.registerClass(
             for (const {actor} of [...this._plugins].reverse())
                 actor.destroy();
             this._plugins = [];
+
+            // After the widgets: they hold listeners on it, and the collector's
+            // stop() releases the localhost socket, the Claude endpoint
+            // registration and the helper child processes.
+            if (this.aiCollector) {
+                this.aiCollector.destroy();
+                this.aiCollector = null;
+            }
 
             // Release the config-change listener and any pending debounced reload.
             if (this._reloadTimeoutId) {

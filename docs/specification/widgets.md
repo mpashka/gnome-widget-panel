@@ -1,6 +1,6 @@
 # Widgets catalog
 
-`@tag:widget-ai-agent-usage`
+`@tag:widget-ai-agent-usage` `@tag:ai-collector`
 
 Back to the [user guide](index.md). This page says what each widget **is**; for
 what people **do** with it — one page per goal, with the gestures it costs — see
@@ -162,6 +162,13 @@ widgets are optional — add them from preferences.
 
 ## AI agents
 
+Both AI widgets are **views of the panel's AI collector**, which is switched on
+and off in *Settings → AI collector* and runs whether or not either widget is on
+the panel. So removing a widget does not stop the panel watching your agents, and
+a widget with collection switched off says exactly that — struck through, with a
+tooltip pointing at the setting — instead of showing the same empty picture a
+quiet hour shows.
+
 ### AI Agent Usage — `ai-agent-usage`
 - **Icon:** a self-drawn **token graph** (no icon) — scrolling columns plus two
   small indicator bars. Provider colours: Codex teal `#10a37f`, Claude clay
@@ -172,9 +179,10 @@ widgets are optional — add them from preferences.
   agent's rate-limit and context-window levels.
 - **Interactions:** hover shows a tooltip with the agent, usage %, reset time and
   recent prompts.
-- **Settings:** per-provider enable + colour, show/hide the two bars + their
-  colours, **width** (default 54), **update interval** (default 5 s), tooltip
-  options, and a **Configure** button that wires up the Claude Code hook.
+- **Settings:** per-provider graph colour, show/hide the two bars + their
+  colours, **width** (default 54), **update interval** (default 5 s) and tooltip
+  options. *Which* agents are watched, and the port Claude posts to, are in
+  *Settings → AI collector*.
 - **Full walkthrough:** [Reading the graph](ai-agent-usage.md) with an interactive
   demo.
 
@@ -184,7 +192,8 @@ widgets are optional — add them from preferences.
   - **waiting** — the agent is asking you something → **pulsing red** `#f03333`;
   - **idle** — finished, ready for your next prompt → **pulsing amber** `#ffb82e`;
   - **thinking** — generating, just wait → **solid blue** `#4ca6ff`;
-  - no open sessions → a dim grey placeholder.
+  - no open sessions → a dim grey hollow placeholder;
+  - collection switched off → the same dot with a **line through it**.
 
   A **pulsing** dot means there's a session you can type into right now.
 - **What it does:** you start one or more agents and switch away with the
@@ -197,8 +206,9 @@ widgets are optional — add them from preferences.
   thinking); if any session is waiting the dot is red even while others think.
 - **Interactions:** hover shows a summary (e.g. "1 waiting · 1 idle · 2 thinking")
   and a per-session table — that's where you see *which* agent is in which state.
-- **Settings:** colour per state, whether "idle" pulses, the expiry timer,
-  tooltip options, and a **Configure** button for the session hook.
+- **Settings:** colour per state, whether "idle" pulses, how long a quiet session
+  still counts as open, and tooltip options. Whether sessions are collected at
+  all is in *Settings → AI collector*.
 - **Use case:** the widget exists to make the human + AI-agent loop faster while
   taking almost no panel space. You delegate a task and stop watching; the dot
   pulls you back only when your input unblocks the agent (a permission prompt) or
@@ -262,6 +272,31 @@ widgets are optional — add them from preferences.
 - **Full behaviour:** [`break-timer.md`](break-timer.md) — the three timers,
   when each resets (including the daily counter's own rules) and the two-stage
   reminder.
+
+---
+
+## Developer
+
+Listed apart in *Add a widget*, under **Developer widgets**: a tool for working
+on the extension itself rather than a feature of the panel. Never in the default
+configuration.
+
+### Version status — `version-status`  *(developer only)*
+- **Icon:** an amber `software-update-urgent-symbolic` with a `relogin` label
+  while the panel on screen is *not* the installed build;
+  `dialog-question-symbolic` when the build cannot be identified (a store
+  install carries no build stamp). While the two agree the widget is **not on
+  screen at all** — it is a warning, and there is nothing to warn about.
+- **What it does:** installing a new build replaces the files at once, but GNOME
+  Shell keeps running the code it loaded at login until you log out and back in
+  — and the old panel looks exactly like the new one. This widget says which of
+  the two you are looking at.
+- **Interactions:** hover shows the installed and the running build and, when
+  they differ, that a logout/login is needed; hovering and clicking re-check
+  immediately, and it re-checks by itself every 30 seconds whether or not it is
+  on screen.
+- **Settings:** none — the icon and label *are* the state.
+- **Full behaviour:** [`version-status`](../../extension-src/plugins/version-status/index.md).
 
 ---
 

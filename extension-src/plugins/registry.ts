@@ -148,6 +148,15 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
         loadPreferences: () =>
             import('./break-timer/prefs.js') as Promise<PluginPreferencesModule>,
     },
+    {
+        id: 'version-status',
+        label: 'Version status',
+        description:
+            'Developer: whether GNOME Shell runs the installed build, or a '
+            + 'logout/login is still pending.',
+        hasPreferences: false,
+        devOnly: true,
+    },
 ];
 
 export const DESCRIPTORS_BY_ID: Map<string, PluginDescriptor> = new Map(

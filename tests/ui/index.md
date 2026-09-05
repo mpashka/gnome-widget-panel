@@ -21,14 +21,19 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
 - `t-04-position-preset.sh` — `aligned` presets snap the panel.
 - `t-05-config-live-reload.sh` — `widgets` GSettings key edits live-reload;
-  broken config is ignored.
+  a widget whose options did not change keeps its actor (only the edited one is
+  rebuilt); reordering moves actors instead of recreating them; broken config is
+  ignored.
 - `t-06-gnome-action-click.sh` — virtual-pointer click opens the overview.
 - `t-07-screenshot-smoke.sh` — stage renders and captures to a non-uniform PNG.
 - `t-08-all-widgets.sh` — every registered widget loads in one panel, no JS errors.
-- `t-09-live-reload-ai-widgets.sh` — a Soup.Server-backed widget keeps a bound
-  server across a live config reload (the port-bind race).
-- `t-10-right-click-menu.sh` — a right-click on the drag handle (`ctlBtn`) held
-  slightly longer than an instant tap still opens/closes its context menu
+- `t-09-live-reload-ai-widgets.sh` — the AI collector survives a widget config
+  reload, outlives every AI widget being removed, and what it collected meanwhile
+  is there when a widget comes back.
+- `t-10-right-click-menu.sh` — the menu header names the running build (version,
+  and the commit from `build-stamp.json` on its own line); a right-click on the
+  drag handle (`ctlBtn`) held slightly longer than an instant tap still
+  opens/closes its context menu
   (issue #3, `controlButton.ts` `LONGPRESS_MS`), and a genuine long right-press
   now does nothing at all: the temporary-hide it used to fire was replaced by the
   explicit Collapse/Expand item (`t-15-collapse.sh`).
@@ -118,6 +123,16 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   input, its first showing carries no buttons until it has stepped aside, only a
   chosen time puts it away, and a screen that is not the user's own holds it back
   without counting as an answer.
+- `t-25-version-status.sh` — the developer version-status widget: it locates the
+  build stamp beside the extension (the `import.meta.url` path unit tests cannot
+  reach), reports the running build, raises the relogin warning when a *newer*
+  stamp appears on disk while still naming the build in memory, and clears the
+  warning when the two agree again. The widget is off screen entirely while the
+  two agree. The stamp is swapped and restored (`@tag:widget-version-status`).
+- `t-26-ai-collector.sh` — the AI collector runs with no AI widget configured,
+  the `ai-collector` setting stops and starts it live, and both AI widgets say
+  the collector is off rather than drawing the empty picture a quiet hour draws
+  (`@tag:ai-collector`).
 
 ## Directories
 

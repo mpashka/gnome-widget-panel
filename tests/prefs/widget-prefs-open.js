@@ -12,11 +12,17 @@
 // (these files are `// @ts-nocheck`) and neither is reachable from the gi-free
 // unit tests, so this runner is the only place that can catch the class.
 //
+// It also builds the panel-level groups that live outside `prefs.ts` itself
+// (the AI collector group). Those are worse than a widget page when they throw:
+// `fillPreferencesWindow` failing leaves the user with no settings window at
+// all, not one missing page.
+//
 // Run: tests/prefs/run.sh (needs a display; the UI suite's headless shell
 // provides one in CI).
 
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 const ROOT = GLib.getenv('GWP_PREFS_TEST_ROOT') ?? '.';
@@ -120,6 +126,48 @@ function checkWidget(descriptor, module, failures) {
 }
 
 
+// The panel's own Gio.Settings, from the schema in the built tree — it is not in
+// the system schema source, and this test runs outside the Shell.
+function panelSettings() {
+    const source = Gio.SettingsSchemaSource.new_from_directory(
+        GLib.canonicalize_filename(`${ROOT}/extension/schemas`, null),
+        Gio.SettingsSchemaSource.get_default(),
+        false
+    );
+    const schema = source.lookup('org.gnome.shell.extensions.floating-mini-panel', true);
+    if (!schema)
+        throw new Error('the built tree has no compiled panel schema');
+    return new Gio.Settings({settings_schema: schema});
+}
+
+
+// The panel-level groups that are not a widget's page. Same failure mode, wider
+// blast radius: one of these throwing takes the whole settings window with it.
+async function checkPanelGroups(failures) {
+    const page = new Adw.PreferencesPage();
+    let pressed = 0;
+    try {
+        const {addAiCollectorGroup} = await import(
+            `file://${GLib.canonicalize_filename(`${ROOT}/extension/prefsAiCollector.js`, null)}`
+        );
+        addAiCollectorGroup(page, panelSettings());
+    } catch (error) {
+        failures.push(`AI collector group: building it threw: ${error}`);
+        return 0;
+    }
+    for (const control of pressables(page)) {
+        try {
+            control.widget.emit(control.signal);
+            pressed++;
+        } catch (error) {
+            failures.push(`AI collector group: "${describe(control)}" threw: ${error}`);
+        }
+    }
+    print(`  AI collector group: built, ${pressed} control(s) pressed`);
+    return pressed;
+}
+
+
 async function main() {
     Gtk.init();
     Adw.init();
@@ -156,6 +204,8 @@ async function main() {
         checked++;
         print(`  ${descriptor.id}: settings page built, ${pressed} control(s) pressed`);
     }
+
+    await checkPanelGroups(failures);
 
     print(`\n${checked}/${withPrefs.length} widget settings pages checked`);
     if (failures.length > 0) {

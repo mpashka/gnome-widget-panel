@@ -8,7 +8,6 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import {defaultWidgetConfig} from '../../widgetConfig.js';
 import {READ_STDIN_FN} from './hookStdin.js';
 import {FORMAT_STATUS_LINE_FN} from './statusLineText.js';
 
@@ -74,19 +73,11 @@ function schemasDir() {
 
 export const SETTINGS_SCHEMA_ID = 'org.gnome.shell.extensions.floating-mini-panel';
 
-// The widgets that answer `/claude-statusline`: the usage graph feeds on the
-// payload, the status dot on the fact that one arrived. Either being enabled
-// means the panel expects delivery.
-const AI_WIDGET_IDS = ['ai-agent-usage', 'ai-agent-status'];
-
-// What an empty `widgets` key means — the key is empty on a fresh install and
-// stands for `defaultWidgetConfig()`. Read from that function instead of
-// repeating its answer, so changing the default cannot leave the hook lying.
-function aiWidgetEnabledByDefault() {
-    return defaultWidgetConfig().plugins.some(
-        (plugin) => AI_WIDGET_IDS.includes(plugin?.id) && plugin?.enabled !== false
-    );
-}
+// The setting that decides whether anything is listening. It used to be "is an
+// AI widget in the panel configuration", which was the wrong question twice
+// over: collection is no longer a widget's job (see ../../aiCollector.ts), and
+// a user who wanted the data without a widget on screen had no way to say so.
+const COLLECTOR_KEY = 'ai-collector';
 
 // Port-independent hook. It renders the status line **itself**, from the payload
 // Claude passes on stdin, and never prints anything the panel sent back: a
@@ -95,11 +86,10 @@ function aiWidgetEnabledByDefault() {
 // and had nothing to print without one.
 //
 // The panel is now an optional consumer of the same payload. The hook POSTs to
-// the registered endpoints only when an AI widget is enabled in the panel
-// configuration, and appends a red lamp to the line when a widget is enabled but
-// no endpoint accepted the payload (crashed widget, dead port, stale registry
-// entry). Everything disabled means no POST and no lamp — an unused feature is
-// not a fault.
+// the registered endpoints only while the `ai-collector` setting is on, and
+// appends a red lamp to the line when it is on but no endpoint accepted the
+// payload (crashed shell, dead port, stale registry entry). Collection switched
+// off means no POST and no lamp — a feature the user turned off is not a fault.
 //
 // Because the hook file content embeds no port/secret, multiple running widgets
 // no longer overwrite each other's hook — they only add their endpoint to the
@@ -120,8 +110,7 @@ import Soup from 'gi://Soup?version=3.0';
 const REGISTRY = ${JSON.stringify(portsRegistryPath())};
 const SCHEMA_DIR = ${JSON.stringify(schemasDir())};
 const SCHEMA_ID = ${JSON.stringify(SETTINGS_SCHEMA_ID)};
-const AI_WIDGET_IDS = ${JSON.stringify(AI_WIDGET_IDS)};
-const AI_WIDGET_DEFAULT = ${JSON.stringify(aiWidgetEnabledByDefault())};
+const COLLECTOR_KEY = ${JSON.stringify(COLLECTOR_KEY)};
 
 ${READ_STDIN_FN}
 
@@ -139,25 +128,18 @@ function readEndpoints() {
     }
 }
 
-// Whether the panel is configured to run a widget that wants this payload. The
-// ports registry cannot answer this: an entry survives a crashed GNOME Shell
-// (deregistration happens in destroy()), so a stale one would light the lamp for
-// a widget the user deliberately turned off.
-function widgetExpected() {
+// Whether the panel is collecting at all. The ports registry cannot answer this:
+// an entry survives a crashed GNOME Shell (deregistration happens on stop), so a
+// stale one would light the lamp for a collector the user deliberately turned
+// off.
+function collectorExpected() {
     try {
         const source = Gio.SettingsSchemaSource.new_from_directory(
             SCHEMA_DIR, Gio.SettingsSchemaSource.get_default(), false);
         const schema = source.lookup(SCHEMA_ID, true);
-        if (!schema)
+        if (!schema || !schema.has_key(COLLECTOR_KEY))
             return false;
-        const raw = new Gio.Settings({settings_schema: schema}).get_string('widgets').trim();
-        if (!raw)
-            return AI_WIDGET_DEFAULT;
-        const plugins = JSON.parse(raw)?.plugins;
-        if (!Array.isArray(plugins))
-            return AI_WIDGET_DEFAULT;
-        return plugins.some(
-            (plugin) => AI_WIDGET_IDS.includes(plugin?.id) && plugin?.enabled !== false);
+        return new Gio.Settings({settings_schema: schema}).get_boolean(COLLECTOR_KEY);
     } catch (error) {
         // The extension is gone or its settings are unreadable: nothing is
         // expected to listen, so nothing is reported as broken.
@@ -175,7 +157,7 @@ try {
     payload = {};
 }
 
-const expected = widgetExpected();
+const expected = collectorExpected();
 let delivered = false;
 if (expected) {
     // A timeout, because this runs on Claude's status-line path: a widget that

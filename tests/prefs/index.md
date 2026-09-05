@@ -63,3 +63,16 @@ Layout, focus order, whether a row's value is *right*, and anything that only
 happens after the settings window is shown. It answers one question — does this
 page open and survive being clicked through — which is exactly the question the
 two shipped regressions failed.
+
+## Panel-level groups
+
+The runner also builds the settings groups that are **not** a widget's page and
+live in their own modules — currently the AI collector group
+([`../../extension-src/prefsAiCollector.ts`](../../extension-src/prefsAiCollector.ts)).
+They are worse than a widget page when they throw: `fillPreferencesWindow`
+failing leaves the user with **no settings window at all**, not one missing page.
+
+That is also why they are modules rather than methods on the preferences class:
+`prefs.ts` extends `ExtensionPreferences`, a Shell resource that cannot be
+imported outside the preferences process, so anything living inside it is
+unreachable from here.

@@ -7,6 +7,7 @@ import {
     defaultWidgetConfig,
     parseWidgetConfig,
     serializeWidgetConfig,
+    widgetInstanceKey,
 } from '../extension/widgetConfig.js';
 
 test('parses a valid configuration', () => {
@@ -83,4 +84,36 @@ test('serialize produces trailing newline and round-trips', () => {
     const text = serializeWidgetConfig(config);
     assert.ok(text.endsWith('\n'));
     assert.deepEqual(parseWidgetConfig(text), config);
+});
+
+
+// The signature the panel reuses widget actors by: same signature ⇒ the same
+// widget, so the actor is kept instead of being rebuilt (see pluginManager.ts).
+test('the instance key separates widgets that differ', () => {
+    const key = item => widgetInstanceKey(item);
+    assert.notEqual(key({id: 'clock'}), key({id: 'caffeine'}));
+    assert.notEqual(
+        key({id: 'clock', options: {format: '%H:%M'}}),
+        key({id: 'clock', options: {format: '%H:%M:%S'}})
+    );
+    assert.notEqual(key({id: 'clock'}), key({id: 'clock', options: {bold: true}}));
+});
+
+test('the instance key ignores how the options were written down', () => {
+    // The preferences window rewrites the whole document on every edit; options
+    // that come back with their keys in another order have not changed.
+    assert.equal(
+        widgetInstanceKey({id: 'clock', options: {a: 1, b: {x: 1, y: 2}}}),
+        widgetInstanceKey({id: 'clock', options: {b: {y: 2, x: 1}, a: 1}})
+    );
+    // Absent options and empty options describe the same widget.
+    assert.equal(
+        widgetInstanceKey({id: 'clock'}),
+        widgetInstanceKey({id: 'clock', options: {}})
+    );
+    // Array order, however, is meaning, not spelling.
+    assert.notEqual(
+        widgetInstanceKey({id: 'launch', options: {items: [1, 2]}}),
+        widgetInstanceKey({id: 'launch', options: {items: [2, 1]}})
+    );
 });

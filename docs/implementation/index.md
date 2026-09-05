@@ -10,8 +10,10 @@ settings plumbing behind them. The user-visible side of the same features is in
 ## Files
 
 - [`architecture.md`](architecture.md) — host/plugin architecture, configuration
-  as the source of truth, the plugin contract and the `ai-agent-usage`
-  out-of-process collector design (`@tag:mechanism`).
+  as the source of truth and the plugin contract (`@tag:mechanism`).
+- [`ai-collector.md`](ai-collector.md) — the AI activity collector the extension
+  owns: why it is not a widget's job, what it collects, its settings and its
+  lifecycle (`@tag:ai-collector`).
 - [`object-model.md`](object-model.md) — runtime object map: which object owns
   which actor, signal and timer (`@tag:ui`).
 - [`preferences.md`](preferences.md) — the widget-management preferences window,

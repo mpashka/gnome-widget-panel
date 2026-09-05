@@ -110,6 +110,20 @@ profile, tailing the log (mutter 50 dropped the `--nested` flag;
 `gnome-widget-panel@mpashka.github.com`; it installs alongside the original
 Floating Mini Panel.
 
+**Finish a task by installing it: run `./gwp install`.** A task is not delivered
+while it exists only in the repository — the user's own panel is where it gets
+used, and the next session's manual check starts from what is installed, not
+from what is committed. So when the work is done (code, docs and tests in place,
+the affected suite green), install it, and say in your report that the new build
+needs a **logout/login** before the running Shell picks it up. The dev-only
+[`version-status`](extension-src/plugins/version-status/index.md) widget shows
+exactly that state in the panel: it compares the installed build stamp with the
+build the running Shell loaded, and warns while a relogin is pending — appearing
+only then, so an empty slot means the two agree. Which build is running is also
+in the handle's context-menu header (version, and under it the commit with
+`-dirty`). Do not install a tree you know to be broken — fix it or say why you
+left it uninstalled.
+
 Imperative: perform code work — reading and editing files, navigation, builds,
 running commands and running tests — through the IntelliJ **IDEA MCP** tools
 (`mcp__idea__*`), not ad-hoc shell equivalents, so edits, builds and test runs
@@ -146,23 +160,38 @@ panel lifecycle and error isolation; `pluginManager.ts` is the registry + loader
 - **Lifecycle discipline (Shell 50):** avoid blocking I/O on the Shell thread;
   release every timer, signal, `Soup.Server` and child process in `destroy()`.
 
-### `ai-agent-usage` plugin — out-of-process collectors
+### The AI collector, and the widgets that view it
 
-Provider collection that can block stays outside Shell. The plugin is GJS-only:
+**Collection belongs to the extension, never to a widget.**
+[`aiCollector.ts`](extension-src/aiCollector.ts) owns the localhost server,
+Claude's hooks and the helper child processes; `ai-agent-usage` and
+`ai-agent-status` are views of it. It used to be the other way round — each
+widget built its own server in its constructor — which made collection a side
+effect of a widget existing and left "no sessions" and "nobody is collecting"
+drawing the same empty picture. Do not move collection back into a widget, and
+do not give a widget a second one.
 
-- **Claude Code:** the widget runs a localhost-only `Soup.Server` with a
+- **What decides whether it runs** is the `ai-collector` GSettings key, not the
+  widget list. Removing every AI widget does not stop it; switching it off makes
+  the widgets say so rather than show an empty result. Provider collection that
+  can block stays outside Shell.
+- **Claude Code:** the collector runs a localhost-only `Soup.Server` with a
   per-session secret, writes `~/.claude/gnome-widget-panel-claude-hook.js`, and
   points Claude's `statusLine` at it. The hook **renders the status line itself**
-  from its own stdin and prints nothing the widget returned — the status line
-  must survive a disabled, crashed or restarting widget. It POSTs the payload to
-  the widget only when an AI widget is enabled in the panel configuration, and
-  appends a red lamp to the line when one is enabled but no endpoint answered
-  2xx. No cache file; data lives only in memory.
-- **Codex:** the widget spawns `helpers/codex-usage-helper.js` as a `gjs -m`
+  from its own stdin and prints nothing the panel returned — the status line must
+  survive a disabled, crashed or restarting extension. It POSTs the payload only
+  while `ai-collector` is on, and appends a red lamp to the line when it is on
+  but no endpoint answered 2xx. No cache file; data lives only in memory.
+- **Codex:** the collector spawns `helpers/codex-usage-helper.js` as a `gjs -m`
   child via `Gio.Subprocess`. The helper scans `~/.codex/sessions/**/*.jsonl`,
   extracts the newest `token_count` event, and streams normalized JSON Lines to
   stdout. It uses `last_token_usage` (not cumulative `total_token_usage`);
   repeated reads of the same event are not counted as new consumption.
+- **Raw truth here, policy there.** The collector keeps the latest payload per
+  provider, the prompts seen and the open sessions, and prunes only at a fixed
+  24 h bound. When a session stops counting as open, how long a payload stays
+  fresh and how history is sampled are the *widget's* settings, applied where the
+  drawing happens.
 - **Rendering:** one graph receives all provider updates, picks the fresh
   provider with the largest token count, and samples token count, context-window
   usage and server-limit usage. Keep in-memory history **separately per
@@ -379,11 +408,14 @@ matching task:
   4. After the user reports a run, the **agent reads the logs itself and cleans up**
      the script's artifacts — installed handlers, log capture, changed settings
      (e.g. restore the idle timeout) and the state file.
-- **UX:** [`docs/process/ux.md`](docs/process/ux.md) — design an interaction from the
-  use case and count its steps from where the user already is: actions on the object
-  under the pointer, one toggling item instead of two, no dialogs for reversible
-  actions, a keyboard route for the primary path. Read it before designing a menu,
-  a button or a settings flow.
+- **UX:** the general interaction rules live in [`.claude/rules/ux/`](.claude/rules/ux/)
+  — an installed copy of the **ux-principles** convention. Claude Code loads them
+  automatically; other agents must read them there. Start with `core.md` (any
+  interface) and `desktop.md` (pointer, keyboard, windows, shell).
+  [`docs/process/ux.md`](docs/process/ux.md) holds what is true of **this panel**:
+  the worked examples with the gestures they cost, the cases that produced a
+  general rule, and any deliberate departure — and it wins over the general ones.
+  Read both before designing a menu, a button or a settings flow.
 - **Code quality:** [`docs/process/code-quality.md`](docs/process/code-quality.md) — modularity,
   uniform naming across the whole codebase, and per-widget documentation, so that
   adding a feature or fixing a bug never gets harder over time.

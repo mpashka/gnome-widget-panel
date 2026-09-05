@@ -60,14 +60,24 @@ It also **live-reloads its widgets** when the `widgets` GSettings key changes
 per-widget settings and add/remove/reorder/enable changes apply without a full
 GNOME Shell reload. A `changed::widgets` signal on the panel's `Gio.Settings`
 feeds a ~300 ms debounced timer that calls `_reloadPlugins()`. `_reloadPlugins()`
-pre-validates the new value with `parseWidgetConfig()`, builds the new plugin
-instances first and only swaps them in on success, so an invalid or
-half-written value keeps the current widgets. Because new actors are
-constructed before the old ones are destroyed, a widget owning an exclusive
-resource (e.g. `ai-agent-usage`'s localhost `Soup.Server`) briefly overlaps
-with its old instance; the handled bind error is non-fatal and the next sample
-recovers. The signal handler and the debounce timer are released in
-`destroy()`.
+pre-validates the new value with `parseWidgetConfig()`, so an invalid or
+half-written value keeps the current widgets untouched.
+
+**Only the widgets that changed are rebuilt.** An edit rewrites the whole
+`widgets` key, so rebuilding every actor restarted widgets nobody had edited:
+their accumulated state (a graph's history, a running counter, a bound port)
+went with the actor, and the panel visibly re-settled around the one widget
+being adjusted. `PluginManager.updateConfiguredPlugins()` matches the new
+configuration against the instances the panel holds by
+`widgetInstanceKey()` — id plus canonicalized options — hands back the actors
+whose entry is unchanged, and destroys the rest **before** building the
+replacements, which is what lets a widget owning an exclusive resource (e.g.
+`ai-agent-usage`'s localhost `Soup.Server`) rebind the port its predecessor
+held. Nothing is destroyed before the matching is done, so a failure there
+leaves the panel with exactly what it had. The panel then places every actor at
+its configured position after the control button, reordering the reused ones
+rather than recreating them. The signal handler and the debounce timer are
+released in `destroy()`.
 
 Every timer, signal, child actor and compositor override must be released in
 `destroy()`.
@@ -112,8 +122,11 @@ the order in the config file.
 ### `ControlButton`
 
 The panel handle/menu button. It owns drag/move actions and long-press/click
-gestures. Its context menu holds a non-reactive name/version header followed by
-"Collapse"/"Expand", "Settings…" (opens preferences), "Release notes",
+gestures. Its context menu holds a non-reactive header — the extension name, and
+on the right the version with the release channel over the build's
+`commit[-dirty]` (`systemInfo.versionDisplay()` / `buildIdDisplay()`, stacked
+rather than joined so the row does not outgrow the menu, `@tag:build-stamp`) —
+followed by "Collapse"/"Expand", "Settings…" (opens preferences), "Release notes",
 "View on extensions.gnome.org", "Report a bug" and "Suggest a feature" (the last
 two open the prefilled GitHub issue forms via `systemInfo`). The former
 Auto-Position and Control-Functions menu sections were moved to the preferences
@@ -138,14 +151,24 @@ Gesture notes:
 #### Collapsed state
 
 `collapsed` (boolean, GSettings) is the single source of truth. The panel's
-`_applyCollapsed()` hides every child except the `ControlButton`, so what remains
-on screen is the handle and its menu — the only way back. It is applied at
-startup, on `changed::collapsed` (so `gsettings` or a second session applies
-live) and again after a widget live-reload, because rebuilt plugin actors start
-visible. `_applyCollapsed()` changes visibility only; callers relocate, since the
-panel's size changed and startup must not relocate before the actor is on the
-stage. The menu item's label is read from the panel each time the menu opens, so
-it always names the action it will perform.
+`_applyChildVisibility()` hides every child except the `ControlButton`, so what
+remains on screen is the handle and its menu — the only way back. It is applied
+at startup, on `changed::collapsed` (so `gsettings` or a second session applies
+live) and again after a widget live-reload, because a newly built plugin actor
+starts visible. It changes visibility only; callers relocate, since the panel's
+size changed and startup must not relocate before the actor is on the stage. The
+menu item's label is read from the panel each time the menu opens, so it always
+names the action it will perform.
+
+The same method resolves the second reason a widget may be off screen: a widget
+that currently has nothing to show sets `selfHidden` on its own actor (see
+[`../../extension-src/contracts.ts`](../../extension-src/contracts.ts)) and calls
+the host's `updateWidgetVisibility()`, which re-resolves both reasons and
+relocates. Visibility has one owner — the panel — because otherwise expanding a
+collapsed panel put a self-hidden widget back on screen. The
+[`version-status`](../../extension-src/plugins/version-status/index.md) widget is
+the case that needs it: it is a warning, and a warning is shown only while it
+stands ([a warning is shown only while it stands](../../.claude/rules/ux/core.md)).
 
 ### `IndicatorsDrawer`
 

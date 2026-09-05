@@ -1,6 +1,6 @@
 # ai-agent-status widget
 
-`@tag:widget-ai-agent-status`
+`@tag:widget-ai-agent-status` `@tag:ai-collector`
 
 Back to [plugins index](../index.md).
 
@@ -26,55 +26,44 @@ carries the per-session breakdown (which agent is in which state). See the
 [user guide](../../../docs/specification/widgets.md#ai-agent-status--ai-agent-status--optional)
 for the end-user framing.
 
+It is a **view of the panel's AI collector**
+([`../../aiCollector.ts`](../../aiCollector.ts)) and collects nothing itself:
+sessions are recorded whether or not this widget is on the panel, and with
+collection switched off the dot is struck through and the tooltip says so —
+rather than showing the same empty dot a quiet hour shows. See
+[`../../../docs/implementation/ai-collector.md`](../../../docs/implementation/ai-collector.md).
+
 Not in the default config; add it via the panel preferences.
 
 ## Source files
 
 - `index.ts` — plugin entrypoint (`create(parent, options)`).
-- `aiAgentStatus.ts` — the widget: localhost HTTP server receiving Claude hook
-  events, the per-session state machine, the single aggregated-dot rendering and
-  the templated tooltip.
-- `prefs.ts` — widget settings UI: Claude hooks status dot + Configure button,
-  port/expire rows, the three state colours, pulse switch and the tooltip
-  template editor with live preview. See
+- `aiAgentStatus.ts` — the widget: reads the collector's sessions, applies the
+  expiry and staleness policy this widget configures, and draws the single
+  aggregated dot and its templated tooltip.
+- `prefs.ts` — widget settings UI: the expiry row, the three state colours, the
+  pulse switch and the tooltip template editor with live preview. Which agents
+  are watched, and on which port, is the collector's settings group. See
   [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 
-## Hook mechanism
+## Where the events come from
 
-Claude Code lifecycle hooks are installed by
-[`../ai-agent-usage/claudeHook.ts`](../ai-agent-usage/claudeHook.ts)
-(`installEventHooks()` / `eventHooksStatus()`, shared with the usage widget's
-statusLine hook — the usage widget also auto-installs the event hook on
-startup, for its own request markers, so it is configured even if this widget
-is never added). `installEventHooks()` writes the port-independent script
-`~/.claude/gnome-widget-panel-agent-event-hook.js` and idempotently merges an
-entry for it into `~/.claude/settings.json` `hooks` for the events
-`UserPromptSubmit`, `Stop`, `Notification` and `SessionEnd` (no matcher;
-user-defined hook entries are preserved). The script reads the Claude JSON
-payload from stdin, reads the shared endpoint registry
-`~/.claude/gnome-widget-panel-ports.json` (`[{port, secret}...]`) and POSTs the
-raw payload to `http://127.0.0.1:<port>/agent-event` on **every** registered
-endpoint with an `X-Gnome-Widget-Panel-Token` header. It prints nothing and
-always exits 0 — a Stop hook's stdout is interpreted by Claude, so the script
-must stay silent and fast. Its shebang is `env -S gjs -m` (module mode), like
-the statusLine hook's — see [`../ai-agent-usage/index.md`](../ai-agent-usage/index.md).
+The Claude Code lifecycle hooks, the localhost endpoint they post to and the
+shared ports registry all belong to the collector — see
+[`../../../docs/implementation/ai-collector.md`](../../../docs/implementation/ai-collector.md)
+and [`../ai-agent-usage/claudeHook.ts`](../ai-agent-usage/claudeHook.ts). In
+short: `installEventHooks()` writes
+`~/.claude/gnome-widget-panel-agent-event-hook.js` and merges an entry for it
+into `~/.claude/settings.json` for `UserPromptSubmit`, `Stop`, `Notification` and
+`SessionEnd`; the script POSTs the raw payload to `/agent-event` on every
+registered endpoint, prints nothing and exits 0 (a Stop hook's stdout is
+interpreted by Claude, so it must stay silent and fast).
 
-Coexistence with the statusLine hook (both fan out to all registered
-endpoints):
-
-- This widget answers `POST /claude-statusline` with **204 No Content**; the
-  payload is used as busy-activity evidence. No response body is read any more —
-  the hook renders the status line itself and only looks at the status code, and
-  any 2xx (204 included) counts as delivered, so answering here keeps the hook's
-  red delivery lamp off.
-- The usage widget also has an `/agent-event` handler (for its own request
-  markers): it only reacts to `UserPromptSubmit`, ignoring every other event
-  this widget cares about (`Stop`, `Notification`, `SessionEnd`).
-
-The widget starts its own `Soup.Server` on `options.port` (default 17871,
-distinct from ai-agent-usage's 17861), registers `{port, secret}` in the shared
-registry on start and deregisters on `destroy()`. It does not install the
-statusLine hook (`installHook()` stays the usage widget's job).
+This widget used to run a **second** `Soup.Server` on its own port beside the
+usage widget's, which is why it had to answer `POST /claude-statusline` with
+`204 No Content`: the hook printed the first 2xx body as Claude's status line and
+an empty 200 from here would have hijacked it. With one collector there is one
+server and that hazard is gone.
 
 ## Session state machine
 
@@ -88,26 +77,32 @@ the first 8 chars of the id):
 | `Notification` event (asking permission/attention) | `waiting` — highest priority |
 | `Stop` event (turn finished, ready for the next prompt) | `idle` |
 | `SessionEnd` event | session removed |
-| `thinking` with no events for > 10 min (`THINKING_STALE_SECONDS`) | `idle` (missed Stop — no longer "working") |
-| no events at all for > `expireMinutes` (default 180) | session removed (missed SessionEnd fallback) |
+| `thinking` with no events for > 10 min (`THINKING_STALE_SECONDS`) | reads as `idle` (missed Stop — no longer "working") |
+| no events at all for > `expireMinutes` (default 180) | not shown (missed SessionEnd fallback) |
+
+The first five rows are the **collector's** state machine; the last two are this
+widget's, applied when it reads (`_openSessions()`) rather than stored. That is
+the split the collector page describes: it records what happened, the viewer
+decides how long that keeps meaning something — and it has to be that way round,
+because `expireMinutes` is a per-widget setting and two widgets may disagree.
 
 There is no separate grey "stale" state: an open session at rest is `idle`
-(ready for the next prompt), and a session is either open or removed — liveness
-comes from `SessionEnd` with the expiry as a fallback. Age transitions run on a
-5 s tick. Each session stores `id`, `cwd`, `label`, `provider`, `state`,
-`lastEvent` and `lastChange` timestamps.
+(ready for the next prompt), and a session is either open or gone. A 5 s tick
+re-reads the collector so the ages and those two derived transitions move.
 
 ## Visualization
 
 **Chosen design: one aggregated dot** — a single ~12 px round Cairo dot filled
-in the colour of the **most-urgent** session state. `_sortedSessions()` orders
+in the colour of the **most-urgent** session state. `_openSessions()` orders
 sessions by `waiting`, `idle`, `thinking` (then by recency), and element 0 wins,
 so one glyph reflects "the loudest thing an agent needs from you right now". The
 two **promptable** states (`waiting`, `idle`) get a brighter 1 px ring and pulse
 their opacity (600 ms ease cadence) — a pulsing dot means "a session you can type
 into now"; `pulseIdle: false` limits the pulse to `waiting`. `thinking` is solid.
 With no sessions a dim grey hollow placeholder dot keeps the widget visible and
-hoverable.
+hoverable; with **collection switched off** that same dot carries a diagonal
+stroke, because "nothing is happening" and "nobody is collecting" are different
+facts and used to be the same picture.
 
 The dot's whole job is a single "an agent needs you" cue while the conversation
 is hidden, so it is deliberately **one glyph** regardless of session count — the
@@ -138,8 +133,6 @@ Default template: `{counts}\n{sessions}`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `port` | `17871` | Localhost port of the widget's hook endpoint. |
-| `secret` | random per run | Endpoint token; persisted by the Configure button. |
 | `expireMinutes` | `180` | Minutes without any events before a session is dropped (missed-`SessionEnd` fallback). |
 | `waitingColor` | `#f03333` | `waiting` dot colour (red). |
 | `idleColor` | `#ffb82e` | `idle` (ready-for-prompt) dot colour (amber). |
@@ -158,5 +151,7 @@ follow-up could poll session-file mtimes (`~/.codex/sessions`,
 
 ## Related docs
 
+- [AI collector](../../../docs/implementation/ai-collector.md) — what feeds this
+  widget, and why it is not the widget's job.
 - [Object model](../../../docs/implementation/object-model.md)
 - [Architecture](../../../docs/implementation/architecture.md)

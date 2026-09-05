@@ -25,9 +25,12 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `tooltipTemplate.test.mjs` — `renderTemplate` from
   [`../extension-src/tooltipTemplate.ts`](../extension-src/tooltipTemplate.ts):
   token substitution, literal Pango-escaping, `\n` handling, unknown/empty tokens.
-- `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig` from
+- `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig`/
+  `widgetInstanceKey` from
   [`../extension-src/widgetConfig.ts`](../extension-src/widgetConfig.ts): schema
-  validation, `enabled`/`options` normalization, error cases, round-trip.
+  validation, `enabled`/`options` normalization, error cases, round-trip, and the
+  instance signature the panel reuses widget actors by (option order is
+  spelling, array order is meaning).
 - `colorUtils.test.mjs` — `hexToRgb`/`toNumber`/`nowSeconds` from
   [`../extension-src/colorUtils.ts`](../extension-src/colorUtils.ts): valid and
   invalid hex colours, numeric coercion/fallback, integer timestamp.
@@ -35,6 +38,16 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   [`../extension-src/version.ts`](../extension-src/version.ts): channel badge
   formatting, stable (empty-channel) case, default channel, empty-version
   fallback (`@tag:versioning`).
+- `buildStamp.test.mjs` — `parseBuildStamp`/`formatBuildId` from
+  [`../extension-src/buildStamp.ts`](../extension-src/buildStamp.ts): validating
+  the untrusted stamp file, stamps from older builds and from outside a
+  checkout, and the `commit[-dirty]` identity the handle menu shows
+  (`@tag:build-stamp`).
+- `versionState.test.mjs` — `evaluateVersionState` from
+  [`../extension-src/plugins/version-status/versionState.ts`](../extension-src/plugins/version-status/versionState.ts):
+  the three verdicts (running the installed build, relogin pending, no stamp),
+  whether each one is on screen, and the tooltip each one carries
+  (`@tag:widget-version-status`).
 - `claudeStatusLine.test.mjs` — `normalizeClaudeStatusLine`/`claudePromptRequest`
   from
   [`../extension-src/plugins/ai-agent-usage/claudeStatusLine.ts`](../extension-src/plugins/ai-agent-usage/claudeStatusLine.ts):

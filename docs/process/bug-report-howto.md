@@ -23,7 +23,8 @@ this repository.
      printf '%s = ' "$k"; gsettings --schemadir "$DIR" get "$SCHEMA" "$k"; done
    ```
 
-   Redact secrets (for example `claudeSecret`) before pasting.
+   Redact anything secret-looking before pasting (the AI collector's
+   endpoint token is generated per session and is not in this key).
 
 2. **A screenshot or screencast is mandatory when the bug is visible.**
    - **Screenshot** for a static wrong state (missing icon, wrong size, wrong

@@ -1,6 +1,6 @@
 # ai-agent-usage widget
 
-`@tag:widget-ai-agent-usage`
+`@tag:widget-ai-agent-usage` `@tag:ai-collector`
 
 Back to [plugins index](../index.md).
 
@@ -9,19 +9,27 @@ Back to [plugins index](../index.md).
 Shows one compact graph for AI agent token usage. Providers: Codex, Claude Code
 and Gemini CLI.
 
+It is a **view of the panel's AI collector**
+([`../../aiCollector.ts`](../../aiCollector.ts)) and collects nothing itself. The
+localhost server, Claude's hooks and the helper child processes used to be built
+in this widget's constructor, which made collection a side effect of the widget
+existing; they now belong to the extension and run on the `ai-collector` setting.
+With collection switched off the graph is struck through and the tooltip says so.
+See [`../../../docs/implementation/ai-collector.md`](../../../docs/implementation/ai-collector.md).
+
 ## Source files
 
 - `index.ts` — plugin entrypoint.
-- `prefs.ts` — widget settings UI: per-provider enable/colour, a Claude Code
-  status dot + Configure button, per-indicator show/hide + colour, widget
-  width/update-interval, tooltip and advanced options; edits the widget
-  `options` in `widgets.json`. See
+- `prefs.ts` — widget settings UI: the per-provider graph colours, per-indicator
+  show/hide + colour, widget width/update-interval, tooltip and advanced options;
+  edits the widget `options` in `widgets.json`. Which providers are collected
+  from, and on which port, is the collector's settings group. See
   [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
   `isClaudeInstalled`), usable from both the shell and preferences processes.
   It also owns the lifecycle **event** hooks (`installEventHooks`,
-  `eventHooksStatus`, `eventHookScript`), auto-installed by this widget (for
-  request markers) and also used by the
+  `eventHooksStatus`, `eventHookScript`), installed by the collector and feeding
+  both this widget's request markers and the
   [`ai-agent-status`](../ai-agent-status/index.md) widget: a silent
   port-independent script POSTing Claude's UserPromptSubmit/Stop/Notification/
   SessionEnd payloads to `/agent-event` on every endpoint in the same shared
@@ -50,8 +58,9 @@ and Gemini CLI.
   Unit-tested in
   [`../../../tests/statusLineText.test.mjs`](../../../tests/statusLineText.test.mjs),
   including that the embedded source still runs standalone.
-- `aiAgentUsageGraph.ts` — in-memory provider state, Claude HTTP hook server,
-  Codex helper process management and graph rendering.
+- `aiAgentUsageGraph.ts` — the graph: the sampled history, the request markers
+  and the rendering. It reads the collector's provider payloads and prompts and
+  owns no collection.
 - `helpers/*.gjs` — the two out-of-process helpers below. **`.gjs`, not `.ts`:**
   they are standalone programs the widget spawns with `gjs -m`, not modules of
   the extension, so they are copied into the built tree verbatim and stay out of
@@ -138,16 +147,17 @@ are deduplicated and pruned to twice the visible window. Codex and Gemini CLI
 populate requests from their session/log files. Claude's `statusLine` payload
 carries no prompt text, so its markers instead come from the separate
 `UserPromptSubmit` lifecycle event hook (`claudeHook.ts`'s
-`installEventHooks()`/`eventHookScript()`, auto-installed alongside the
-statusLine hook): the widget's `/agent-event` handler turns each event into an
+`installEventHooks()`/`eventHookScript()`, installed alongside the statusLine
+hook): the collector's `/agent-event` handler turns each event into an
 `AgentRequest` via `claudePromptRequest()` (`claudeStatusLine.ts`), using the
-event's receipt time as the timestamp since the payload carries none.
+event's receipt time as the timestamp since the payload carries none. The graph
+then draws the ones inside its visible window.
 
-Each provider has an enable toggle (`enableClaude`, `enableCodex`, `enableGemini`,
-all default true) and a graph colour option (`claudeColor`, `codexColor`,
-`geminiColor`). The Providers group in preferences shows a status dot per provider:
-green when detected/configured, grey when the provider is not found on this system
-(Codex looks for `~/.codex/sessions`, Gemini for `~/.gemini/tmp`).
+Each provider has a graph colour option (`claudeColor`, `codexColor`,
+`geminiColor`) here. **Whether** a provider is collected from is the collector's
+`ai-collector-claude` / `-codex` / `-gemini` setting, shown in the AI collector
+preferences group, which also states when an agent is not installed on this
+system (Codex looks for `~/.codex/sessions`, Gemini for `~/.gemini/tmp`).
 
 The widget has a compact hover tooltip built from a user-editable template (see
 [`../../tooltipTemplate.ts`](../../tooltipTemplate.ts), `@tag:ui`) rendered with
@@ -181,18 +191,16 @@ in the widget `options` (default as above).
 
 Claude uses a generated statusLine command hook
 (`~/.claude/gnome-widget-panel-claude-hook.js`, written by
-[`claudeHook.ts`](claudeHook.ts)) that forwards stdin JSON to the widget's
+[`claudeHook.ts`](claudeHook.ts)) that forwards stdin JSON to the collector's
 localhost HTTP server. The hook is **port-independent**: it reads a shared
 endpoint registry `~/.claude/gnome-widget-panel-ports.json` and fans the request
-out to every registered `{port, secret}`. Each
-running widget registers its own `{claudePort, claudeSecret}` when it starts its
-server and deregisters on `destroy()` (deduped by port). This lets several panel
-instances on different `claudePort`s (e.g. a main session and a dev session) each
-receive Claude data without overwriting one another's hook — same localhost port
-on two instances still conflicts, different ports do not. The **Configure**
-button persists a secret into the widget options and registers the endpoint so
-the widget prefers `options.claudeSecret` after a reload. Codex uses stdout JSON
-Lines from the helper. No cache file or persistence is part of the active
+out to every registered `{port, secret}`. Each running collector registers its
+own port and per-session secret when it starts and deregisters when it stops
+(deduped by port). This lets several panel instances on different
+`ai-collector-port`s (e.g. a main session and a dev session) each receive Claude
+data without overwriting one another's hook — the same localhost port on two
+instances still conflicts, different ports do not. Codex uses stdout JSON Lines
+from the helper. No cache file or persistence is part of the active
 architecture.
 
 **What the hook prints is its own work, not the server's answer.** It renders the
@@ -204,30 +212,33 @@ percentage and both rate-limit windows, in the shape Codex uses:
 Opus 5 (1M context) · ~/Projects/home · Context 8% used · 5h 97% left · weekly 89% left
 ```
 
-Delivery to the panel is gated and checked. The hook reads the panel's `widgets`
-GSettings key (schema `org.gnome.shell.extensions.floating-mini-panel`, loaded
-from the installed extension's `schemas/` directory — it is not in the system
-schema source); it POSTs only when `ai-agent-usage` or `ai-agent-status` is
-enabled, counts any **2xx** as delivered (the usage graph answers 200, the status
-dot 204), and appends ` · 🔴` when a widget is enabled but nothing accepted the
-payload — a crashed widget, a dead port, a stale registry entry. With both
-widgets disabled there is no POST and no lamp.
+Delivery to the panel is gated and checked. The hook reads the panel's
+`ai-collector` GSettings key (schema
+`org.gnome.shell.extensions.floating-mini-panel`, loaded from the installed
+extension's `schemas/` directory — it is not in the system schema source); it
+POSTs only while collection is on, counts any **2xx** as delivered, and appends
+` · 🔴` when collection is on but nothing accepted the payload — a crashed shell,
+a dead port, a stale registry entry. With collection off there is no POST and no
+lamp. It used to ask whether an AI *widget* was configured, which was the wrong
+question: it conflated "show me this" with "watch this".
 
 The ports registry deliberately does **not** gate that: an entry outlives a
-crashed GNOME Shell (deregistration happens in `destroy()`), so a stale one would
-light the lamp for a widget the user turned off on purpose. The `Soup.Session`
-carries a 3 s timeout, because this code runs on Claude's status-line path and a
-widget that accepts a connection and then hangs must not hang the status line.
+crashed GNOME Shell (deregistration happens on stop), so a stale one would light
+the lamp for a collector the user turned off on purpose. The `Soup.Session`
+carries a 3 s timeout, because this code runs on Claude's status-line path and an
+endpoint that accepts a connection and then hangs must not hang the status line.
 
-The widget's own `Soup.Server` also has an `/agent-event` handler for the
-`UserPromptSubmit` lifecycle event (see "Requests" above); both server
-handlers read the request's bearer token via `msg.get_request_headers()`, not
-a `request_headers` property — `Soup.ServerMessage` (the server-side request
-object) has no such GObject property, unlike the client-side `Soup.Message`
-the hook scripts use, so reading it directly is always `undefined` and throws.
+The collector's server also has an `/agent-event` handler for the lifecycle
+events (see "Requests" above); both handlers read the request's bearer token via
+`msg.get_request_headers()`, not a `request_headers` property —
+`Soup.ServerMessage` (the server-side request object) has no such GObject
+property, unlike the client-side `Soup.Message` the hook scripts use, so reading
+it directly is always `undefined` and throws.
 
 ## Related docs
 
+- [AI collector](../../../docs/implementation/ai-collector.md) — what feeds this
+  widget, and why it is not the widget's job.
 - [Reading the graph (user guide)](../../../docs/specification/ai-agent-usage.md) — plain-language
   explanation + interactive preview of the token columns and request markers (issue #6).
 - [Object model](../../../docs/implementation/object-model.md)

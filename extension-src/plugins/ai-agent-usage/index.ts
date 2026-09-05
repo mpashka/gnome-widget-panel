@@ -3,5 +3,8 @@
 import {AiAgentUsageGraph} from './aiAgentUsageGraph.js';
 
 export function create(parent, options) {
-    return new AiAgentUsageGraph(parent._extensionPath, options);
+    // The collector belongs to the panel, not to this widget: it keeps running
+    // when the widget is removed, and the widget says so when it is switched
+    // off. See ../../aiCollector.ts.
+    return new AiAgentUsageGraph(parent?.aiCollector ?? null, options);
 }

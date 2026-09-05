@@ -165,3 +165,17 @@ Specification: [`../specification/break-timer.md`](../specification/break-timer.
 - [x] A reusable templated-tooltip mechanism (`tooltipTemplate.ts`,
   template + live preview) shared by widgets, plus a shared width/update-interval
   option pattern.
+
+### Truncated text with no way to read it
+
+[Truncate only what stays reachable](../../.claude/rules/ux/core.md) says an
+ellipsis is only allowed where
+the full value stays reachable. Two menus cut text that nothing then reveals:
+
+- [ ] `app-windows` — a window title is ellipsized to the fixed menu width and
+  a title *is* the row's information (a path, a browser tab). The width cannot
+  follow the content (the popup has one fixed size), and the value cannot be
+  shortened by us, so the row needs the route: a hover tooltip with the full
+  title.
+- [ ] `gnome-menu` — an application name is ellipsized rather than widening the
+  popup. Same fix, or a narrower right-hand column so full names fit.

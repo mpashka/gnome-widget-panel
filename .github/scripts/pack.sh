@@ -6,7 +6,9 @@
 # extension/ with `npm run build`, then zip the contents of extension/ from
 # inside it. The compiled gschemas.compiled is excluded: EGO ships the
 # gschema.xml source and compiles schemas itself, and a stale compiled blob is
-# just dead weight in the upload.
+# just dead weight in the upload. build-stamp.json is excluded too: it identifies
+# one local build (commit, dirty flag, build time) for the dev-only
+# version-status widget and means nothing to someone installing from the store.
 #
 # Output: dist/<uuid>.shell-extension.zip. See ../../docs/process/release.md.
 set -euo pipefail
@@ -25,7 +27,7 @@ rm -f "$zip_path"
 
 (
   cd extension
-  zip -qr "$zip_path" . -x 'schemas/gschemas.compiled'
+  zip -qr "$zip_path" . -x 'schemas/gschemas.compiled' 'build-stamp.json'
 )
 
 printf 'Packed %s (version %s) -> %s\n' "$uuid" "$version" "$zip_path"

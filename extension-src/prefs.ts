@@ -18,6 +18,7 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {addAiCollectorGroup} from './prefsAiCollector.js';
 import {loadWidgetConfig, saveWidgetConfig} from './configStore.js';
 import {DESCRIPTORS_BY_ID, PLUGIN_DESCRIPTORS} from './plugins/registry.js';
 import * as SystemInfo from './systemInfo.js';
@@ -135,6 +136,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
 
         this._addPanelGroups(page);
         this._addMainPanelGroup(page, window);
+        addAiCollectorGroup(page, this.getSettings());
         this._addAboutGroup(page);
     }
 
@@ -913,6 +915,26 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         const group = new Adw.PreferencesGroup({title: 'Available widgets'});
         content.add(group);
 
+        // A widget that exists for working ON the extension is not a feature of
+        // the panel, so it is listed apart, under a heading that says as much,
+        // rather than sitting between the clock and the screenshot button where
+        // it would read as one more thing to try.
+        let devGroup = null;
+        const groupFor = (descriptor) => {
+            if (!descriptor.devOnly)
+                return group;
+            if (!devGroup) {
+                devGroup = new Adw.PreferencesGroup({
+                    title: 'Developer widgets',
+                    description:
+                        'Tools for working on the extension itself, not part of '
+                        + 'the default panel.',
+                });
+                content.add(devGroup);
+            }
+            return devGroup;
+        };
+
         const rows = [];
         for (const descriptor of available) {
             const row = new Adw.ActionRow({
@@ -937,7 +959,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
                 this._persist(state, rebuild);
                 window.pop_subpage();
             });
-            group.add(row);
+            groupFor(descriptor).add(row);
             rows.push({
                 row,
                 haystack: `${descriptor.label} ${descriptor.description} ${descriptor.id}`.toLowerCase(),

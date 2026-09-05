@@ -746,7 +746,7 @@ const GnomeMenuButton = GObject.registerClass(
         }
 
         // The row's own actions, right where the row is (docs/process/ux.md,
-        // rule 2): the entry's `.desktop` actions first — they start what the
+        // the action lives on the object): the entry's `.desktop` actions first — they start what the
         // user wants in one go — then the favorites toggle and the editor.
         _contextActions(app) {
             const items = desktopActionsFor(app.appInfo).map(({action, name}) => ({
@@ -779,7 +779,7 @@ const GnomeMenuButton = GObject.registerClass(
         }
 
         // Show the row's actions at the pointer, clamped inside the popup so
-        // the overlay can never enlarge it (rule 11: the layout may not move
+        // the overlay can never enlarge it (UX: the layout may not move
         // under the pointer).
         _showContextMenu(app, stageX, stageY) {
             this._hideContextMenu();
