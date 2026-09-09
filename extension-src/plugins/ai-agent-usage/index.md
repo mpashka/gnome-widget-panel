@@ -230,6 +230,17 @@ caption, and the place falls back to the last component of the working directory
 (`~/Projects/home/configs` → `configs`), which is what an install with no such
 writer shows.
 
+**The dollars come from a cost file**, for the same reason and under the same
+contract: the payload reports percentages of a quota and never money. The hook
+reads `${XDG_STATE_HOME:-~/.local/state}/metrics/sessions/<session_id>.json` and
+takes its `usd` field — on the author's machine that file is written by the
+`metrics` collector, which reads the session's token log and prices it per
+token. A file and not a command on purpose: the line is re-rendered on every
+update, and asking another program for the number would put a process spawn on
+that path. Absent, unreadable or zero alike mean no dollar segment — `$0.00`
+would read as a claim that the work is free. The segment sits right after `ctx`,
+because both answer the same question: what this session has spent.
+
 Delivery to the panel is gated and checked. The hook reads the panel's
 `ai-collector` GSettings key (schema
 `org.gnome.shell.extensions.floating-mini-panel`, loaded from the installed
