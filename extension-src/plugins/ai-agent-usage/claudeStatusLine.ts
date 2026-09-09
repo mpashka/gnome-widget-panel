@@ -24,6 +24,9 @@ export interface ClaudeStatusLinePayload {
     // (`statusLineText.ts`); `id` is what this widget keys its per-provider
     // sample by.
     model?: {id?: string; display_name?: string; effort?: string};
+    // Keys the per-session caption the hook looks up before rendering the line
+    // (`claudeHook.ts`), and the widget's own per-session bookkeeping.
+    session_id?: string;
     // The session's working directory, shown in the status line. Claude reports
     // it twice; `workspace.current_dir` follows `/add-dir`, `cwd` does not, so
     // the former wins.

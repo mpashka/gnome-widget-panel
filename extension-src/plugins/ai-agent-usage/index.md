@@ -51,7 +51,7 @@ See [`../../../docs/implementation/ai-collector.md`](../../../docs/implementatio
   (`UserPromptSubmit` → an `AgentRequest` marker). Unit-tested in
   [`../../../tests/claudeStatusLine.test.mjs`](../../../tests/claudeStatusLine.test.mjs).
 - `statusLineText.ts` — gi-free renderer of the status line Claude shows:
-  `formatClaudeStatusLine(payload, {home, lamp})` and `FORMAT_STATUS_LINE_FN`,
+  `formatClaudeStatusLine(payload, {place, task, lamp})` and `FORMAT_STATUS_LINE_FN`,
   the same function's own source (`Function.prototype.toString()`), embedded
   verbatim into the generated hook — which has no module scope to import from,
   and a hand-copied string constant would drift from the function it mirrors.
@@ -205,12 +205,30 @@ architecture.
 
 **What the hook prints is its own work, not the server's answer.** It renders the
 status line from its stdin with `formatClaudeStatusLine`
-([`statusLineText.ts`](statusLineText.ts)) — model, working directory, context
+([`statusLineText.ts`](statusLineText.ts)) — model, place, task, context
 percentage and both rate-limit windows, in the shape Codex uses:
 
 ```
-Opus 5 (1M context) · ~/Projects/home · Context 8% used · 5h 97% left · weekly 89% left
+Opus 5 high · ai_dispatcher · ISS-9639 · ctx 8% · 5h 97% · 7d 89%
 ```
+
+Every segment is cut to what a laptop screen fits: the model without the
+parenthetical naming its window variant, the place without the path leading to
+it, the percentages without the words around them. `ctx` is what the session has
+spent and the two windows are what is left of a quota — the question asked of a
+context is how close it is to full, the question asked of a quota is how much
+remains.
+
+**The place and the task come from a caption file**, because the payload knows a
+directory and nothing about tasks. Before rendering, the hook reads
+`~/.claude/statusline/<session_id>.json` (`{place, task}`, both optional strings)
+and passes it in. Whoever tracks the user's work writes it — on the author's
+machine, the task dispatcher `ai_dispatcher`, which resolves a session to a task
+card and names the place after the project or the Arcadia checkout. Nothing here
+writes or requires that file: absent, unreadable or malformed alike mean no
+caption, and the place falls back to the last component of the working directory
+(`~/Projects/home/configs` → `configs`), which is what an install with no such
+writer shows.
 
 Delivery to the panel is gated and checked. The hook reads the panel's
 `ai-collector` GSettings key (schema

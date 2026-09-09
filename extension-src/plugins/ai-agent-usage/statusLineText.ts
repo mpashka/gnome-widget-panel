@@ -11,15 +11,25 @@
 // still contribute is one bit — whether the payload reached it — drawn as the
 // lamp at the end of the line.
 //
-// The layout follows Codex's status line (model, path, context, both usage
-// windows), because that is the line the user compares this one against.
+// The layout follows Codex's status line (model, where the work happens,
+// context, both usage windows), because that is the line the user compares this
+// one against — but every segment is cut to what a laptop screen fits: the model
+// without its window variant, the place without the path leading to it, the
+// percentages without the words around them.
+//
+// The place and the task are the one thing the payload cannot answer: it knows a
+// directory, not what is being worked on there. They come from a caption file
+// another program writes per session (see `claudeHook.ts`); nothing writes one —
+// the line falls back to the directory's own name.
 
 import type {ClaudeStatusLinePayload} from './claudeStatusLine.js';
 
 /** What the hook knows and the payload does not. */
 export interface StatusLineContext {
-    /** `$HOME`, abbreviated to `~` in the shown path. */
-    home?: string;
+    /** Where the session works, in one word: the project or the checkout it lives in. */
+    place?: string;
+    /** What it works on: a ticket key, a task directory — whatever names the task. */
+    task?: string;
     /** An AI widget is enabled but the payload reached none of its endpoints. */
     lamp?: boolean;
 }
@@ -46,7 +56,10 @@ export function formatClaudeStatusLine(
     const parts: string[] = [];
 
     const model = payload?.model ?? {};
-    const name = String(model.display_name ?? model.id ?? '').trim();
+    // The parenthetical of a display name is a variant of the same model
+    // ("Opus 5 (1M context)"), and the context segment below already reports how
+    // much of that window is gone — so the name keeps only its identity.
+    const name = String(model.display_name ?? model.id ?? '').replace(/\s*\(.*/, '').trim();
     // Codex shows the reasoning effort next to the model; Claude reports one
     // only for some models, so it joins the name when present and is dropped
     // silently when not.
@@ -54,27 +67,36 @@ export function formatClaudeStatusLine(
     if (name)
         parts.push(effort ? `${name} ${effort}` : name);
 
+    // Where the session works and what it works on. The full path is not shown:
+    // on a laptop screen it costs a third of the line to repeat a prefix every
+    // session shares. Whoever knows about tasks names the place (`place`); with
+    // nobody to ask, the last path component is still the project's own name.
     const directory = String(payload?.workspace?.current_dir ?? payload?.cwd ?? '').trim();
-    const home = String(context.home ?? '').replace(/\/+$/, '');
-    if (directory) {
-        parts.push(home && (directory === home || directory.startsWith(`${home}/`))
-            ? `~${directory.slice(home.length)}`
-            : directory);
-    }
+    const place = String(context.place ?? '').trim()
+        || directory.replace(/\/+$/, '').split('/').pop() || '';
+    if (place)
+        parts.push(place);
+    const task = String(context.task ?? '').trim();
+    if (task)
+        parts.push(task);
 
+    // Deliberately the half that grows: `ctx` is what this session has spent,
+    // the two windows below are what is left of a quota. Watching a number climb
+    // towards a limit is the question asked of the context, and watching one
+    // drain is the question asked of a quota.
     const used = percent(payload?.context_window?.used_percentage);
     if (used !== null)
-        parts.push(`Context ${used}% used`);
+        parts.push(`ctx ${used}%`);
 
     // Both windows are absent until the first API call of a session answers, and
     // an absent window is not a zero one — it is omitted rather than reported as
-    // "0% left", which would read as an exhausted quota.
+    // "0%", which would read as an exhausted quota.
     const fiveHour = remaining(payload?.rate_limits?.five_hour);
     if (fiveHour !== null)
-        parts.push(`5h ${fiveHour}% left`);
+        parts.push(`5h ${fiveHour}%`);
     const sevenDay = remaining(payload?.rate_limits?.seven_day);
     if (sevenDay !== null)
-        parts.push(`weekly ${sevenDay}% left`);
+        parts.push(`7d ${sevenDay}%`);
 
     if (context.lamp)
         parts.push('🔴');

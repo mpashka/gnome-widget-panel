@@ -37,10 +37,16 @@ telling you which file to edit would be one more step *and* a research task.
   connect the other.
 - **I use a custom status line already.** The hook is what Claude's `statusLine`
   runs, and connecting the widget replaces that setting. What the hook prints is
-  its own line — model, directory, context percentage and both usage windows —
+  its own line — model, place, task, context percentage and both usage windows —
   built from Claude's own data, not from anything this extension is doing, so it
   keeps working when the panel is closed, the widget is off or GNOME Shell is
   restarting.
+- **The line names a directory; I want it to name what I am working on.** Write
+  `~/.claude/statusline/<session_id>.json` holding `{"place": "…", "task": "…"}`
+  from whatever already knows (a task dispatcher, a shell hook, a wrapper script)
+  and the line shows those two instead. No file, an unreadable one and a broken
+  one mean the same thing: no task, and the place falls back to the last
+  component of the working directory.
 - **Which providers can appear at all?** Claude Code, Codex and Gemini CLI, each
   with its own switch and colour in the settings
   ([`../configure/tune-widget.md`](../configure/tune-widget.md)).

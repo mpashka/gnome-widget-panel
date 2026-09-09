@@ -62,7 +62,11 @@ memory.
 
 **The status line itself does not depend on this extension.** The hook renders it
 from its own stdin (`statusLineText.ts`, embedded verbatim into the generated
-script) and prints nothing the panel returned. It reads the panel's
+script) and prints nothing the panel returned. The one thing its stdin cannot
+answer is what the session works *on*: for that the hook reads an optional
+caption file `~/.claude/statusline/<session_id>.json` (`{place, task}`), written
+by whoever tracks the user's tasks, and falls back to the working directory's own
+name when there is none. It reads the panel's
 `ai-collector` GSettings key to decide whether anything is listening, POSTs the
 payload only then, and appends a red lamp to the line when collection is on but
 no endpoint accepted the payload. Collection switched off means no POST and no

@@ -18,6 +18,7 @@ Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
 export const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 export const EVENT_HOOK_NAME = 'gnome-widget-panel-agent-event-hook.js';
 export const PORTS_NAME = 'gnome-widget-panel-ports.json';
+export const CAPTIONS_NAME = 'statusline';
 
 // Claude Code lifecycle events forwarded by the event hook (used by the
 // ai-agent-status widget's per-session state machine).
@@ -51,6 +52,18 @@ export function settingsPath() {
 // Claude data without fighting over a single hook target.
 export function portsRegistryPath() {
     return GLib.build_filenamev([claudeDir(), PORTS_NAME]);
+}
+
+// Where the hook looks up a session's caption: `<captions>/<session_id>.json`
+// holding `{place, task}`, both optional strings. Written by whoever knows what
+// the session is working on (here, the user's task dispatcher), because the
+// statusLine payload carries a directory and no notion of a task at all.
+//
+// Read-only and best-effort by design: no file means no caption and the line
+// falls back to the directory's own name, so an install with nobody writing
+// captions is not degraded — it shows exactly what it showed before.
+export function captionsDir() {
+    return GLib.build_filenamev([claudeDir(), CAPTIONS_NAME]);
 }
 
 // Whether Claude Code is present for this user (its config directory exists).
@@ -108,6 +121,7 @@ import GLib from 'gi://GLib';
 import Soup from 'gi://Soup?version=3.0';
 
 const REGISTRY = ${JSON.stringify(portsRegistryPath())};
+const CAPTIONS = ${JSON.stringify(captionsDir())};
 const SCHEMA_DIR = ${JSON.stringify(schemasDir())};
 const SCHEMA_ID = ${JSON.stringify(SETTINGS_SCHEMA_ID)};
 const COLLECTOR_KEY = ${JSON.stringify(COLLECTOR_KEY)};
@@ -125,6 +139,25 @@ function readEndpoints() {
         return Array.isArray(data) ? data : [];
     } catch (error) {
         return [];
+    }
+}
+
+// The session's caption, written by whoever tracks what this session works on.
+// Absent, unreadable or malformed alike mean "no caption": this file belongs to
+// another program, and a bad one must cost the user a word in the line, not the
+// line itself.
+function readCaption(sessionId) {
+    if (!sessionId)
+        return {};
+    try {
+        const [ok, contents] = GLib.file_get_contents(
+            GLib.build_filenamev([CAPTIONS, \`\${sessionId}.json\`]));
+        if (!ok)
+            return {};
+        const data = JSON.parse(new TextDecoder().decode(contents));
+        return data && typeof data === 'object' ? data : {};
+    } catch (error) {
+        return {};
     }
 }
 
@@ -182,8 +215,11 @@ if (expected) {
     }
 }
 
+const caption = readCaption(payload?.session_id);
+
 print(formatClaudeStatusLine(payload, {
-    home: GLib.get_home_dir(),
+    place: caption.place,
+    task: caption.task,
     lamp: expected && !delivered,
 }));
 `;
