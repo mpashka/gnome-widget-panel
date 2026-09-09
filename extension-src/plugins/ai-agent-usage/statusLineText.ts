@@ -30,12 +30,6 @@ export interface StatusLineContext {
     place?: string;
     /** What it works on: a ticket key, a task directory — whatever names the task. */
     task?: string;
-    /**
-     * What this session has spent so far, in the dollars it would have been
-     * billed per token. The payload cannot answer it: the price of a turn is
-     * known to whoever keeps the token log, not to the line.
-     */
-    cost?: number;
     /** An AI widget is enabled but the payload reached none of its endpoints. */
     lamp?: boolean;
 }
@@ -93,15 +87,6 @@ export function formatClaudeStatusLine(
     const used = percent(payload?.context_window?.used_percentage);
     if (used !== null)
         parts.push(`ctx ${used}%`);
-
-    // The other half of what the session spent, and the only segment in real
-    // units: percentages say how much of something is gone, dollars say what it
-    // would have been billed. Zero is not shown — a session that has not spent
-    // anything yet has nothing to report, and "$0.00" reads as a claim that the
-    // work is free.
-    const cost = Number(context.cost);
-    if (Number.isFinite(cost) && cost > 0)
-        parts.push(`$${cost.toFixed(2)}`);
 
     // Both windows are absent until the first API call of a session answers, and
     // an absent window is not a zero one — it is omitted rather than reported as

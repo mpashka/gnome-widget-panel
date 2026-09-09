@@ -66,21 +66,6 @@ export function captionsDir() {
     return GLib.build_filenamev([claudeDir(), CAPTIONS_NAME]);
 }
 
-// Where the hook looks up what a session has spent so far:
-// `<state>/metrics/sessions/<session_id>.json`, holding at least `{usd}`.
-// Written by whoever keeps the session's token log (here, the user's metrics
-// collector) — the statusLine payload reports percentages of quota, never money.
-//
-// A file and not a command on purpose: the line is re-rendered on every update,
-// and asking another program for the number would put a process spawn on that
-// path. Same contract as the captions above — nobody writing these files means
-// no dollar segment, not a broken line.
-export function sessionCostsDir() {
-    const state = GLib.getenv('XDG_STATE_HOME')
-        || GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state']);
-    return GLib.build_filenamev([state, 'metrics', 'sessions']);
-}
-
 // Whether Claude Code is present for this user (its config directory exists).
 export function isClaudeInstalled() {
     return GLib.file_test(claudeDir(), GLib.FileTest.IS_DIR);
@@ -137,7 +122,6 @@ import Soup from 'gi://Soup?version=3.0';
 
 const REGISTRY = ${JSON.stringify(portsRegistryPath())};
 const CAPTIONS = ${JSON.stringify(captionsDir())};
-const COSTS = ${JSON.stringify(sessionCostsDir())};
 const SCHEMA_DIR = ${JSON.stringify(schemasDir())};
 const SCHEMA_ID = ${JSON.stringify(SETTINGS_SCHEMA_ID)};
 const COLLECTOR_KEY = ${JSON.stringify(COLLECTOR_KEY)};
@@ -174,24 +158,6 @@ function readCaption(sessionId) {
         return data && typeof data === 'object' ? data : {};
     } catch (error) {
         return {};
-    }
-}
-
-// What the session has spent, written by the metrics collector. Same
-// best-effort contract as the caption: an absent or unreadable file costs the
-// line one segment, never the line.
-function readCost(sessionId) {
-    if (!sessionId)
-        return null;
-    try {
-        const [ok, contents] = GLib.file_get_contents(
-            GLib.build_filenamev([COSTS, \`\${sessionId}.json\`]));
-        if (!ok)
-            return null;
-        const data = JSON.parse(new TextDecoder().decode(contents));
-        return data && typeof data === 'object' ? data.usd : null;
-    } catch (error) {
-        return null;
     }
 }
 
@@ -254,7 +220,6 @@ const caption = readCaption(payload?.session_id);
 print(formatClaudeStatusLine(payload, {
     place: caption.place,
     task: caption.task,
-    cost: readCost(payload?.session_id),
     lamp: expected && !delivered,
 }));
 `;

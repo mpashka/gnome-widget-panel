@@ -39,20 +39,6 @@ test('the context is what is spent, the windows are what is left', () => {
     assert.equal(line, 'ctx 90% · 5h 0% · 7d 100%');
 });
 
-test('the dollars sit with the context: both are what this session spent', () => {
-    assert.equal(
-        formatClaudeStatusLine(FULL_PAYLOAD, {place: 'metrics', cost: 18.6878}),
-        'Opus 5 high · metrics · ctx 12% · $18.69 · 5h 76% · 7d 59%'
-    );
-});
-
-test('a session that has not spent anything shows no dollars', () => {
-    const empty = {context_window: {used_percentage: 5}};
-    assert.equal(formatClaudeStatusLine(empty, {cost: 0}), 'ctx 5%');
-    assert.equal(formatClaudeStatusLine(empty, {}), 'ctx 5%');
-    assert.equal(formatClaudeStatusLine(empty, {cost: 'дорого'}), 'ctx 5%');
-});
-
 test('a model name keeps its identity and drops its window variant', () => {
     assert.equal(
         formatClaudeStatusLine({model: {display_name: 'Opus 5 (1M context)', effort: 'high'}}),
