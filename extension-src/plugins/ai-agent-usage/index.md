@@ -26,7 +26,9 @@ See [`../../../docs/implementation/ai-collector.md`](../../../docs/implementatio
   from, and on which port, is the collector's settings group. See
   [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
-  `isClaudeInstalled`), usable from both the shell and preferences processes.
+  `isClaudeInstalled`, `lineIsDispatched`), usable from both the shell and
+  preferences processes. File I/O only: the text of both generated scripts lives
+  in `hookScriptText.ts`.
   It also owns the lifecycle **event** hooks (`installEventHooks`,
   `eventHooksStatus`, `eventHookScript`), installed by the collector and feeding
   both this widget's request markers and the
@@ -44,6 +46,14 @@ See [`../../../docs/implementation/ai-collector.md`](../../../docs/implementatio
   For the same reason `configStatus`/`eventHooksStatus` test `IS_EXECUTABLE`,
   not mere existence, so a broken install shows as `unconfigured` and the
   "Configure" button (or the next shell restart) repairs it.
+- `hookScriptText.ts` — gi-free text of both generated hooks:
+  `hookScriptText(paths, {segment})` and `eventHookScriptText(registry)`. The
+  status-line hook has **two shapes**: owning the `statusLine` slot it renders
+  the whole line, and as somebody's segment (`{segment: true}`) it prints only
+  the lamp. Unit-tested in
+  [`../../../tests/hookScriptText.test.mjs`](../../../tests/hookScriptText.test.mjs) —
+  these scripts run in the user's `~/.claude`, where a mistake shows up as an
+  empty status line a shell restart later.
 - `claudeStatusLine.ts` — gi-free normalization of the two Claude HTTP hook
   payloads: `normalizeClaudeStatusLine` (statusLine → the per-provider sample,
   including mapping `rate_limits.five_hour`/`seven_day` onto
@@ -191,7 +201,8 @@ in the widget `options` (default as above).
 
 Claude uses a generated statusLine command hook
 (`~/.claude/gnome-widget-panel-claude-hook.js`, written by
-[`claudeHook.ts`](claudeHook.ts)) that forwards stdin JSON to the collector's
+[`claudeHook.ts`](claudeHook.ts) from [`hookScriptText.ts`](hookScriptText.ts))
+that forwards stdin JSON to the collector's
 localhost HTTP server. The hook is **port-independent**: it reads a shared
 endpoint registry `~/.claude/gnome-widget-panel-ports.json` and fans the request
 out to every registered `{port, secret}`. Each running collector registers its
@@ -245,6 +256,28 @@ crashed GNOME Shell (deregistration happens on stop), so a stale one would light
 the lamp for a collector the user turned off on purpose. The `Soup.Session`
 carries a 3 s timeout, because this code runs on Claude's status-line path and an
 endpoint that accepts a connection and then hangs must not hang the status line.
+
+### When somebody else owns the line
+
+`statusLine` is one setting holding one command, so whoever writes it owns the
+whole line. A user may run a **dispatcher** in that slot instead — a command that
+composes the line out of independent executables in
+`~/.claude/status_line.d/`, so that each program contributes its own piece and
+removing a program removes only that piece.
+
+The directory is the whole protocol. When it exists, `installHook()` writes
+`~/.claude/status_line.d/90-gnome-widget-panel` and **leaves `statusLine`
+alone**; rewriting the setting there would take the slot back on every shell
+start and put the panel in a fight with its own user. When it does not exist —
+the default everywhere — nothing changes: the panel writes its own hook, points
+`statusLine` at it and renders the full line as before.
+
+The segment prints **only the lamp**, because everything else in the line is
+built from a payload that is not the panel's: the model, the place, the
+percentages belong to whoever else drops a segment in. Printing them here would
+print them twice. Delivery to the widget is identical in both shapes, and
+delivery is what the panel needs. An empty print means "no segment", and the
+dispatcher drops it along with its separator.
 
 The collector's server also has an `/agent-event` handler for the lifecycle
 events (see "Requests" above); both handlers read the request's bearer token via

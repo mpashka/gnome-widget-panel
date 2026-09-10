@@ -111,6 +111,11 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   executable and desktop id), every query word having to match in any order, the
   ranking (shown name over keyword, prefix over substring, alphabetical ties) and
   the result cap (`@tag:widget-gnome-menu`).
+- `hookScriptText.test.mjs` — `hookScriptText`/`eventHookScriptText` from
+  [`../extension-src/plugins/ai-agent-usage/hookScriptText.ts`](../extension-src/plugins/ai-agent-usage/hookScriptText.ts):
+  both hooks ask for gjs module mode, owning the slot renders the whole line, the
+  segment shape prints the lamp and nothing else, both shapes still deliver the
+  payload, and the event hook stays mute.
 - `hookStdin.test.mjs` — `READ_STDIN_FN` from
   [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
   the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input
