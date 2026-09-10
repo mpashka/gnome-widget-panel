@@ -116,6 +116,13 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   both hooks ask for gjs module mode, owning the slot renders the whole line, the
   segment shape prints the lamp and nothing else, both shapes still deliver the
   payload, and the event hook stays mute.
+- `statusLineSlot.test.mjs` — `evaluateSlot`/`planSlotWrites` from
+  [`../extension-src/plugins/ai-agent-usage/statusLineSlot.ts`](../extension-src/plugins/ai-agent-usage/statusLineSlot.ts):
+  every slot state (free, ours however the path is spelled, a dispatcher found
+  by naming the segment directory, somebody else's command, a directory nothing
+  runs, settings that are not a JSON object), and which files each state may
+  write — including that a foreign status line survives the install decision
+  untouched.
 - `hookStdin.test.mjs` — `READ_STDIN_FN` from
   [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
   the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input

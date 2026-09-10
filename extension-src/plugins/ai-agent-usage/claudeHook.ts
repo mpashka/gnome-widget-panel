@@ -9,10 +9,14 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {eventHookScriptText, hookScriptText} from './hookScriptText.js';
+import {evaluateSlot, planSlotWrites} from './statusLineSlot.js';
 
 Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
 Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
+Gio._promisify(Gio.File.prototype, 'read_async', 'read_finish');
+Gio._promisify(Gio.InputStream.prototype, 'read_bytes_async', 'read_bytes_finish');
+Gio._promisify(Gio.InputStream.prototype, 'close_async', 'close_finish');
 
 export const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 export const EVENT_HOOK_NAME = 'gnome-widget-panel-agent-event-hook.js';
@@ -57,17 +61,6 @@ export function segmentsDir() {
 
 export function segmentPath() {
     return GLib.build_filenamev([segmentsDir(), SEGMENT_NAME]);
-}
-
-// True when somebody else owns the status line and composes it from segments.
-// The directory is the whole protocol: its owner creates it, and its presence is
-// the only way an unrelated program can find out that taking `statusLine` for
-// itself would be taking it *from* someone.
-//
-// Without it nothing changes for anyone: the panel writes its own hook, points
-// `statusLine` at it and renders the full line, exactly as it always did.
-export function lineIsDispatched() {
-    return GLib.file_test(segmentsDir(), GLib.FileTest.IS_DIR);
 }
 
 // Shared registry of live widget endpoints (`[{port, secret}, ...]`). Every
@@ -120,7 +113,7 @@ const COLLECTOR_KEY = 'ai-collector';
 // The two generated hook scripts. Their text is gi-free and lives in
 // `hookScriptText.ts` (tested in plain Node); here they only get this install's
 // paths. `{segment: true}` is the shape written into a dispatcher's segment
-// directory — see `lineIsDispatched()`.
+// directory — see `statusLineSlot.ts`.
 export function hookScript(options = {}) {
     return hookScriptText(
         {
@@ -189,41 +182,71 @@ async function atomicWrite(path, contents, mode) {
     }
 }
 
-// Write the (port-independent) hook script and point Claude's statusLine at it.
-// Idempotent: repeated calls from multiple instances write identical content.
-// Returns true on success. Throws on unexpected I/O errors so callers can report.
+// The slot's command may name any file, a large binary included; telling a
+// dispatcher apart needs only enough of it to find the segment directory's name.
+const SLOT_PROBE_BYTES = 64 * 1024;
+
+async function readTextHead(path) {
+    try {
+        const stream = await Gio.File.new_for_path(path).read_async(GLib.PRIORITY_DEFAULT, null);
+        try {
+            const bytes = await stream.read_bytes_async(SLOT_PROBE_BYTES, GLib.PRIORITY_DEFAULT, null);
+            return new TextDecoder().decode(bytes.toArray());
+        } finally {
+            stream.close_async(GLib.PRIORITY_DEFAULT, null).catch(() => {});
+        }
+    } catch (_error) {
+        return null;
+    }
+}
+
+
+async function readSettingsText() {
+    const path = settingsPath();
+    if (!GLib.file_test(path, GLib.FileTest.EXISTS))
+        return null;
+    // load_contents_async resolves to [contents, etag]; it throws on failure.
+    const [contents] = await Gio.File.new_for_path(path).load_contents_async(null);
+    return new TextDecoder().decode(contents);
+}
+
+
+function evaluateCurrentSlot(settingsText) {
+    return evaluateSlot(
+        {
+            settingsText,
+            hookPath: hookPath(),
+            segmentsDir: segmentsDir(),
+            segmentsDirExists: GLib.file_test(segmentsDir(), GLib.FileTest.IS_DIR),
+            home: GLib.get_home_dir(),
+        },
+        readTextHead
+    );
+}
+
+
+// Write what the status-line slot allows (`statusLineSlot.ts`): the panel's own
+// hook when the slot is empty or already the panel's, a segment when a
+// dispatcher owns the line, nothing over somebody else's configuration.
+// Idempotent. Returns the slot as found; throws on unexpected I/O errors so
+// callers can report.
 export async function installHook() {
     return withIoLock(async () => {
         GLib.mkdir_with_parents(claudeDir(), 0o700);
-
-        // Somebody owns the line already: drop a segment in and leave
-        // `statusLine` alone. Rewriting it here would take the slot back on
-        // every shell start, and the panel would be fighting its user's own
-        // dispatcher for a setting the dispatcher, not the panel, owns.
-        if (lineIsDispatched()) {
+        const settingsText = await readSettingsText();
+        const slot = await evaluateCurrentSlot(settingsText);
+        const writes = planSlotWrites(slot.state, settingsText, hookPath());
+        if (writes.hook)
+            await atomicWrite(hookPath(), hookScript(), 0o700);
+        if (writes.segment)
             await atomicWrite(segmentPath(), hookScript({segment: true}), 0o700);
-            return true;
+        if (writes.settingsText !== undefined)
+            await atomicWrite(settingsPath(), writes.settingsText, 0o600);
+        if (!writes.hook && !writes.segment) {
+            const command = slot.command === null ? '' : ` (${slot.command})`;
+            console.warn(`widget-panel: Claude status line is ${slot.state}${command}; left untouched`);
         }
-
-        await atomicWrite(hookPath(), hookScript(), 0o700);
-
-        let settings = {};
-        const path = settingsPath();
-        if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
-            const file = Gio.File.new_for_path(path);
-            // load_contents_async resolves to [contents, etag] (Uint8Array, no
-            // leading boolean); it throws on failure (the file exists, checked
-            // above).
-            const [contents] = await file.load_contents_async(null);
-            try {
-                settings = JSON.parse(new TextDecoder().decode(contents));
-            } catch (error) {
-                settings = {};
-            }
-        }
-        settings.statusLine = {type: 'command', command: hookPath()};
-        await atomicWrite(path, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
-        return true;
+        return slot;
     });
 }
 
@@ -351,32 +374,20 @@ export async function deregisterPort(port) {
     });
 }
 
-// 'not-installed' | 'unconfigured' | 'ok'
+// 'not-installed' | 'unconfigured' | 'ok'. Only a file the slot actually runs
+// counts: a segment in a directory nothing dispatches is not an install.
 export async function configStatus() {
     if (!isClaudeInstalled())
         return 'not-installed';
-    // With a dispatcher in charge the whole question is the segment file:
-    // `statusLine` points at the dispatcher and is none of our business, so
-    // reading it would report a correct install as broken.
-    if (lineIsDispatched()) {
-        return GLib.file_test(segmentPath(), GLib.FileTest.IS_EXECUTABLE)
-            ? 'ok'
-            : 'unconfigured';
-    }
-    // IS_EXECUTABLE — see eventHooksStatus().
-    if (!GLib.file_test(hookPath(), GLib.FileTest.IS_EXECUTABLE))
-        return 'unconfigured';
-    const path = settingsPath();
-    if (!GLib.file_test(path, GLib.FileTest.EXISTS))
-        return 'unconfigured';
-    const file = Gio.File.new_for_path(path);
+    let slot;
     try {
-        const [contents] = await file.load_contents_async(null);
-        const settings = JSON.parse(new TextDecoder().decode(contents));
-        if (settings?.statusLine?.command === hookPath())
-            return 'ok';
-    } catch (error) {
-        // fall through
+        slot = await evaluateCurrentSlot(await readSettingsText());
+    } catch (_error) {
+        return 'unconfigured';
     }
-    return 'unconfigured';
+    const runs = {ours: hookPath(), dispatched: segmentPath()}[slot.state];
+    // IS_EXECUTABLE — see eventHooksStatus().
+    return runs && GLib.file_test(runs, GLib.FileTest.IS_EXECUTABLE)
+        ? 'ok'
+        : 'unconfigured';
 }

@@ -116,6 +116,17 @@ Grouped work items requested for the panel and widgets.
 - [x] Token-usage indicator: show/hide toggle and colour selection.
 - [x] Window-reset (time-left) indicator: show/hide toggle and colour selection.
 
+### Claude status-line slot
+
+- [x] Never take `statusLine` from somebody else in silence: `installHook()`
+  writes only when the slot is free or already the panel's, and drops a segment
+  only where a dispatcher actually reads `status_line.d/`
+  (`plugins/ai-agent-usage/statusLineSlot.ts`).
+- [ ] Show `taken`, `orphan` and `unreadable` on the panel — the status line's
+  own red lamp cannot, because the line is what is missing — with what was
+  found and what the panel would write instead; gone the moment the state is.
+- [ ] One deliberate gesture that takes the slot, naming what it replaces.
+
 ### break-timer reminders
 
 Specification: [`../specification/break-timer.md`](../specification/break-timer.md).

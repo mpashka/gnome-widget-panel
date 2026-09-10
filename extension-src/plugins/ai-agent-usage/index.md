@@ -26,9 +26,9 @@ See [`../../../docs/implementation/ai-collector.md`](../../../docs/implementatio
   from, and on which port, is the collector's settings group. See
   [`../../../docs/implementation/preferences.md`](../../../docs/implementation/preferences.md).
 - `claudeHook.ts` — shared Claude hook helpers (`installHook`, `configStatus`,
-  `isClaudeInstalled`, `lineIsDispatched`), usable from both the shell and
-  preferences processes. File I/O only: the text of both generated scripts lives
-  in `hookScriptText.ts`.
+  `isClaudeInstalled`), usable from both the shell and preferences processes.
+  File I/O only: the text of both generated scripts lives in `hookScriptText.ts`,
+  and which of them may be written is decided in `statusLineSlot.ts`.
   It also owns the lifecycle **event** hooks (`installEventHooks`,
   `eventHooksStatus`, `eventHookScript`), installed by the collector and feeding
   both this widget's request markers and the
@@ -54,6 +54,12 @@ See [`../../../docs/implementation/ai-collector.md`](../../../docs/implementatio
   [`../../../tests/hookScriptText.test.mjs`](../../../tests/hookScriptText.test.mjs) —
   these scripts run in the user's `~/.claude`, where a mistake shows up as an
   empty status line a shell restart later.
+- `statusLineSlot.ts` — gi-free decision of who holds Claude's `statusLine`
+  slot: `evaluateSlot(query, readTextHead)` answers one of six states from
+  `settings.json` and the segment directory, and `planSlotWrites(state, …)` says
+  which files `installHook()` may write in it (see "When somebody else owns the
+  line" below). Unit-tested in
+  [`../../../tests/statusLineSlot.test.mjs`](../../../tests/statusLineSlot.test.mjs).
 - `claudeStatusLine.ts` — gi-free normalization of the two Claude HTTP hook
   payloads: `normalizeClaudeStatusLine` (statusLine → the per-provider sample,
   including mapping `rate_limits.five_hour`/`seven_day` onto
@@ -265,12 +271,33 @@ composes the line out of independent executables in
 `~/.claude/status_line.d/`, so that each program contributes its own piece and
 removing a program removes only that piece.
 
-The directory is the whole protocol. When it exists, `installHook()` writes
-`~/.claude/status_line.d/90-gnome-widget-panel` and **leaves `statusLine`
-alone**; rewriting the setting there would take the slot back on every shell
-start and put the panel in a fight with its own user. When it does not exist —
-the default everywhere — nothing changes: the panel writes its own hook, points
-`statusLine` at it and renders the full line as before.
+Before writing anything, `installHook()` decides who holds the slot
+(`statusLineSlot.ts`) from `settings.json` and that directory, and acts on its
+own only where nothing can be lost — the slot is empty, or already the panel's:
+
+| State | What is on disk | What `installHook()` writes |
+| --- | --- | --- |
+| `free` | no `statusLine`, no `status_line.d/` | its hook, and `statusLine` pointing at it |
+| `ours` | `statusLine` already runs the panel's hook | its hook; `settings.json` untouched |
+| `dispatched` | `status_line.d/` exists and the slot's command reads it | `status_line.d/90-gnome-widget-panel`; `statusLine` untouched |
+| `taken` | somebody else's command, reading no segment directory | nothing |
+| `orphan` | `status_line.d/` exists, but the slot is empty or every file its command names is gone | nothing |
+| `unreadable` | `settings.json` is not a JSON object | nothing |
+
+A command counts as a dispatcher when it names the segment directory — in the
+command itself or in the first 64 KiB of a file it names. The directory alone is
+no proof: an abandoned experiment or an uninstalled dispatcher leaves one behind,
+and a segment dropped there is never run. `ours` compares the command, after
+`~`/`$HOME` expansion, with the hook path; a command with arguments is somebody
+else's. `ours` wins over an existing directory: nothing reads it then, but the
+line is the panel's and works.
+
+In `taken`, `orphan` and `unreadable` the panel writes nothing and logs the state
+once per collector start; the graph then gets no Claude usage, because that
+arrives through the status line. `configStatus()` reads the same decision and
+answers `ok` only for a file the slot actually runs — the hook in `ours`, the
+segment in `dispatched`. Showing the other states on the panel and a deliberate
+way to take the slot are on the [backlog](../../../docs/roadmap/backlog.md).
 
 The segment prints **only the lamp**, because everything else in the line is
 built from a payload that is not the panel's: the model, the place, the

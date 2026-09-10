@@ -35,12 +35,17 @@ telling you which file to edit would be one more step *and* a research task.
 - **Two widgets, one hook each.** The usage graph and the status dot each have
   their own **Configure** button for their own hook; connecting one does not
   connect the other.
-- **I use a custom status line already.** The hook is what Claude's `statusLine`
-  runs, and connecting the widget replaces that setting. What the hook prints is
-  its own line — model, place, task, context percentage and both usage windows —
-  built from Claude's own data, not from anything this extension is doing, so it
-  keeps working when the panel is closed, the widget is off or GNOME Shell is
-  restarting.
+- **I use a custom status line already.** The panel does not replace a
+  `statusLine` it did not write: your line stays as it is. The graph then gets
+  no Claude usage, because that arrives through the status line. To hand the
+  line to the panel, remove your `statusLine` setting and restart GNOME Shell;
+  to keep your line *and* the panel's data, run a dispatcher that composes the
+  line from `~/.claude/status_line.d/` — the panel drops its segment there.
+- **What the panel's own line shows.** When the panel holds the slot, its hook
+  prints the whole line — model, place, task, context percentage and both usage
+  windows — built from Claude's own data, not from anything this extension is
+  doing, so it keeps working when the panel is closed, the widget is off or
+  GNOME Shell is restarting.
 - **The line names a directory; I want it to name what I am working on.** Write
   `~/.claude/statusline/<session_id>.json` holding `{"place": "…", "task": "…"}`
   from whatever already knows (a task dispatcher, a shell hook, a wrapper script)
