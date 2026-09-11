@@ -396,7 +396,7 @@ const GnomeMenuButton = GObject.registerClass(
             // so the size is recomputed every time the menu opens. Each opening
             // also starts from an empty search box, with the keyboard in it so
             // the menu can be used by typing alone.
-            this._menu.connect('open-state-changed', (_menu, open) => {
+            this._menuOpenId = this._menu.connect('open-state-changed', (_menu, open) => {
                 if (!open) {
                     this._hideContextMenu();
                     this._clearSearch();
@@ -503,7 +503,7 @@ const GnomeMenuButton = GObject.registerClass(
                 reactive: true,
             });
             this._root.add_child(this._content);
-            this._root.connect('captured-event', (_actor, event) =>
+            this._rootEventId = this._root.connect('captured-event', (_actor, event) =>
                 this._onRootEvent(event)
             );
             this._menu.box.add_child(this._root);
@@ -582,11 +582,12 @@ const GnomeMenuButton = GObject.registerClass(
             this._search.set_primary_icon(
                 new St.Icon({icon_name: SEARCH_ICON, icon_size: 16})
             );
-            this._search.clutter_text.connect('text-changed', () =>
+            this._searchTextId = this._search.clutter_text.connect('text-changed', () =>
                 this._render()
             );
-            this._search.clutter_text.connect('key-press-event', (_actor, event) =>
-                this._onSearchKey(event)
+            this._searchKeyId = this._search.clutter_text.connect(
+                'key-press-event',
+                (_actor, event) => this._onSearchKey(event)
             );
             return this._search;
         }
@@ -815,7 +816,7 @@ const GnomeMenuButton = GObject.registerClass(
             }
             // Escape dismisses this layer only, leaving the menu open
             // (rule 8: back out one level at a time).
-            this._contextMenu.connect('key-press-event', (_actor, event) => {
+            this._contextMenuKeyId = this._contextMenu.connect('key-press-event', (_actor, event) => {
                 if (event.get_key_symbol() !== Clutter.KEY_Escape)
                     return Clutter.EVENT_PROPAGATE;
                 this._hideContextMenu();
@@ -841,10 +842,39 @@ const GnomeMenuButton = GObject.registerClass(
         _hideContextMenu() {
             if (!this._contextMenu)
                 return;
-            this._contextMenu.destroy();
-            this._contextMenu = null;
+            this._releaseContextMenu();
             if (this._search && this._menu?.isOpen)
                 global.stage.set_key_focus(this._search.clutter_text);
+        }
+
+        _releaseContextMenu() {
+            if (!this._contextMenu)
+                return;
+            this._contextMenu.disconnect(this._contextMenuKeyId);
+            this._contextMenuKeyId = 0;
+            this._contextMenu.destroy();
+            this._contextMenu = null;
+        }
+
+        // Release what _buildContent() made, before its actors are destroyed:
+        // _rebuild() replaces them wholesale, and destroy() ends them for good.
+        _releaseContent() {
+            this._releaseContextMenu();
+            if (this._rootEventId) {
+                this._root.disconnect(this._rootEventId);
+                this._rootEventId = 0;
+            }
+            if (this._searchTextId) {
+                this._search.clutter_text.disconnect(this._searchTextId);
+                this._searchTextId = 0;
+            }
+            if (this._searchKeyId) {
+                this._search.clutter_text.disconnect(this._searchKeyId);
+                this._searchKeyId = 0;
+            }
+            this._root = null;
+            this._content = null;
+            this._search = null;
         }
 
         // While a row's actions are up, a press anywhere else in the menu just
@@ -899,10 +929,8 @@ const GnomeMenuButton = GObject.registerClass(
             const label = this._activeCategory?.label;
             const query = this._query();
 
-            this._hideContextMenu();
+            this._releaseContent();
             this._menu.box.destroy_all_children();
-            this._root = null;
-            this._content = null;
             this._activeCategory = null;
             this._buildContent();
 
@@ -918,11 +946,13 @@ const GnomeMenuButton = GObject.registerClass(
         }
 
         destroy() {
-            for (const field of ['_focusSourceId', '_rebuildSourceId']) {
-                if (this[field]) {
-                    GLib.source_remove(this[field]);
-                    this[field] = 0;
-                }
+            if (this._focusSourceId) {
+                GLib.Source.remove(this._focusSourceId);
+                this._focusSourceId = 0;
+            }
+            if (this._rebuildSourceId) {
+                GLib.Source.remove(this._rebuildSourceId);
+                this._rebuildSourceId = 0;
             }
             if (this._installedId) {
                 this._appSystem.disconnect(this._installedId);
@@ -934,19 +964,16 @@ const GnomeMenuButton = GObject.registerClass(
             }
             this._appSystem = null;
             this._shellSettings = null;
-            // The menu owns every child actor built above (search box, the
-            // left/right panes and their buttons); destroying it disconnects
-            // the self-connected signals on those actors, so no manual
-            // disconnect is needed.
+            this._releaseContent();
+            // The category and row buttons are locals parented into the menu,
+            // so destroying the menu takes their handlers with it.
             if (this._menu) {
+                this._menu.disconnect(this._menuOpenId);
+                this._menuOpenId = 0;
                 this._menu.destroy();
                 this._menu = null;
             }
-            this._root = null;
-            this._contextMenu = null;
-            this._content = null;
             this._panes = null;
-            this._search = null;
             this._leftBox = null;
             this._rightBox = null;
             this._appsScroll = null;

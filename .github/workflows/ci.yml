@@ -42,3 +42,8 @@ jobs:
       # Node unit tests over the gi-free modules.
       - name: Build + unit tests
         run: npm test
+
+      # The static checker extensions.gnome.org runs on every upload: a finding
+      # here is a finding the EGO reviewer would see.
+      - name: EGO static review (Shexli)
+        run: npm run check:ego

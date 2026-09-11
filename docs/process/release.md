@@ -141,9 +141,31 @@ their helper scripts live in [`../../.github/scripts`](../../.github/scripts).
 ### CI (`ci.yml`)
 
 Runs on **every push, on every branch**, and on every pull request: `npm ci`, `npm run
-typecheck`, then `npm test` (which builds `extension-src` → `extension` and runs
-the gi-free unit tests). UI tests (`npm run test:ui`) need a live GNOME Shell
-host and are not run in CI.
+typecheck`, `npm test` (which builds `extension-src` → `extension` and runs
+the gi-free unit tests), then `npm run check:ego` — see
+[Shexli before EGO does](#shexli-before-ego-does). UI tests (`npm run test:ui`)
+need a live GNOME Shell host and are not run in CI.
+
+### Shexli before EGO does
+
+EGO runs **Shexli**, a static checker, over every uploaded zip and shows its
+findings to the reviewer next to the code: signals connected without a matching
+disconnect, main-loop sources never removed, synchronous I/O, files not
+reachable from `extension.js`. Four uploads in a row carried such findings, and
+each one was learned about weeks later, from the review page.
+
+[`shexli-check.sh`](../../.github/scripts/shexli-check.sh) runs the same checker
+over the packed zip and **fails on any finding** — in CI on every push, and in
+the release workflow before anything is committed, tagged or uploaded. Locally:
+
+```bash
+npm run check:ego      # pack, then Shexli over dist/<uuid>.shell-extension.zip
+```
+
+Shexli matches cleanup by the **field** the id was stored in, so a dynamic loop
+(`for (const f of [...]) GLib.Source.remove(this[f])`) or a handler left for the
+actor's destruction to drop both read as leaks. Store every id in a named field
+and release it by name in `destroy()` or a helper it calls.
 
 ### Release (`release.yml`)
 
@@ -165,7 +187,9 @@ because EGO requires the integer code to strictly increase. Steps:
 3. **Pack** — `npm run pack` (`.github/scripts/pack.sh`) builds and zips
    `extension/` into `dist/<uuid>.shell-extension.zip`. The zip has
    `metadata.json` at its root (EGO requirement) and omits the compiled
-   `gschemas.compiled`.
+   `gschemas.compiled`. **Shexli** then checks that zip; any finding fails the
+   release here, before the commit, the tag and the upload (see
+   [Shexli before EGO does](#shexli-before-ego-does)).
 4. **Release notes** — `.github/scripts/release-notes.mjs` collects the release
    milestone's closed issues, writes `dist/release-notes.md` and regenerates
    `CHANGELOG.md` + `docs/process/releases.json` (see

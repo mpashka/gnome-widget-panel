@@ -77,7 +77,10 @@ To upload by hand — the GitHub Release stays the reliable artifact:
    GitHub Release (or rebuild it with `npm run pack` — the same bytes).
 2. `python3 .github/scripts/ego-upload.py dist/*.shell-extension.zip`, or use the
    form at <https://extensions.gnome.org/upload/> in a browser.
-3. EGO requires the integer `version` in `metadata.json` to strictly increase,
+3. Run `npm run check:ego` first: it runs Shexli — the checker whose findings
+   the reviewer sees — over the same zip and fails on any finding (see
+   [`release.md`](release.md#shexli-before-ego-does)).
+4. EGO requires the integer `version` in `metadata.json` to strictly increase,
    and reviewers read the **generated** `extension/*.js` — see
    [`release.md`](release.md) and the "Code formatting" section of
    [`../../AGENTS.md`](../../AGENTS.md).

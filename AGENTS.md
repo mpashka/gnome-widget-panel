@@ -85,6 +85,7 @@ npm run typecheck   # tsc --noEmit
 npm test            # build, then node --test on gi-free pure-logic modules
 npm run test:ui     # headless GNOME Shell UI regression suite (docs/testing/ui-testing.md)
 npm run test:prefs  # build every widget's settings page and click through it
+npm run check:ego   # pack, then Shexli — the checker EGO runs on every upload
 ```
 
 Tests (`npm test`, Node's built-in runner) cover only the **gi-free** pure-logic
