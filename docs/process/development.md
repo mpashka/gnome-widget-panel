@@ -12,11 +12,34 @@ imported code. New code is only loaded by a fresh shell process. On X11 that is
 The developer workflow loads new code in a second, throwaway `gnome-shell`
 process — running in a window — that you can restart freely.
 
-Work on the branch of the version being built (`release/A.B.C`), never on
-`main`: `main` keeps one commit per released version, the version branch keeps
-every commit that went into it. The model — several version branches in
-parallel, deleted once their history has done its job — and the release that
-squashes a branch onto `main` are in [`release.md`](release.md).
+## Finishing a task: install it
+
+A task is delivered when it is **installed**, not when it is committed: the
+panel in daily use is the one that shows whether the work holds up, and the next
+session's manual check starts from what is installed. So end a task with
+`./gwp install` and say that a logout/login is still needed — see the rule in
+[`../../AGENTS.md`](../../AGENTS.md).
+
+Because that relogin is easy to postpone and then forget, the state is visible in
+the panel itself: the developer widget
+[`version-status`](../../extension-src/plugins/version-status/index.md) compares
+the `build-stamp.json` that `./gwp build` writes into the tree with the moment
+the running Shell loaded its modules, and shows an amber `relogin` warning while
+the two disagree — and **nothing at all** while they agree, so it costs a panel
+slot only when it has something to say. Add it from *Add a widget* →
+**Developer widgets**; it is not in the default configuration and is stripped
+from the store zip.
+
+Which build is running is also in the handle's context menu, under the extension
+name: the version and release channel, and beneath it the commit the build came
+from, with `-dirty` when that tree had uncommitted changes. That is the string to
+quote when reporting what was tested — a bug report carries the same line.
+
+Work on `dev`, never on `main`: `main` keeps one commit per released version,
+`dev` keeps every commit that went into the version being built. The version
+number is chosen at the release, which is when it is knowable, and `dev` is
+renamed to `release/A.B.C` then — that branch, the squash onto `main` and when
+it may be deleted are in [`release.md`](release.md).
 
 ## One-time setup
 
@@ -96,22 +119,23 @@ does not reliably deliver live GSettings notifications to the nested shell.
 The dev shell is isolated from your main session (separate extensions dir + dconf
 profile), so the two never interfere. If you ALSO install the widget into your
 main session (`./gwp install` + logout/login) and want both running live, give the
-dev widget a different Claude port so they don't clash on the localhost port:
+dev shell's AI collector a different port so they don't clash on the localhost
+port:
 
 ```bash
-./gwp dev --claude-port 17862
+./gwp dev --collector-port 17862
 ```
 
-- `--claude-port N` patches `ai-agent-usage`'s `claudePort` straight into the
-  dev shell's own `widgets` GSettings key, in the isolated `gwpdev` dconf
-  profile — via a generated GJS helper (`.dev/patch-claude-port.js`) that reads,
-  modifies and writes the key with `Gio.Settings`. Pick a port different from
-  your main session (default `17861`).
+- `--collector-port N` sets the `ai-collector-port` GSettings key in the isolated
+  `gwpdev` dconf profile. Pick a port different from your main session (default
+  `17861`). It used to be `--claude-port`, patching a widget option inside the
+  `widgets` JSON key; the port belongs to the
+  [AI collector](../implementation/ai-collector.md) now, so it is one plain key.
 
 Because the Claude hook registry lives under `~/.claude` (shared), both instances
 register their `{port, secret}` and Claude's status line fans out to both (see
-the ai-agent-usage widget's Claude hook docs). Same port on both still clashes;
-different ports do not.
+[the AI collector](../implementation/ai-collector.md)). Same port on both still
+clashes; different ports do not.
 
 ### Why devkit (mutter 50 specifics)
 

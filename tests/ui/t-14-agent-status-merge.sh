@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # @tag:ui-testing
-# @tag:widget-ai-agent-status
+# @tag:widget-ai-agent-status @tag:ai-collector
 # Regression for the ai-agent-status state model: several parallel Claude
 # sessions collapse into ONE dot showing the most-urgent state, priority
 # waiting > idle > thinking, with the tooltip carrying the per-session detail.
-# Drives the widget's own event handler (`_applyEvent`) — the same path the
-# Claude hooks feed — so no live agent traffic is needed.
+# Drives the collector's event handler (`_applyEvent`) — the same path the Claude
+# hooks feed — so no live agent traffic is needed. The sessions live in the
+# collector; the widget only decides how they are shown, which is why every
+# assertion below reads the widget's `_openSessions()` and not a state of its
+# own.
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 ui_start '{"schema":1,"plugins":[
-  {"id":"ai-agent-status","enabled":true,"options":{"secret":"t14","port":17895}},
+  {"id":"ai-agent-status","enabled":true},
   {"id":"clock","enabled":true}]}'
+
+C='panel.aiCollector'
 
 ui_wait_js "plugin('ai-agent-status') != null" 10 \
     || fail "ai-agent-status did not load"
@@ -17,50 +22,50 @@ ui_wait_js "plugin('ai-agent-status') != null" 10 \
 # No sessions yet: exactly one (placeholder) dot, tooltip says so.
 assert_true "plugin('ai-agent-status')._dots.length === 1" \
     "one placeholder dot with no sessions"
-assert_true "plugin('ai-agent-status')._sortedSessions().length === 0" \
+assert_true "plugin('ai-agent-status')._openSessions().length === 0" \
     "no sessions tracked initially"
 assert_contains "$(ui_eval "plugin('ai-agent-status')._tooltipMarkup()")" \
     "no sessions" "tooltip reports no sessions"
 
 # One session generating -> thinking.
-ui_eval "plugin('ai-agent-status')._applyEvent('UserPromptSubmit','s1','/home/u/proj-a'); true" >/dev/null
-assert_true "plugin('ai-agent-status')._sortedSessions()[0].state === 'thinking'" \
+ui_eval "$C._applyEvent('UserPromptSubmit','s1','/home/u/proj-a'); true" >/dev/null
+assert_true "plugin('ai-agent-status')._openSessions()[0].state === 'thinking'" \
     "UserPromptSubmit -> thinking"
 assert_true "plugin('ai-agent-status')._dots.length === 1" \
     "still one aggregated dot with one session"
 
 # Add a finished session (idle) and a permission request (waiting). The merged
 # dot must show the highest priority: waiting.
-ui_eval "plugin('ai-agent-status')._applyEvent('Stop','s2','/home/u/proj-b'); true" >/dev/null
-ui_eval "plugin('ai-agent-status')._applyEvent('Notification','s3','/home/u/proj-c'); true" >/dev/null
-assert_true "plugin('ai-agent-status')._sortedSessions().length === 3" \
+ui_eval "$C._applyEvent('Stop','s2','/home/u/proj-b'); true" >/dev/null
+ui_eval "$C._applyEvent('Notification','s3','/home/u/proj-c'); true" >/dev/null
+assert_true "plugin('ai-agent-status')._openSessions().length === 3" \
     "three sessions tracked"
 assert_true "plugin('ai-agent-status')._dots.length === 1" \
     "three sessions still collapse into one dot"
-assert_true "plugin('ai-agent-status')._sortedSessions()[0].state === 'waiting'" \
+assert_true "plugin('ai-agent-status')._openSessions()[0].state === 'waiting'" \
     "merged dot shows waiting (highest priority)"
 
 # The waiting session ends -> next-highest is idle (idle > thinking).
-ui_eval "plugin('ai-agent-status')._applyEvent('SessionEnd','s3'); true" >/dev/null
-assert_true "plugin('ai-agent-status')._sortedSessions()[0].state === 'idle'" \
+ui_eval "$C._applyEvent('SessionEnd','s3'); true" >/dev/null
+assert_true "plugin('ai-agent-status')._openSessions()[0].state === 'idle'" \
     "after waiting ends, idle outranks thinking"
 
 # Statusline activity must NOT demote a waiting session.
-ui_eval "plugin('ai-agent-status')._applyEvent('Notification','s1','/home/u/proj-a'); true" >/dev/null
-ui_eval "plugin('ai-agent-status')._applyEvent('statusline-activity','s1','/home/u/proj-a'); true" >/dev/null
-assert_true "plugin('ai-agent-status')._sessions.get('s1').state === 'waiting'" \
+ui_eval "$C._applyEvent('Notification','s1','/home/u/proj-a'); true" >/dev/null
+ui_eval "$C._applyEvent('statusline-activity','s1','/home/u/proj-a'); true" >/dev/null
+assert_true "$C.sessions.get('s1').state === 'waiting'" \
     "statusline activity does not demote waiting"
 
 # Issue #21: when the user actually ANSWERS a waiting session, Claude fires a
 # real UserPromptSubmit (not a background statusline ping) — the session must
 # leave 'waiting' and go back to 'thinking', not stay stuck asking for input.
-ui_eval "plugin('ai-agent-status')._applyEvent('UserPromptSubmit','s1','/home/u/proj-a'); true" >/dev/null
-assert_true "plugin('ai-agent-status')._sessions.get('s1').state === 'thinking'" \
+ui_eval "$C._applyEvent('UserPromptSubmit','s1','/home/u/proj-a'); true" >/dev/null
+assert_true "$C.sessions.get('s1').state === 'thinking'" \
     "issue #21: answering a waiting session moves it to thinking, not stuck waiting"
 
 # All sessions end -> back to the placeholder dot.
-ui_eval "for (const id of ['s1','s2']) plugin('ai-agent-status')._applyEvent('SessionEnd', id); true" >/dev/null
-assert_true "plugin('ai-agent-status')._sortedSessions().length === 0" \
+ui_eval "for (const id of ['s1','s2']) $C._applyEvent('SessionEnd', id); true" >/dev/null
+assert_true "plugin('ai-agent-status')._openSessions().length === 0" \
     "all sessions removed on SessionEnd"
 assert_true "plugin('ai-agent-status')._dots.length === 1" \
     "placeholder dot returns when empty"

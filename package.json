@@ -11,7 +11,9 @@
     "pretest": "npm run build",
     "test": "node --test tests/*.test.mjs",
     "test:ui": "bash tests/ui/run.sh",
+    "test:prefs": "bash tests/prefs/run.sh",
     "pack": "./.github/scripts/pack.sh",
+    "check:ego": "npm run pack && ./.github/scripts/shexli-check.sh dist/gnome-widget-panel@mpashka.github.com.shell-extension.zip",
     "dev:install": "./gwp dev-install",
     "dev": "./gwp dev"
   },

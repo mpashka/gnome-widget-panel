@@ -8,7 +8,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import {READ_STDIN_FN} from './hookStdin.js';
+import {eventHookScriptText, hookScriptText} from './hookScriptText.js';
 
 Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
@@ -17,6 +17,14 @@ Gio._promisify(Gio.File.prototype, 'query_info_async', 'query_info_finish');
 export const HOOK_NAME = 'gnome-widget-panel-claude-hook.js';
 export const EVENT_HOOK_NAME = 'gnome-widget-panel-agent-event-hook.js';
 export const PORTS_NAME = 'gnome-widget-panel-ports.json';
+export const CAPTIONS_NAME = 'statusline';
+
+// Where a status-line dispatcher, if the user runs one, looks for segments. The
+// `statusLine` setting holds one command and no array, so whoever writes it owns
+// the whole line; a dispatcher takes that slot and composes the line out of
+// independent executables dropped in this directory instead.
+export const SEGMENTS_DIR_NAME = 'status_line.d';
+export const SEGMENT_NAME = '90-gnome-widget-panel';
 
 // Claude Code lifecycle events forwarded by the event hook (used by the
 // ai-agent-status widget's per-session state machine).
@@ -43,6 +51,25 @@ export function settingsPath() {
     return GLib.build_filenamev([claudeDir(), 'settings.json']);
 }
 
+export function segmentsDir() {
+    return GLib.build_filenamev([claudeDir(), SEGMENTS_DIR_NAME]);
+}
+
+export function segmentPath() {
+    return GLib.build_filenamev([segmentsDir(), SEGMENT_NAME]);
+}
+
+// True when somebody else owns the status line and composes it from segments.
+// The directory is the whole protocol: its owner creates it, and its presence is
+// the only way an unrelated program can find out that taking `statusLine` for
+// itself would be taking it *from* someone.
+//
+// Without it nothing changes for anyone: the panel writes its own hook, points
+// `statusLine` at it and renders the full line, exactly as it always did.
+export function lineIsDispatched() {
+    return GLib.file_test(segmentsDir(), GLib.FileTest.IS_DIR);
+}
+
 // Shared registry of live widget endpoints (`[{port, secret}, ...]`). Every
 // running ai-agent-usage instance registers its own port here; the hook fans a
 // status-line request out to all of them. This lets several panel instances
@@ -52,113 +79,63 @@ export function portsRegistryPath() {
     return GLib.build_filenamev([claudeDir(), PORTS_NAME]);
 }
 
+// Where the hook looks up a session's caption: `<captions>/<session_id>.json`
+// holding `{place, task}`, both optional strings. Written by whoever knows what
+// the session is working on (here, the user's task dispatcher), because the
+// statusLine payload carries a directory and no notion of a task at all.
+//
+// Read-only and best-effort by design: no file means no caption and the line
+// falls back to the directory's own name, so an install with nobody writing
+// captions is not degraded — it shows exactly what it showed before.
+export function captionsDir() {
+    return GLib.build_filenamev([claudeDir(), CAPTIONS_NAME]);
+}
+
 // Whether Claude Code is present for this user (its config directory exists).
 export function isClaudeInstalled() {
     return GLib.file_test(claudeDir(), GLib.FileTest.IS_DIR);
 }
 
-// Port-independent hook: it reads the shared registry at run time and POSTs the
-// Claude stdin payload to every registered endpoint, printing the first OK
-// status line. Because the hook file content no longer embeds a port/secret,
-// multiple running widgets no longer overwrite each other's hook — they only add
-// their endpoint to the registry.
-//
-// The shebang MUST be `env -S gjs -m`: Claude Code invokes this file directly
-// (honouring the shebang), and the body below uses ES module `import`
-// statements, which are only valid in gjs's module mode (`-m`/`--module`); a
-// bare `gjs` shebang runs the legacy import system and the script throws
-// `SyntaxError: import declarations may only appear at top level of a module`
-// on every invocation, silently dropping every sample (issue #6).
-export function hookScript() {
-    return `#!/usr/bin/env -S gjs -m
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import Soup from 'gi://Soup?version=3.0';
-
-const REGISTRY = ${JSON.stringify(portsRegistryPath())};
-
-${READ_STDIN_FN}
-
-function readEndpoints() {
-    try {
-        const [ok, contents] = GLib.file_get_contents(REGISTRY);
-        if (!ok)
-            return [];
-        const data = JSON.parse(new TextDecoder().decode(contents));
-        return Array.isArray(data) ? data : [];
-    } catch (error) {
-        return [];
-    }
+// The GSettings schema is installed with the extension, not into the system
+// schema source, so the generated hook — a standalone gjs process — has to load
+// it from a directory. This module is `<extension>/plugins/ai-agent-usage/
+// claudeHook.js`, so the schema directory is three levels up plus `schemas`;
+// deriving it from `import.meta.url` keeps every caller (widget and prefs
+// process alike) from having to pass an extension path down.
+function schemasDir() {
+    const [self] = GLib.filename_from_uri(import.meta.url);
+    const pluginDir = GLib.path_get_dirname(self);
+    const pluginsDir = GLib.path_get_dirname(pluginDir);
+    return GLib.build_filenamev([GLib.path_get_dirname(pluginsDir), 'schemas']);
 }
 
-const stdin = readStdin();
-const session = new Soup.Session();
-let output = null;
-for (const endpoint of readEndpoints()) {
-    const port = Number(endpoint && endpoint.port);
-    if (!Number.isFinite(port) || port <= 0)
-        continue;
-    try {
-        const message = Soup.Message.new('POST', \`http://127.0.0.1:\${port}/claude-statusline\`);
-        message.request_headers.append('X-Gnome-Widget-Panel-Token', String(endpoint.secret ?? ''));
-        message.set_request_body_from_bytes('application/json', GLib.Bytes.new(stdin));
-        const bytes = session.send_and_read(message, null);
-        if (message.get_status() === Soup.Status.OK && output === null)
-            output = new TextDecoder().decode(bytes.get_data());
-    } catch (error) {
-        // Skip an unreachable endpoint (stale registry entry).
-    }
-}
-if (output !== null)
-    print(output);
-`;
+export const SETTINGS_SCHEMA_ID = 'org.gnome.shell.extensions.floating-mini-panel';
+
+// The setting that decides whether anything is listening. It used to be "is an
+// AI widget in the panel configuration", which was the wrong question twice
+// over: collection is no longer a widget's job (see ../../aiCollector.ts), and
+// a user who wanted the data without a widget on screen had no way to say so.
+const COLLECTOR_KEY = 'ai-collector';
+
+// The two generated hook scripts. Their text is gi-free and lives in
+// `hookScriptText.ts` (tested in plain Node); here they only get this install's
+// paths. `{segment: true}` is the shape written into a dispatcher's segment
+// directory — see `lineIsDispatched()`.
+export function hookScript(options = {}) {
+    return hookScriptText(
+        {
+            registry: portsRegistryPath(),
+            captions: captionsDir(),
+            schemaDir: schemasDir(),
+            schemaId: SETTINGS_SCHEMA_ID,
+            collectorKey: COLLECTOR_KEY,
+        },
+        options
+    );
 }
 
-// Port-independent lifecycle-event hook (UserPromptSubmit / Stop / Notification
-// / SessionEnd). Mirrors hookScript(): it reads the shared ports registry at
-// run time and POSTs the raw Claude stdin payload to `/agent-event` on every
-// registered endpoint. Unlike the status-line hook it must print NOTHING —
-// Claude interprets a Stop hook's stdout — and always exit 0, quickly, so it
-// never disturbs or blocks the Claude session it observes. See hookScript()
-// for why the shebang must be `env -S gjs -m`.
 export function eventHookScript() {
-    return `#!/usr/bin/env -S gjs -m
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import Soup from 'gi://Soup?version=3.0';
-
-const REGISTRY = ${JSON.stringify(portsRegistryPath())};
-
-${READ_STDIN_FN}
-
-function readEndpoints() {
-    try {
-        const [ok, contents] = GLib.file_get_contents(REGISTRY);
-        if (!ok)
-            return [];
-        const data = JSON.parse(new TextDecoder().decode(contents));
-        return Array.isArray(data) ? data : [];
-    } catch (error) {
-        return [];
-    }
-}
-
-const stdin = readStdin();
-const session = new Soup.Session({timeout: 3});
-for (const endpoint of readEndpoints()) {
-    const port = Number(endpoint && endpoint.port);
-    if (!Number.isFinite(port) || port <= 0)
-        continue;
-    try {
-        const message = Soup.Message.new('POST', \`http://127.0.0.1:\${port}/agent-event\`);
-        message.request_headers.append('X-Gnome-Widget-Panel-Token', String(endpoint.secret ?? ''));
-        message.set_request_body_from_bytes('application/json', GLib.Bytes.new(stdin));
-        session.send_and_read(message, null);
-    } catch (error) {
-        // Skip an unreachable endpoint (stale registry entry); stay silent.
-    }
-}
-`;
+    return eventHookScriptText(portsRegistryPath());
 }
 
 // Serialize read-modify-write file operations on the shared ~/.claude files.
@@ -218,6 +195,16 @@ async function atomicWrite(path, contents, mode) {
 export async function installHook() {
     return withIoLock(async () => {
         GLib.mkdir_with_parents(claudeDir(), 0o700);
+
+        // Somebody owns the line already: drop a segment in and leave
+        // `statusLine` alone. Rewriting it here would take the slot back on
+        // every shell start, and the panel would be fighting its user's own
+        // dispatcher for a setting the dispatcher, not the panel, owns.
+        if (lineIsDispatched()) {
+            await atomicWrite(segmentPath(), hookScript({segment: true}), 0o700);
+            return true;
+        }
+
         await atomicWrite(hookPath(), hookScript(), 0o700);
 
         let settings = {};
@@ -368,6 +355,14 @@ export async function deregisterPort(port) {
 export async function configStatus() {
     if (!isClaudeInstalled())
         return 'not-installed';
+    // With a dispatcher in charge the whole question is the segment file:
+    // `statusLine` points at the dispatcher and is none of our business, so
+    // reading it would report a correct install as broken.
+    if (lineIsDispatched()) {
+        return GLib.file_test(segmentPath(), GLib.FileTest.IS_EXECUTABLE)
+            ? 'ok'
+            : 'unconfigured';
+    }
     // IS_EXECUTABLE — see eventHooksStatus().
     if (!GLib.file_test(hookPath(), GLib.FileTest.IS_EXECUTABLE))
         return 'unconfigured';

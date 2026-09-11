@@ -201,6 +201,60 @@ There is no dimmed screen and no countdown, because there is no break length to
 count down and no useful way to enforce the end of a working day. While the
 limit stands the message returns at most once an hour of work.
 
+### The end of the working day
+
+The *clock* half of the daily timer — **end of the working day**, off by
+default, 21:30 — is different, and it is the one reminder that **does not go
+away by itself**.
+
+Every other reminder can be waited out: say nothing for thirty seconds and it
+leaves. That is right for a break, which the widget can also see you take. The
+end of the day cannot be taken — no amount of idling satisfies it — so a message
+that expired would let the day close with nothing decided. This one therefore
+stays until it is answered:
+
+- **It never takes focus and never grabs input.** It is the stage-1 message,
+  with all of that behaviour: keep typing, the keystrokes go where they were
+  going.
+- **Its answer is on it from the first moment, and it never runs from the
+  pointer.** Unlike the advance warning, this window is a question rather than a
+  hint, so stepping aside from the pointer would be stepping aside from the
+  answer. If it is in the way, drag it — or answer it, which is what it is there
+  for.
+- **There is no close button, and `Escape` does nothing.** Every answer is a
+  time; "make it go away without deciding" is not one of them.
+- **It shows what the day cost** — time at the keyboard today, how much of that
+  is past the limit, and when the day started. Today's numbers only: usage
+  history is a [non-goal](#non-goals) and none is kept.
+
+**The answer is one split button.** *Wrapping up — 10 min* is the default: long
+enough to close the windows and shut the machine down, fixed rather than
+configurable, because at the end of a long day the value of that button is that
+it needs no thought. The chevron beside it offers the same action with a
+different number — 20 min, 30 min, 1 h, a free length stepped the way every
+duration here is stepped, or a **time of day** to work until.
+
+**A postponement only ever moves tonight.** It never rewrites the configured end
+of the working day: a window that edited that setting every evening would walk
+it into the night within a week and quietly dismantle itself. Changing the
+habitual time is a decision, and it is made in the widget's settings — the menu's
+last item goes there.
+
+Two consequences worth stating:
+
+- **It never dims the screen**, and never will. What it asks for — close your
+  work and shut down — needs a working screen; an overlay would physically
+  prevent the thing it demands.
+- **It stays away where it could not be answered**: a fullscreen application, a
+  screen recording or share, the lock screen, and anything holding the session
+  awake (Caffeine, or a paused timer). Nothing is marked as said, so it arrives
+  by itself the moment the screen is yours again. A window that cannot be closed
+  must not be able to appear on a shared one.
+
+The postponement is wall-clock, not activity: ten minutes away from the keyboard
+still ends in ten minutes, and the window is waiting when you sit back down. A
+new working day (a reboot, or the long absence rule) forgets it.
+
 ## Pausing the timers
 
 Some hours are not the moment to be told to rest: a meeting, a presentation, a
@@ -281,6 +335,17 @@ template (`{micro}`, `{rest}`, `{daily}`):
 Deliberately out of scope for this widget: usage statistics and history, exercise
 suggestions during a break, sounds, per-application exemptions, and syncing
 counters between machines. Anyone who needs those wants Workrave itself.
+
+**Making the reminder cheaper to dismiss is also a non-goal.** A UX review
+observed that answering the stage-1 warning is the panel's most frequent
+interaction and its most expensive path — the pointer travels, the message
+steps aside, the buttons appear only then — and proposed a one-key postpone.
+Rejected deliberately: *the widget does not exist to be waved away*. Postponing
+is breaking the working pattern the timers are there to enforce, so it is
+correct that it costs more than taking the break, which costs nothing at all
+(stop typing and the timer resets by itself). Cheap dismissal is how a rest
+reminder becomes a reflex and then furniture. This is a decision, not an
+oversight: do not "fix" it.
 
 ---
 

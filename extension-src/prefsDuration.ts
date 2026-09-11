@@ -15,6 +15,7 @@ import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 
 import {formatClock, stepDuration} from './duration.js';
+import {definedProps} from './props.js';
 
 function stepButton(iconName, tooltip) {
     const button = new Gtk.Button({
@@ -42,7 +43,11 @@ function stepButton(iconName, tooltip) {
 export function durationRow({title, subtitle, seconds, range, step, zeroLabel, onChange}) {
     let value = Math.min(range[1], Math.max(range[0], Math.round(seconds)));
 
-    const row = new Adw.ActionRow({title, subtitle});
+    // definedProps: an omitted `subtitle` must not reach the initializer —
+    // GJS throws on `undefined` there, and the prefs subpage loader swallows
+    // the error, so the widget's settings button silently does nothing.
+    // See props.ts; this is the same defect the colour rows already hit.
+    const row = new Adw.ActionRow(definedProps({title, subtitle}));
     const label = new Gtk.Label({valign: Gtk.Align.CENTER, width_chars: 7});
     label.add_css_class('numeric');
     const minus = stepButton('list-remove-symbolic', 'Less');

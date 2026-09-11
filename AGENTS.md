@@ -84,12 +84,20 @@ second root script — new build/install/dev actions become `gwp` subcommands.
 npm run typecheck   # tsc --noEmit
 npm test            # build, then node --test on gi-free pure-logic modules
 npm run test:ui     # headless GNOME Shell UI regression suite (docs/testing/ui-testing.md)
+npm run test:prefs  # build every widget's settings page and click through it
+npm run check:ego   # pack, then Shexli — the checker EGO runs on every upload
 ```
 
 Tests (`npm test`, Node's built-in runner) cover only the **gi-free** pure-logic
 modules (`tooltipTemplate.ts`, `widgetConfig.ts`); see [`tests/`](tests/index.md).
 UI behaviour (panel layout, live-apply settings, clicks) is covered by the
 headless UI suite `npm run test:ui` — see [`docs/testing/ui-testing.md`](docs/testing/ui-testing.md).
+Anything reached from the **preferences window** is covered by
+`npm run test:prefs` ([`tests/prefs/`](tests/prefs/index.md)): it opens every
+widget's settings page and presses every control on it. Run it after touching
+`prefs.ts`, a widget's `prefs.ts` or a shared row builder — a page that throws is
+swallowed by the subpage loader, so the only symptom is a settings button that
+does nothing.
 Prefer extracting pure logic into a gi-free module and testing it there over
 loading Shell-only code. Most of the extension is dynamic GJS/Shell code and is
 verified by running it (see below). A plain `./gwp install` needs a logout/login on Wayland to
@@ -102,6 +110,20 @@ profile, tailing the log (mutter 50 dropped the `--nested` flag;
 `./gwp dev --headless` gives a log-only fallback). See [`docs/process/development.md`](docs/process/development.md). UUID is
 `gnome-widget-panel@mpashka.github.com`; it installs alongside the original
 Floating Mini Panel.
+
+**Finish a task by installing it: run `./gwp install`.** A task is not delivered
+while it exists only in the repository — the user's own panel is where it gets
+used, and the next session's manual check starts from what is installed, not
+from what is committed. So when the work is done (code, docs and tests in place,
+the affected suite green), install it, and say in your report that the new build
+needs a **logout/login** before the running Shell picks it up. The dev-only
+[`version-status`](extension-src/plugins/version-status/index.md) widget shows
+exactly that state in the panel: it compares the installed build stamp with the
+build the running Shell loaded, and warns while a relogin is pending — appearing
+only then, so an empty slot means the two agree. Which build is running is also
+in the handle's context-menu header (version, and under it the commit with
+`-dirty`). Do not install a tree you know to be broken — fix it or say why you
+left it uninstalled.
 
 Imperative: perform code work — reading and editing files, navigation, builds,
 running commands and running tests — through the IntelliJ **IDEA MCP** tools
@@ -139,19 +161,38 @@ panel lifecycle and error isolation; `pluginManager.ts` is the registry + loader
 - **Lifecycle discipline (Shell 50):** avoid blocking I/O on the Shell thread;
   release every timer, signal, `Soup.Server` and child process in `destroy()`.
 
-### `ai-agent-usage` plugin — out-of-process collectors
+### The AI collector, and the widgets that view it
 
-Provider collection that can block stays outside Shell. The plugin is GJS-only:
+**Collection belongs to the extension, never to a widget.**
+[`aiCollector.ts`](extension-src/aiCollector.ts) owns the localhost server,
+Claude's hooks and the helper child processes; `ai-agent-usage` and
+`ai-agent-status` are views of it. It used to be the other way round — each
+widget built its own server in its constructor — which made collection a side
+effect of a widget existing and left "no sessions" and "nobody is collecting"
+drawing the same empty picture. Do not move collection back into a widget, and
+do not give a widget a second one.
 
-- **Claude Code:** the widget runs a localhost-only `Soup.Server` with a
+- **What decides whether it runs** is the `ai-collector` GSettings key, not the
+  widget list. Removing every AI widget does not stop it; switching it off makes
+  the widgets say so rather than show an empty result. Provider collection that
+  can block stays outside Shell.
+- **Claude Code:** the collector runs a localhost-only `Soup.Server` with a
   per-session secret, writes `~/.claude/gnome-widget-panel-claude-hook.js`, and
-  points Claude's `statusLine` at it. The hook forwards stdin JSON to the widget
-  and prints the returned status line. No cache file; data lives only in memory.
-- **Codex:** the widget spawns `helpers/codex-usage-helper.js` as a `gjs -m`
+  points Claude's `statusLine` at it. The hook **renders the status line itself**
+  from its own stdin and prints nothing the panel returned — the status line must
+  survive a disabled, crashed or restarting extension. It POSTs the payload only
+  while `ai-collector` is on, and appends a red lamp to the line when it is on
+  but no endpoint answered 2xx. No cache file; data lives only in memory.
+- **Codex:** the collector spawns `helpers/codex-usage-helper.js` as a `gjs -m`
   child via `Gio.Subprocess`. The helper scans `~/.codex/sessions/**/*.jsonl`,
   extracts the newest `token_count` event, and streams normalized JSON Lines to
   stdout. It uses `last_token_usage` (not cumulative `total_token_usage`);
   repeated reads of the same event are not counted as new consumption.
+- **Raw truth here, policy there.** The collector keeps the latest payload per
+  provider, the prompts seen and the open sessions, and prunes only at a fixed
+  24 h bound. When a session stops counting as open, how long a payload stays
+  fresh and how history is sampled are the *widget's* settings, applied where the
+  drawing happens.
 - **Rendering:** one graph receives all provider updates, picks the fresh
   provider with the largest token count, and samples token count, context-window
   usage and server-limit usage. Keep in-memory history **separately per
@@ -275,20 +316,19 @@ grep -rhoE "@tag:[a-z0-9/-]+" . | sort -u         # every tag in the repo
 Two rules, both about not leaving work in limbo:
 
 - **`main` holds released versions only — one commit per version. Work happens
-  on the branch of the version being built.** Never commit to `main` and never
-  push to it outside a release. Every change goes to `release/A.B.C`, the branch
-  of the version it will ship in, and that branch carries **as many commits as
-  the work takes**; at release time it is **squashed onto `main` as a single
-  commit** and tagged. So the two histories differ on purpose: `main` is the
-  list of published versions and matches what users installed from
-  extensions.gnome.org, the version branch is how that version was actually
-  built. Several version branches may run at once (`release/0.2.3` and
-  `release/0.3.0`), and a branch is **deleted once its history stops being
-  useful** — normally some time after its release. `git checkout dev` always
-  lands on the branch currently being built: `dev` is a symbolic ref aimed at it,
-  repointed with `git dev release/A.B.C`. Which part of the version moves is
-  decided by what ships — **a new widget is a minor bump**, changes inside
-  existing widgets are a patch. Full procedure:
+  on `dev`.** Never commit to `main` and never push to it outside a release.
+  Every change goes to `dev`, which carries **as many commits as the work
+  takes** — one per finished task is the norm. The version has no number until
+  the release, because until then nobody knows whether this is a fix, a new
+  widget or something larger; at release time `dev` is **renamed to
+  `release/A.B.C`**, **squashed onto `main` as a single commit** and tagged, and
+  a fresh `dev` is cut from `main`. So the two histories differ on purpose:
+  `main` is the list of published versions and matches what users installed from
+  extensions.gnome.org, `release/A.B.C` is how that version was actually built —
+  kept while its history is useful, **deleted** afterwards, which loses nothing
+  because the version itself lives on `main` under its tag. Which part of the
+  number moves is decided by what ships — **a new widget is a minor bump**,
+  changes inside existing widgets are a patch. Full procedure:
   [`docs/process/release.md`](docs/process/release.md).
 - **Commit a task when it is finished** — code, documentation and tests in the
   same commit, with the suite green — rather than leaving it in the working
@@ -309,6 +349,29 @@ matching task:
   recurs or is worth reconsidering, rather than filing a fresh one. Keeping each
   concern in a single issue makes it easier to judge demand for it, decide
   whether to implement it, and prioritise the backlog.
+
+  Searching means reading, not glancing at titles — a request is a duplicate
+  when it shares the **need**, however differently it is worded. Dump every
+  issue once and search the bodies:
+
+  ```bash
+  gh issue list --state all --limit 100 --json number,title,body > /tmp/issues.json
+  # then grep that file for the concept, not just the words you would have used
+  ```
+
+  (`gh search issues --state all` is rejected by the CLI — it takes only
+  `open`/`closed`, which is how duplicates get filed.)
+
+  When one matches, **comment with what your version adds** — the new case, the
+  wider model, the constraint the original missed — so the issue grows into the
+  full request instead of collecting "+1". Say in the comment that it arrived as
+  a separate ask and was merged here. Only file a new issue when the *need*
+  differs, and then **link the neighbours both ways** ("complementary to #N,
+  not a substitute") so the next reader sees the cluster. Every feature request
+  states the **use case and its frequency**, and what the operation costs in
+  gestures today versus after — that is what the backlog is prioritised by; see
+  [`docs/process/ux.md`](docs/process/ux.md) and the
+  [use-case tree](docs/specification/use-cases/index.md).
 - **Filing bugs:** [`docs/process/bug-report-howto.md`](docs/process/bug-report-howto.md) — every
   bug report must include the configuration and a screenshot/screencast. The
   GitHub form ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml))
@@ -346,11 +409,14 @@ matching task:
   4. After the user reports a run, the **agent reads the logs itself and cleans up**
      the script's artifacts — installed handlers, log capture, changed settings
      (e.g. restore the idle timeout) and the state file.
-- **UX:** [`docs/process/ux.md`](docs/process/ux.md) — design an interaction from the
-  use case and count its steps from where the user already is: actions on the object
-  under the pointer, one toggling item instead of two, no dialogs for reversible
-  actions, a keyboard route for the primary path. Read it before designing a menu,
-  a button or a settings flow.
+- **UX:** the general interaction rules live in [`.claude/rules/ux/`](.claude/rules/ux/)
+  — an installed copy of the **ux-principles** convention. Claude Code loads them
+  automatically; other agents must read them there. Start with `core.md` (any
+  interface) and `desktop.md` (pointer, keyboard, windows, shell).
+  [`docs/process/ux.md`](docs/process/ux.md) holds what is true of **this panel**:
+  the worked examples with the gestures they cost, the cases that produced a
+  general rule, and any deliberate departure — and it wins over the general ones.
+  Read both before designing a menu, a button or a settings flow.
 - **Code quality:** [`docs/process/code-quality.md`](docs/process/code-quality.md) — modularity,
   uniform naming across the whole codebase, and per-widget documentation, so that
   adding a feature or fixing a bug never gets harder over time.

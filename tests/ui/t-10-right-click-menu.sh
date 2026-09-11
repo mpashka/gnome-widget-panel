@@ -24,6 +24,28 @@ assert_true "panel.visible" \
     "panel stays visible after a slightly-held right-click (no false long-press)"
 _ui_log "ok - 300ms right-click opens the context menu instead of misfiring long-press"
 
+# The header identifies the build the shell is actually running: the version and
+# release channel, and under it the commit from build-stamp.json (with `-dirty`
+# when that tree had uncommitted changes). Between releases the version alone is
+# the same string for every build, so the commit is the part that answers "is
+# this the change I just made". Stacked on two lines so the row does not outgrow
+# the menu — the menu may not answer a long value by cutting it (UX rule 14).
+HEADER="($CTL_BTN).menu.firstMenuItem.hotkeyLabel.text"
+ui_wait_js "$HEADER.length > 0" || fail "the menu header never got its version"
+assert_true "/^[0-9]+\.[0-9]+\.[0-9]+/.test($HEADER)" \
+    "the menu header names the version"
+STAMP="$GWP_UI_ROOT/extension/build-stamp.json"
+COMMIT="$(sed -n 's/.*\"commit\": *\"\([^\"]*\)\".*/\1/p' "$STAMP")"
+if [[ -n "$COMMIT" ]]; then
+    assert_true "$HEADER.includes('$COMMIT')" \
+        "the menu header names the commit the running build came from"
+    # Two lines, not one long one: the row must not outgrow the menu.
+    assert_true "$HEADER.split(String.fromCharCode(10)).length === 2" \
+        "the version and the commit are stacked, not joined into one wide line"
+else
+    _ui_log "ok - no commit in the build stamp (built outside a checkout), header is version-only"
+fi
+
 ui_click_button "$CTL_BTN" Clutter.BUTTON_SECONDARY 0 >/dev/null
 ui_wait_js "!($CTL_BTN).menu.isOpen" \
     || fail "a quick right-click did not close the (now open) context menu"

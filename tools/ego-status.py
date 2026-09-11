@@ -28,7 +28,7 @@ Exit codes:
     2   error (network, login, unparseable page)
 
 Usage:
-    tools/ego-status.py [--uuid UUID] [--extension-id N] [--json]
+    tools/ego-status.py [--uuid UUID] [--extension-id N] [--json] [--comparable]
                         [--state FILE] [--dump-html DIR]
 
 See docs/process/promotion.md.
@@ -259,7 +259,12 @@ def summarise(result):
 
 
 def comparable(result):
-    """The part of the result a watcher should react to."""
+    """The part of the result a watcher should react to.
+
+    Shexli findings keep the rule code and how many places it hit, but not the places
+    themselves: line numbers move with every rebuild, so keeping them would make a watcher
+    announce "the findings changed" on each upload while nothing about the review did.
+    """
     author = result.get("author", {})
     return {
         "published": result["published"],
@@ -268,10 +273,7 @@ def comparable(result):
         "reviews": {
             r["version"]: {
                 "comments": r["comments"],
-                "shexli": [
-                    [f["code"], [f"{l['file']}:{l['line']}" for l in f["locations"]]]
-                    for f in r["shexli"]
-                ],
+                "shexli": {f["code"]: len(f["locations"]) for f in r["shexli"]},
             }
             for r in author.get("reviews", [])
         },
@@ -285,6 +287,14 @@ def main():
     ap.add_argument("--uuid", default=DEFAULT_UUID)
     ap.add_argument("--extension-id", type=int, default=DEFAULT_EXTENSION_ID)
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument(
+        "--comparable",
+        action="store_true",
+        help="print only the stable snapshot a watcher compares between runs "
+        "(version statuses, reviewer comments, Shexli findings); exits 2 with no "
+        "output when the author pages could not be read, so a failed run is not "
+        "mistaken for a changed state",
+    )
     ap.add_argument(
         "--state",
         metavar="FILE",
@@ -339,7 +349,16 @@ def main():
         elif first_run:
             result["state_initialised"] = True
 
-    if args.json:
+    if args.comparable:
+        # A watcher stores whatever this prints and calls any difference news, so a run that
+        # could not log in must print nothing at all: an empty snapshot would look exactly
+        # like "the reviewer withdrew every comment", and the next healthy run like news again.
+        trouble = result["author"].get("error") or result["author"].get("skipped")
+        if trouble:
+            print(f"error: author pages unavailable: {trouble}", file=sys.stderr)
+            return 2
+        print(json.dumps(comparable(result), indent=2, ensure_ascii=False, sort_keys=True))
+    elif args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         if changed:

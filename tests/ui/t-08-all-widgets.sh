@@ -10,17 +10,18 @@ ui_start '{"schema":1,"plugins":[
   {"id":"keyboard-layout","enabled":true},
   {"id":"app-notifications","enabled":true},
   {"id":"cpu-load-monitor","enabled":true},
-  {"id":"ai-agent-usage","enabled":true,"options":{"claudeSecret":"t8","claudePort":17899}},
-  {"id":"ai-agent-status","enabled":true,"options":{"secret":"t8s","port":17898}},
+  {"id":"ai-agent-usage","enabled":true},
+  {"id":"ai-agent-status","enabled":true},
   {"id":"break-timer","enabled":true},
   {"id":"caffeine","enabled":true},
   {"id":"launch","enabled":true,"options":{"command":"true"}},
   {"id":"printscreen","enabled":true},
   {"id":"clock","enabled":true},
-  {"id":"ubuntu-system-status","enabled":true}]}'
+  {"id":"ubuntu-system-status","enabled":true},
+  {"id":"version-status","enabled":true}]}'
 
 count="$(ui_eval 'panel.get_children().filter(c => c._panelPluginId).length')"
-assert_eq "$count" "14" "all 14 configured widgets created"
+assert_eq "$count" "15" "all 15 configured widgets created"
 assert_true 'panel.visible && panel.mapped' "panel alive with every widget"
 
 if grep -q "JS ERROR" "$GWP_UI_TMP/shell.log"; then

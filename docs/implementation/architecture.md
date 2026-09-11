@@ -44,21 +44,42 @@ panel indicators. The keyboard plugin forces its role into the always-visible
 area. Clock and Ubuntu system status wrap the existing DateMenu and
 QuickSettings integration.
 
-## AI agent usage widget
+## AI agent collection
 
-The active AI usage widget is a built-in plugin named `ai-agent-usage`; it lives
-inside this repository rather than in a separate widget repository for now.
+The AI widgets are built-in plugins living inside this repository rather than in
+separate widget repositories for now — but **the collection behind them is not a
+widget's job**. It belongs to the extension, in `aiCollector.ts`, and runs on its
+own `ai-collector` setting whether or not an AI widget is in the panel. Why, and
+what the split between collector and view is:
+[`ai-collector.md`](ai-collector.md). This page describes the mechanisms it uses.
 
 Claude Code uses a command hook because Claude statusLine invokes a command, not
-an HTTP endpoint directly. The widget starts a localhost-only `Soup.Server`,
+an HTTP endpoint directly. The collector starts a localhost-only `Soup.Server`,
 generates a per-session secret, writes
 `~/.claude/gnome-widget-panel-claude-hook.js`, and updates
-`~/.claude/settings.json` to call that hook. The hook is intentionally thin:
-stdin JSON is posted to the widget HTTP endpoint and the HTTP response is printed
-to stdout for Claude's status line. The widget stores Claude token data only in
+`~/.claude/settings.json` to call that hook. Claude token data is stored only in
 memory.
 
-Codex log parsing is isolated from GNOME Shell. The widget starts
+**The status line itself does not depend on this extension.** The hook renders it
+from its own stdin (`statusLineText.ts`, embedded verbatim into the generated
+script) and prints nothing the panel returned. The one thing its stdin cannot
+answer is what the session works *on*: for that the hook reads an optional
+caption file `~/.claude/statusline/<session_id>.json` (`{place, task}`), written
+by whoever tracks the user's tasks, and falls back to the working directory's own
+name when there is none. It reads the panel's
+`ai-collector` GSettings key to decide whether anything is listening, POSTs the
+payload only then, and appends a red lamp to the line when collection is on but
+no endpoint accepted the payload. Collection switched off means no POST and no
+lamp.
+
+The direction of that dependency is the point. The widget used to author the
+status line, so its owner had to be alive for the user to have one at all — a
+disabled or crashed widget showed up in Claude as an empty status line, which
+reads as a broken Claude rather than as a missing GNOME widget. Now the panel is
+an optional consumer of a payload the hook already holds, and the only thing it
+contributes back is one bit: whether delivery worked.
+
+Codex log parsing is isolated from GNOME Shell. The collector starts
 `extension/plugins/ai-agent-usage/helpers/codex-usage-helper.gjs` as a `gjs -m`
 child process through `Gio.Subprocess`; the helper recursively scans
 `~/.codex/sessions/**/*.jsonl`, extracts the newest `token_count` event, and

@@ -344,24 +344,41 @@ export const ControlButton = GObject.registerClass(
             Main.panel.menuManager.addMenu(this.menu);
             this.menu.actor.hide();
 
-            // Non-reactive header showing the extension name and version +
-            // release channel (e.g. "0.1.0 (alpha)"), read via the process-safe
-            // systemInfo helper. Mirrors the About group's name/version row. The
-            // version string comes from an async (metadata.json) read, so start
-            // with an empty hotkey column and fill it in when it resolves; guard
-            // against the button having been destroyed meanwhile.
+            // Non-reactive header showing the extension name and the identity of
+            // the build that is running: version + release channel, and under it
+            // the commit that build came from, with `-dirty` when that tree had
+            // uncommitted changes. The version alone is the same string for every
+            // build between two releases, which is no use when the question is
+            // "is what I am looking at the change I just made".
+            //
+            // Stacked rather than joined into one line on purpose: side by side
+            // they would make this row half again as wide as the widest menu
+            // item, and a menu is not allowed to answer that by ellipsizing text
+            // nothing can then reveal (UX: truncate only what stays reachable).
+            // Two short lines cost height
+            // the row has to spare and no width at all.
+            //
+            // Read via the process-safe systemInfo helper; both reads are async
+            // (metadata.json and build-stamp.json), so start with an empty hotkey
+            // column and fill it in when they resolve, guarding against the
+            // button having been destroyed meanwhile.
             const headerItem = new MenuItem(
                 'GNOME Widget Panel',
                 '',
                 () => {},
                 {reactive: false, can_focus: false}
             );
+            headerItem.hotkeyLabel.set_style(
+                'color: grey !important; text-align: right;'
+            );
             this.menu.addMenuItem(headerItem);
-            SystemInfo.versionDisplay()
-                .then(text => {
+            Promise.all([SystemInfo.versionDisplay(), SystemInfo.buildIdDisplay()])
+                .then(([version, buildId]) => {
                     if (this._destroyed || !headerItem.hotkeyLabel)
                         return;
-                    headerItem.hotkeyLabel.set_text(text);
+                    headerItem.hotkeyLabel.set_text(
+                        buildId ? `${version}\n${buildId}` : version
+                    );
                 })
                 .catch(() => {});
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());

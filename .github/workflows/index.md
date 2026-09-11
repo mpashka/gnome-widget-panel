@@ -8,10 +8,12 @@ scheme and required secrets are in
 
 ## Files
 
-- `ci.yml` — build, type-check and unit-test on every push (any branch) and pull
-  request (`npm ci` → `npm run typecheck` → `npm test`).
+- `ci.yml` — build, type-check, unit-test and Shexli-check on every push (any
+  branch) and pull request (`npm ci` → `npm run typecheck` → `npm test` →
+  `npm run check:ego`).
 - `release.yml` — manually dispatched (`workflow_dispatch`, `bump` =
-  patch/minor/major). Bumps the version, tests, packs the EGO zip, commits +
+  patch/minor/major). Bumps the version, tests, packs the EGO zip and checks it
+  with Shexli, commits +
   tags the bump, publishes a GitHub Release and best-effort submits to
   extensions.gnome.org.
 
@@ -23,6 +25,8 @@ scheme and required secrets are in
 - `pack.sh` — build and zip `extension/` into
   `dist/<uuid>.shell-extension.zip` (metadata.json at root, no compiled schema);
   also runnable locally via `npm run pack`.
+- `shexli-check.sh` — run Shexli, the static checker EGO runs on every upload,
+  over the zip and fail on any finding; locally `npm run check:ego` (packs first).
 - `release-notes.mjs` — collect the release milestone's closed issues into
   `dist/release-notes.md` (the GitHub Release body) and regenerate `CHANGELOG.md`
   + `docs/process/releases.json` (the GNOME support matrix / overview).

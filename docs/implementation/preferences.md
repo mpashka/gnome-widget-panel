@@ -41,7 +41,11 @@ page edit the same panel `GSettings` object (different keys). Actions:
   `launch`, `activities`), which stays in the list so it can be added several
   times, each instance with its own `options`. When nothing addable is left it
   shows an "All widgets added" empty row. Activating a row appends the widget,
-  saves, and `window.pop_subpage()` back to the list.
+  saves, and `window.pop_subpage()` back to the list. A widget marked
+  `descriptor.devOnly` (currently only `version-status`) goes into a second group
+  at the bottom, **Developer widgets**, instead of the list proper: it is a tool
+  for working on the extension, not a panel feature, and it is likewise absent
+  from `defaultWidgetConfig()`. It stays searchable with the rest.
 - **Configure** a widget: rows whose widget declares `hasPreferences: true` show
   a settings button that opens that widget's own settings as an **in-window
   subpage** (not a dialog) — see below.
@@ -56,13 +60,31 @@ Widget changes are written immediately and applied **live**: the running
 no GNOME Shell reload or logout needed. See the `FloatingMiniPanel` live-reload
 note in [`object-model.md`](object-model.md).
 
+## AI collector settings
+
+A group of its own, between the top-bar settings and About:
+[`../../extension-src/prefsAiCollector.ts`](../../extension-src/prefsAiCollector.ts)'s
+`addAiCollectorGroup(page, settings)`. A master switch (`ai-collector`), one
+switch per agent (`ai-collector-claude` / `-codex` / `-gemini`, insensitive and
+labelled "not found on this system" when the agent is not installed) and the
+localhost `ai-collector-port`. Everything is written to the panel's GSettings
+and applied live — the running collector restarts on any of these keys.
+
+It is **panel-level, not a widget option**, because collection is not a widget's
+job: see [`ai-collector.md`](ai-collector.md). It is also a separate module
+rather than a method on the preferences class, so the settings smoke test can
+build it — a group that throws here costs the user the whole settings window,
+not one page (see [`../../tests/prefs/index.md`](../../tests/prefs/index.md)).
+
 ## Panel settings
 
 A single **Panel layout** `Adw.PreferencesGroup` on the same page exposes the
 panel-level settings that used to live in the control-button context menu (which
-now keeps a non-reactive **version header** (`GNOME Widget Panel` + the version
-and release channel, e.g. `0.1.0 (alpha)`, from `systemInfo.versionDisplay()` —
-see [`release.md`](../process/release.md)), then **Settings…**, **Release notes** (this
+now keeps a non-reactive **build header** (`GNOME Widget Panel` + the version and
+release channel, e.g. `0.1.0 (alpha)`, from `systemInfo.versionDisplay()` — see
+[`release.md`](../process/release.md) — and under it the build's
+`commit[-dirty]` from `systemInfo.buildIdDisplay()` when the tree carries a build
+stamp), then **Settings…**, **Release notes** (this
 version's GitHub Release page) and **Report a bug**; all other panel control is
 via mouse gestures on the panel handle). It edits the panel `GSettings`
 (`this.getSettings()`) directly, using its own keys (not the `widgets` key), and

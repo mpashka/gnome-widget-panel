@@ -1,27 +1,32 @@
 // @ts-nocheck
-// @tag:widget-ai-agent-status
+// @tag:widget-ai-agent-status @tag:ai-collector
 'use strict';
+
+// One dot saying whether an AI agent needs you right now. It is a **view** of
+// the extension's AI collector (../../aiCollector.ts) and owns no collection of
+// its own: it used to run a second `Soup.Server` on its own port beside the
+// usage widget's, which meant removing the widget stopped the collection and an
+// empty dot could equally mean "no sessions" or "nobody is listening". Those two
+// are now different pictures.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
-import Soup from 'gi://Soup?version=3.0';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import * as ClaudeHook from '../ai-agent-usage/claudeHook.js';
+import {COLLECTOR_OFF_TEXT} from '../../aiCollector.js';
 import {hexToRgb, nowSeconds, toNumber} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
 
-const DEFAULT_PORT = 17871;
 const DOT_SIZE = 12;
 const DOT_SPACING = 4;
 const DEFAULT_EXPIRE_MINUTES = 180;
 // A 'thinking' session with no events for this long is presumed finished (a Stop
-// we never saw) and drops to 'idle' — still open, ready for the next prompt.
+// we never saw) and reads as 'idle' — still open, ready for the next prompt.
 const THINKING_STALE_SECONDS = 10 * 60;
 const TICK_INTERVAL_SECONDS = 5;
 const PULSE_INTERVAL_MS = 600;
@@ -36,7 +41,8 @@ const DEFAULT_COLORS = {
     idleColor: '#ffb82e',      // amber — done, ready for your next prompt
     thinkingColor: '#4ca6ff',  // blue — generating, just wait
 };
-// Dim grey hollow placeholder shown when there are no open sessions.
+// Dim grey, for both dots that carry no session state: the hollow placeholder
+// (collector on, nothing open) and the struck-through one (collector off).
 const PLACEHOLDER_HEX = '#777777';
 // Single-dot priority (highest first): a session you must answer outranks one
 // you may prompt, which outranks one that's merely working. No sessions -> the
@@ -47,12 +53,14 @@ const STATE_ORDER = ['waiting', 'idle', 'thinking'];
 // session). Literal text is Pango-escaped; `\n` is a line break.
 const DEFAULT_TOOLTIP_TEMPLATE = '{counts}\n{sessions}';
 
+
 function escapeMarkup(text) {
     return String(text)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
+
 
 function formatSince(seconds) {
     const total = Math.max(0, Math.floor(seconds));
@@ -61,37 +69,11 @@ function formatSince(seconds) {
     return `${minutes}:${String(rest).padStart(2, '0')}`;
 }
 
-// Session label: basename of the working directory, falling back to a short
-// session-id prefix.
-function sessionLabel(cwd, id) {
-    const dir = typeof cwd === 'string' ? cwd.replace(/\/+$/, '') : '';
-    if (dir) {
-        const base = dir.split('/').filter(Boolean).pop();
-        if (base)
-            return base;
-    }
-    return String(id).slice(0, 8);
-}
 
-// Defensive extraction of `{session_id, cwd}` from a hook or statusLine
-// payload (the statusLine payload keeps cwd under workspace.current_dir).
-function extractSession(payload) {
-    const id = typeof payload?.session_id === 'string' && payload.session_id
-        ? payload.session_id
-        : null;
-    let cwd = null;
-    for (const candidate of [payload?.cwd, payload?.workspace?.current_dir]) {
-        if (typeof candidate === 'string' && candidate) {
-            cwd = candidate;
-            break;
-        }
-    }
-    return {id, cwd};
-}
 
 export const AiAgentStatus = GObject.registerClass(
     class AiAgentStatus extends St.BoxLayout {
-        constructor(options = {}) {
+        constructor(collector, options = {}) {
             super({
                 style_class: 'ai-agent-status',
                 style: `spacing: ${DOT_SPACING}px;`,
@@ -101,12 +83,9 @@ export const AiAgentStatus = GObject.registerClass(
             });
 
             // --- options (defensive parsing) ---------------------------------
-            this._port = Math.round(toNumber(options.port, DEFAULT_PORT));
-            if (this._port < 1024 || this._port > 65535)
-                this._port = DEFAULT_PORT;
-            // Prefer a persisted secret (written by the Configure button in
-            // preferences) so the hooks and this server agree after a reload.
-            this._secret = options.secret || GLib.uuid_string_random();
+            // How long a session with no events at all still counts as open. A
+            // display policy, so it is applied here and not in the collector,
+            // which keeps the raw events.
             this._expireSeconds = Math.max(
                 60,
                 Math.round(toNumber(options.expireMinutes, DEFAULT_EXPIRE_MINUTES)) * 60);
@@ -123,13 +102,13 @@ export const AiAgentStatus = GObject.registerClass(
             };
 
             // --- state --------------------------------------------------------
-            // session_id -> {id, cwd, label, provider, state, lastEvent, lastChange}
-            this._sessions = new Map();
+            this._collector = collector ?? null;
+            this._collectorToken = this._collector
+                ? this._collector.addListener(() => this._refresh())
+                : null;
             this._dots = [];
             this._pulsePhase = false;
             this._rotated = false;
-            this._server = null;
-            this._registered = false;
 
             this._tooltip = new St.Label({
                 style_class: 'dash-label',
@@ -139,18 +118,18 @@ export const AiAgentStatus = GObject.registerClass(
             Main.uiGroup.add_child(this._tooltip);
             this._hoverId = this.connect('notify::hover', () => this._onHoverChanged());
 
-            this._startServer();
-
-            // Re-evaluate ages (idle/expire transitions) on a slow tick.
+            // Ages, expiry and the thinking-went-stale transition are all
+            // computed from the collector's timestamps when drawing, so a plain
+            // periodic re-read is what makes them move.
             this._tickTimeoutId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
                 TICK_INTERVAL_SECONDS,
                 () => {
-                    this._tick();
+                    this._refresh();
                     return GLib.SOURCE_CONTINUE;
                 }
             );
-            // Attention pulse: ease the waiting dots' opacity between full and
+            // Attention pulse: ease the promptable dots' opacity between full and
             // dim on a fixed cadence (Clutter has no auto-reversing loop ease).
             this._pulseTimeoutId = GLib.timeout_add(
                 GLib.PRIORITY_DEFAULT,
@@ -164,199 +143,36 @@ export const AiAgentStatus = GObject.registerClass(
             this._rebuildDots();
         }
 
-        // --- HTTP server (Claude hooks fan out to it) -------------------------
+        // --- reading the collector ---------------------------------------------
 
-        _startServer() {
-            try {
-                this._server = new Soup.Server();
-                this._server.add_handler('/agent-event', (server, msg) => {
-                    this._handleAgentEvent(msg);
-                });
-                this._server.add_handler('/claude-statusline', (server, msg) => {
-                    this._handleStatusLine(msg);
-                });
-                this._server.listen_local(
-                    this._port,
-                    Soup.ServerListenOptions.IPV4_ONLY
-                );
-                // Join the shared endpoint registry so the (port-independent)
-                // status-line and event hooks fan out to this widget too.
-                // Best-effort, fire-and-forget: _startServer runs from the
-                // synchronous _init, so let the async registration run detached
-                // and just log failures.
-                ClaudeHook.registerPort(this._port, this._secret).catch(
-                    (error) => logError(error, 'GNOME Widget Panel agent-status register failed')
-                );
-                this._registered = true;
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel agent-status server failed');
-                this._stopServer();
-            }
+        _collecting() {
+            return !!this._collector?.running;
         }
 
-        _stopServer() {
-            if (this._registered) {
-                // Best-effort, fire-and-forget: destroy() cannot await, so let
-                // the async deregistration run detached and just log failures.
-                ClaudeHook.deregisterPort(this._port).catch(
-                    (error) => logError(error, 'GNOME Widget Panel agent-status deregister failed')
-                );
-                this._registered = false;
-            }
-            if (this._server) {
-                this._server.disconnect();
-                this._server = null;
-            }
-        }
-
-        _checkRequest(msg) {
-            if (msg.get_method() !== 'POST') {
-                msg.set_status(Soup.Status.METHOD_NOT_ALLOWED, null);
-                return null;
-            }
-            // Soup.ServerMessage has no `request-headers` GObject property
-            // (unlike the client-side Soup.Message the hook scripts use),
-            // only the `get_request_headers()` method — reading
-            // `msg.request_headers` is always undefined and throws on
-            // `.get_one`, rejecting every request before it is checked (same
-            // root cause as issue #6's ai-agent-usage hook delivery).
-            const token = msg.get_request_headers().get_one('X-Gnome-Widget-Panel-Token');
-            if (token !== this._secret) {
-                msg.set_status(Soup.Status.FORBIDDEN, null);
-                return null;
-            }
-            const text = new TextDecoder().decode(
-                msg.get_request_body().flatten().get_data()
-            );
-            if (!text.trim()) {
-                // Empty POST: nothing to do, not a parse error. 204 keeps the
-                // statusLine fan-out from mistaking it for a status line body.
-                msg.set_status(Soup.Status.NO_CONTENT, null);
-                return null;
-            }
-            return JSON.parse(text);
-        }
-
-        _handleAgentEvent(msg) {
-            try {
-                const payload = this._checkRequest(msg);
-                if (payload === null)
-                    return;
-                const {id, cwd} = extractSession(payload);
-                if (id)
-                    this._applyEvent(String(payload?.hook_event_name ?? ''), id, cwd);
-                msg.set_status(Soup.Status.OK, null);
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel agent-event failed');
-                msg.set_status(Soup.Status.BAD_REQUEST, null);
-            }
-        }
-
-        // The statusLine hook fans out to every registered endpoint and prints
-        // the FIRST 200 body as Claude's status line. This widget produces no
-        // status line, so it must answer 204 No Content — never 200 — or its
-        // empty body could hijack the status line from the usage widget.
-        _handleStatusLine(msg) {
-            try {
-                const payload = this._checkRequest(msg);
-                if (payload === null)
-                    return;
-                const {id, cwd} = extractSession(payload);
-                // The status line only fires while Claude is generating: activity.
-                if (id)
-                    this._applyEvent('statusline-activity', id, cwd);
-                msg.set_status(Soup.Status.NO_CONTENT, null);
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel agent-status statusline failed');
-                msg.set_status(Soup.Status.BAD_REQUEST, null);
-            }
-        }
-
-        // --- session state machine --------------------------------------------
-
-        // Event -> state: UserPromptSubmit/statusline activity -> thinking,
-        // Notification -> waiting, Stop -> idle, SessionEnd -> removed.
-        // 'waiting' has the highest priority: background statusline activity
-        // must not demote it — only an explicit UserPromptSubmit (the user
-        // answered) or Stop/SessionEnd moves it on.
-        _applyEvent(eventName, id, cwd) {
+        // The sessions that still count as open, most urgent first. Expiry and
+        // the "thinking for too long" fallback are applied here rather than
+        // stored: the collector records what happened, this widget decides how
+        // long that keeps meaning something.
+        _openSessions() {
             const now = nowSeconds();
-            if (eventName === 'SessionEnd') {
-                if (this._sessions.delete(id))
-                    this._refresh();
-                return;
-            }
-            let state = null;
-            if (eventName === 'UserPromptSubmit' || eventName === 'statusline-activity')
-                state = 'thinking';
-            else if (eventName === 'Notification')
-                state = 'waiting';
-            else if (eventName === 'Stop')
-                state = 'idle';
-            if (!state)
-                return;
-
-            let session = this._sessions.get(id);
-            if (eventName === 'statusline-activity'
-                && session?.state === 'waiting') {
-                session.lastEvent = now;
-                return;
-            }
-            if (!session) {
-                session = {
-                    id,
-                    cwd: cwd ?? null,
-                    label: sessionLabel(cwd, id),
-                    provider: 'claude',
-                    state,
-                    lastEvent: now,
-                    lastChange: now,
-                };
-                this._sessions.set(id, session);
-            } else {
-                if (cwd) {
-                    session.cwd = cwd;
-                    session.label = sessionLabel(cwd, id);
-                }
-                session.lastEvent = now;
-                if (session.state !== state) {
-                    session.state = state;
-                    session.lastChange = now;
-                }
-            }
-            this._refresh();
-        }
-
-        // Liveness fallback for missed hook events. A session normally leaves
-        // 'thinking' via its own Stop event; if we never saw one, drop it to
-        // 'idle' after THINKING_STALE_SECONDS so a stuck dot doesn't claim the
-        // agent is still working. Any session with no events at all for
-        // expireMinutes is presumed gone (missed SessionEnd) and removed —
-        // leaving only genuinely open sessions.
-        _tick() {
-            const now = nowSeconds();
-            let changed = false;
-            for (const [id, session] of this._sessions) {
+            const open = [];
+            for (const session of this._collector?.sessions.values() ?? []) {
                 const age = now - session.lastEvent;
-                if (age > this._expireSeconds) {
-                    this._sessions.delete(id);
-                    changed = true;
+                if (age > this._expireSeconds)
+                    continue;
+                if (session.state === 'thinking' && age > THINKING_STALE_SECONDS) {
+                    open.push({
+                        ...session,
+                        state: 'idle',
+                        // It became idle when it went quiet, not now — otherwise
+                        // the age in the tooltip would restart on every read.
+                        lastChange: session.lastEvent + THINKING_STALE_SECONDS,
+                    });
                     continue;
                 }
-                if (session.state === 'thinking' && age > THINKING_STALE_SECONDS) {
-                    session.state = 'idle';
-                    session.lastChange = now;
-                    changed = true;
-                }
+                open.push(session);
             }
-            if (changed)
-                this._refresh();
-            else if (this.hover && this._showTooltip)
-                this._updateTooltip(); // keep the m:ss ages fresh
-        }
-
-        _sortedSessions() {
-            return [...this._sessions.values()].sort((a, b) => {
+            return open.sort((a, b) => {
                 const order = STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state);
                 if (order !== 0)
                     return order;
@@ -374,7 +190,7 @@ export const AiAgentStatus = GObject.registerClass(
 
         // A single dot represents ALL sessions, coloured by the most-urgent state
         // among them (waiting > idle > thinking — the STATE_ORDER
-        // `_sortedSessions()` sorts by, so element 0 is the winner). Its whole job
+        // `_openSessions()` sorts by, so element 0 is the winner). Its whole job
         // is a glanceable "an agent needs you" / "an agent finished" cue while the
         // conversation is hidden, so one dot is enough — showing one per session
         // would waste panel space and split the user's attention. The tooltip
@@ -384,14 +200,17 @@ export const AiAgentStatus = GObject.registerClass(
                 dot.destroy();
             this._dots = [];
 
-            // `_sortedSessions()[0]` is the most-urgent session, or `null` when
-            // idle — `_makeDot(null)` then draws a dim hollow placeholder so the
-            // widget stays visible and hoverable.
-            this.add_child(this._makeDot(this._sortedSessions()[0] ?? null));
+            // Three pictures, not two: the most urgent session's colour, a hollow
+            // dot when the collector is running with nothing open, and a struck
+            // dot when it is switched off. The last two used to be the same dot,
+            // which is exactly the confusion this widget was reported for.
+            const state = this._collecting()
+                ? this._openSessions()[0]?.state ?? null
+                : 'off';
+            this.add_child(this._makeDot(state));
         }
 
-        _makeDot(session) {
-            const state = session?.state ?? null;
+        _makeDot(state) {
             const dot = new St.DrawingArea({
                 width: DOT_SIZE,
                 height: DOT_SIZE,
@@ -418,7 +237,7 @@ export const AiAgentStatus = GObject.registerClass(
             const cx = w / 2;
             const cy = h / 2;
             const radius = Math.min(w, h) / 2 - 1.5;
-            if (state) {
+            if (state && state !== 'off') {
                 const [r, g, b] = hexToRgb(this._colors[state] ?? PLACEHOLDER_HEX);
                 context.setSourceRGBA(r, g, b, 1);
                 context.arc(cx, cy, radius, 0, 2 * Math.PI);
@@ -437,12 +256,21 @@ export const AiAgentStatus = GObject.registerClass(
                     context.stroke();
                 }
             } else {
-                // Placeholder: dim hollow grey dot (no open sessions).
+                // Placeholder: dim hollow grey dot (no open sessions), with a
+                // diagonal stroke through it when nothing is collecting — the
+                // universal "switched off", so the difference is visible without
+                // hovering for the tooltip.
                 const [r, g, b] = hexToRgb(PLACEHOLDER_HEX);
                 context.setLineWidth(1);
                 context.setSourceRGBA(r, g, b, 0.6);
                 context.arc(cx, cy, radius, 0, 2 * Math.PI);
                 context.stroke();
+                if (state === 'off') {
+                    const offset = radius * Math.SQRT1_2;
+                    context.moveTo(cx - offset, cy + offset);
+                    context.lineTo(cx + offset, cy - offset);
+                    context.stroke();
+                }
             }
             context.$dispose();
         }
@@ -495,7 +323,9 @@ export const AiAgentStatus = GObject.registerClass(
         }
 
         _tooltipMarkup() {
-            const sessions = this._sortedSessions();
+            if (!this._collecting())
+                return COLLECTOR_OFF_TEXT;
+            const sessions = this._openSessions();
             if (sessions.length === 0)
                 return 'AI agents: no sessions';
             return renderTemplate(this._template, {
@@ -535,6 +365,11 @@ export const AiAgentStatus = GObject.registerClass(
         }
 
         destroy() {
+            if (this._collectorToken !== null) {
+                this._collector?.removeListener(this._collectorToken);
+                this._collectorToken = null;
+            }
+            this._collector = null;
             if (this._tickTimeoutId) {
                 GLib.Source.remove(this._tickTimeoutId);
                 this._tickTimeoutId = null;
@@ -551,7 +386,6 @@ export const AiAgentStatus = GObject.registerClass(
                 this._tooltip.destroy();
                 this._tooltip = null;
             }
-            this._stopServer();
             super.destroy();
         }
     }

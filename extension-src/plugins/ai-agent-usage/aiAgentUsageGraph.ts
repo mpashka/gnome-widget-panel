@@ -1,19 +1,22 @@
 // @ts-nocheck
-// @tag:widget-ai-agent-usage
+// @tag:widget-ai-agent-usage @tag:ai-collector
 'use strict';
 
+// The token-consumption graph. It is a **view** of the extension's AI collector
+// (../../aiCollector.ts): the localhost server, Claude's hooks and the
+// Codex/Gemini helper processes used to be built in this constructor, which made
+// collection a side effect of the widget existing. What stays here is the
+// drawing and the history behind it — sampling cadence, normalisation window and
+// colours are this widget's settings, so its samples are its own.
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
-import Soup from 'gi://Soup?version=3.0';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import * as ClaudeHook from './claudeHook.js';
-import {claudePromptRequest, normalizeClaudeStatusLine} from './claudeStatusLine.js';
+import {COLLECTOR_OFF_TEXT} from '../../aiCollector.js';
 import {hexToRgb, nowSeconds} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
@@ -36,7 +39,6 @@ const HISTORY_WIDTH = 36;
 const DEFAULT_MIN_ACTIVE_TOKENS = 500;
 const SAMPLE_INTERVAL_SECONDS = 5;
 const STALE_AFTER_SECONDS = 120;
-const DEFAULT_CLAUDE_PORT = 17861;
 const REQUEST_TEXT_PREVIEW = 30;
 const REQUEST_COLOR = [0.90, 0.15, 0.15, 0.9];
 // Indicator colours, shared by the vertical bars and the matching tooltip
@@ -64,10 +66,6 @@ function formatClock(tsSeconds) {
     const mm = String(date.getMinutes()).padStart(2, '0');
     const ss = String(date.getSeconds()).padStart(2, '0');
     return `${hh}:${mm}:${ss}`;
-}
-
-function decodeBytes(bytes) {
-    return new TextDecoder().decode(bytes);
 }
 
 function parseTokens(value) {
@@ -156,12 +154,6 @@ function eventAgeSeconds(value) {
     return Math.max(0, nowSeconds() - Math.floor(timestamp / 1000));
 }
 
-function formatStatusLine(value) {
-    const tokens = parseTokens(value);
-    const context = Math.round(parseContext(value) * 100);
-    return `Claude ${tokens} tok ctx:${context}%`;
-}
-
 function escapeMarkup(text) {
     return String(text)
         .replace(/&/g, '&amp;')
@@ -214,7 +206,7 @@ function formatResetTime(epochSeconds) {
 
 export const AiAgentUsageGraph = GObject.registerClass(
     class AiAgentUsageGraph extends St.DrawingArea {
-        constructor(extensionPath, options = {}) {
+        constructor(collector, options = {}) {
             let width = Number(options.width);
             if (!Number.isFinite(width) || width < MIN_WIDTH)
                 width = Number.isFinite(width) ? MIN_WIDTH : WIDTH;
@@ -261,11 +253,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._showUsageBar = options.showUsageBar !== false;
             this._showWindowBar = options.showWindowBar !== false;
 
-            this._extensionPath = extensionPath;
-            this._claudePort = Number(options.claudePort ?? DEFAULT_CLAUDE_PORT);
-            this._enableClaude = options.enableClaude ?? true;
-            this._enableCodex = options.enableCodex ?? true;
-            this._enableGemini = options.enableGemini ?? true;
+            this._collector = collector ?? null;
             this._minActiveTokens = Number(options.minActiveTokens);
             if (!Number.isFinite(this._minActiveTokens) || this._minActiveTokens < 0)
                 this._minActiveTokens = DEFAULT_MIN_ACTIVE_TOKENS;
@@ -283,10 +271,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             this._template = typeof options.template === 'string'
                 ? options.template
                 : DEFAULT_TOOLTIP_TEMPLATE;
-            this._providers = new Map();
             this._sampledEventIds = new Set();
-            this._requests = [];
-            this._requestKeys = new Set();
             this._samples = Array(this._scaleHistoryWidth).fill({
                 tokens: 0,
                 context: 0,
@@ -294,18 +279,11 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 provider: null,
             });
             this._maxTokens = 1;
-            // Prefer a persisted secret (written by the Configure button in
-            // preferences) so the hook and this server agree after a reload.
-            this._claudeSecret = options.claudeSecret || GLib.uuid_string_random();
             this._destroyed = false;
-            this._server = null;
-            this._codexProcess = null;
-            this._codexStdout = null;
-            this._codexReadCancellable = null;
-            this._geminiProcess = null;
-            this._geminiStdout = null;
-            this._geminiReadCancellable = null;
             this._sampleTimeoutId = null;
+            this._collectorToken = this._collector
+                ? this._collector.addListener(() => this._onCollected())
+                : null;
             this._tooltip = new St.Label({
                 style_class: 'dash-label',
                 visible: false,
@@ -314,13 +292,6 @@ export const AiAgentUsageGraph = GObject.registerClass(
             Main.uiGroup.add_child(this._tooltip);
             this._repaintId = this.connect('repaint', () => this._draw());
             this._hoverId = this.connect('notify::hover', () => this._onHoverChanged());
-
-            if (this._enableClaude)
-                this._startClaudeHttpHook();
-            if (this._enableCodex)
-                this._startCodexHelper();
-            if (this._enableGemini)
-                this._startGeminiHelper();
 
             this._sampleTimeoutId = GLib.timeout_add_seconds(
                 GLib.PRIORITY_DEFAULT,
@@ -332,333 +303,44 @@ export const AiAgentUsageGraph = GObject.registerClass(
             );
         }
 
-        async _startClaudeHttpHook() {
-            if (!ClaudeHook.isClaudeInstalled())
-                return;
-
-            try {
-                this._server = new Soup.Server();
-                this._server.add_handler('/claude-statusline', (server, msg) => {
-                    this._handleClaudeRequest(msg);
-                });
-                // UserPromptSubmit lifecycle event: the statusLine payload
-                // carries no prompt text, so request markers (issue #6) come
-                // from this separate event hook instead.
-                this._server.add_handler('/agent-event', (server, msg) => {
-                    this._handleAgentEvent(msg);
-                });
-                this._server.listen_local(
-                    this._claudePort,
-                    Soup.ServerListenOptions.IPV4_ONLY
-                );
-                // Install the port-independent hooks and register this
-                // endpoint so Claude's status line and lifecycle events fan
-                // out to it (alongside any other running panel instances on
-                // their own ports).
-                await ClaudeHook.installHook();
-                await ClaudeHook.installEventHooks();
-                await ClaudeHook.registerPort(this._claudePort, this._claudeSecret);
-                // The widget may have been destroyed while the async hook I/O
-                // was in flight; if so, undo the registration and drop the
-                // server instead of leaving a stale endpoint behind.
-                if (this._destroyed) {
-                    ClaudeHook.deregisterPort(this._claudePort).catch(() => {});
-                    if (this._server) {
-                        this._server.disconnect();
-                        this._server = null;
-                    }
-                    return;
-                }
-                this._claudeRegistered = true;
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel Claude hook failed');
-                this._stopClaudeHttpHook();
-            }
-        }
-
-        _handleClaudeRequest(msg) {
-            try {
-                if (msg.get_method() !== 'POST') {
-                    msg.set_status(Soup.Status.METHOD_NOT_ALLOWED, null);
-                    return;
-                }
-                // Soup.ServerMessage (unlike the client-side Soup.Message used
-                // by the hook scripts) has no `request-headers` GObject
-                // property, only the `get_request_headers()` method — reading
-                // `msg.request_headers` is always undefined and throws on
-                // `.get_one`, rejecting every request before it is checked
-                // (issue #6).
-                const token = msg.get_request_headers().get_one('X-Gnome-Widget-Panel-Token');
-                if (token !== this._claudeSecret) {
-                    msg.set_status(Soup.Status.FORBIDDEN, null);
-                    return;
-                }
-
-                const text = decodeBytes(msg.get_request_body().flatten().get_data());
-                if (!text.trim()) {
-                    // An empty POST is nothing to do, not a parse error — some
-                    // lifecycle events can carry no useful body.
-                    msg.set_status(Soup.Status.OK, null);
-                    return;
-                }
-                const payload = JSON.parse(text);
-                const value = normalizeClaudeStatusLine(payload);
-                // Mark freshness so _currentProvider()/_currentTokenProvider()
-                // treat Claude as active — otherwise (no timestamp) Claude is
-                // always "stale" and skipped, so its columns never draw and the
-                // widget shows another provider (Codex) instead. Mirrors the
-                // Codex/Gemini helpers, which set this on every update.
-                value.updated_monotonic = nowSeconds();
-                this._providers.set('claude', value);
-                this._ingestRequests(value);
-                this.queue_repaint();
-
-                msg.set_status(Soup.Status.OK, null);
-                msg.set_response(
-                    'text/plain',
-                    Soup.MemoryUse.COPY,
-                    new TextEncoder().encode(formatStatusLine(value))
-                );
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel Claude request failed');
-                msg.set_status(Soup.Status.BAD_REQUEST, null);
-            }
-        }
-
-        // UserPromptSubmit/Stop/Notification/SessionEnd fan out here too (the
-        // event hook POSTs the same raw payload to every registered
-        // endpoint); only UserPromptSubmit carries a `prompt` this widget
-        // turns into a request marker, everything else is ignored. The
-        // response body is never read by the event hook, unlike the
-        // statusLine hook's first-OK-body fan-out.
-        _handleAgentEvent(msg) {
-            try {
-                if (msg.get_method() !== 'POST') {
-                    msg.set_status(Soup.Status.METHOD_NOT_ALLOWED, null);
-                    return;
-                }
-                // Soup.ServerMessage (unlike the client-side Soup.Message used
-                // by the hook scripts) has no `request-headers` GObject
-                // property, only the `get_request_headers()` method — reading
-                // `msg.request_headers` is always undefined and throws on
-                // `.get_one`, rejecting every request before it is checked
-                // (issue #6).
-                const token = msg.get_request_headers().get_one('X-Gnome-Widget-Panel-Token');
-                if (token !== this._claudeSecret) {
-                    msg.set_status(Soup.Status.FORBIDDEN, null);
-                    return;
-                }
-
-                const text = decodeBytes(msg.get_request_body().flatten().get_data());
-                if (!text.trim()) {
-                    // An empty POST is nothing to do, not a parse error — some
-                    // lifecycle events can carry no useful body.
-                    msg.set_status(Soup.Status.OK, null);
-                    return;
-                }
-                const payload = JSON.parse(text);
-                const request = claudePromptRequest(payload);
-                if (request) {
-                    this._ingestRequests({provider: 'claude', requests: [request]});
-                    this.queue_repaint();
-                }
-                msg.set_status(Soup.Status.OK, null);
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel Claude agent-event failed');
-                msg.set_status(Soup.Status.BAD_REQUEST, null);
-            }
-        }
-
-        _stopClaudeHttpHook() {
-            if (this._claudeRegistered) {
-                // Best-effort, fire-and-forget: destroy() cannot await, so let
-                // the async deregistration run detached and just log failures.
-                ClaudeHook.deregisterPort(this._claudePort).catch(
-                    (error) => logError(error, 'GNOME Widget Panel Claude deregister failed')
-                );
-                this._claudeRegistered = false;
-            }
-            if (this._server) {
-                this._server.disconnect();
-                this._server = null;
-            }
-        }
-
-        _startCodexHelper() {
-            const helperPath = GLib.build_filenamev([
-                this._extensionPath,
-                'plugins',
-                'ai-agent-usage',
-                'helpers',
-                'codex-usage-helper.gjs',
-            ]);
-            if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
-                return;
-            try {
-                this._codexProcess = Gio.Subprocess.new(
-                    ['gjs', '-m', helperPath],
-                    Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
-                );
-                this._codexReadCancellable = new Gio.Cancellable();
-                this._codexStdout = new Gio.DataInputStream({
-                    base_stream: this._codexProcess.get_stdout_pipe(),
-                });
-                this._readCodexLine();
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel Codex helper failed');
-                this._stopCodexHelper();
-            }
-        }
-
-        _readCodexLine() {
-            if (!this._codexStdout)
-                return;
-            this._codexStdout.read_line_async(
-                GLib.PRIORITY_DEFAULT,
-                this._codexReadCancellable,
-                (stream, result) => {
-                    if (this._destroyed)
-                        return;
-                    try {
-                        const [line] = stream.read_line_finish_utf8(result);
-                        if (line !== null) {
-                            const value = JSON.parse(line);
-                            value.updated_monotonic = nowSeconds();
-                            this._providers.set('codex', value);
-                            this._ingestRequests(value);
-                            this.queue_repaint();
-                            this._readCodexLine();
-                        }
-                    } catch (error) {
-                        if (!this._codexReadCancellable?.is_cancelled())
-                            logError(error, 'GNOME Widget Panel Codex read failed');
-                    }
-                }
-            );
-        }
-
-        _stopCodexHelper() {
-            if (this._codexReadCancellable) {
-                this._codexReadCancellable.cancel();
-                this._codexReadCancellable = null;
-            }
-            this._codexStdout = null;
-            if (this._codexProcess) {
-                this._codexProcess.force_exit();
-                this._codexProcess = null;
-            }
-        }
-
-        _startGeminiHelper() {
-            const helperPath = GLib.build_filenamev([
-                this._extensionPath,
-                'plugins',
-                'ai-agent-usage',
-                'helpers',
-                'gemini-usage-helper.gjs',
-            ]);
-            if (!GLib.file_test(helperPath, GLib.FileTest.EXISTS))
-                return;
-            try {
-                this._geminiProcess = Gio.Subprocess.new(
-                    ['gjs', '-m', helperPath],
-                    Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
-                );
-                this._geminiReadCancellable = new Gio.Cancellable();
-                this._geminiStdout = new Gio.DataInputStream({
-                    base_stream: this._geminiProcess.get_stdout_pipe(),
-                });
-                this._readGeminiLine();
-            } catch (error) {
-                logError(error, 'GNOME Widget Panel Gemini helper failed');
-                this._stopGeminiHelper();
-            }
-        }
-
-        _readGeminiLine() {
-            if (!this._geminiStdout)
-                return;
-            this._geminiStdout.read_line_async(
-                GLib.PRIORITY_DEFAULT,
-                this._geminiReadCancellable,
-                (stream, result) => {
-                    if (this._destroyed)
-                        return;
-                    try {
-                        const [line] = stream.read_line_finish_utf8(result);
-                        if (line !== null) {
-                            const value = JSON.parse(line);
-                            value.updated_monotonic = nowSeconds();
-                            this._providers.set('gemini', value);
-                            this._ingestRequests(value);
-                            this.queue_repaint();
-                            this._readGeminiLine();
-                        }
-                    } catch (error) {
-                        if (!this._geminiReadCancellable?.is_cancelled())
-                            logError(error, 'GNOME Widget Panel Gemini read failed');
-                    }
-                }
-            );
-        }
-
-        _stopGeminiHelper() {
-            if (this._geminiReadCancellable) {
-                this._geminiReadCancellable.cancel();
-                this._geminiReadCancellable = null;
-            }
-            this._geminiStdout = null;
-            if (this._geminiProcess) {
-                this._geminiProcess.force_exit();
-                this._geminiProcess = null;
-            }
-        }
-
-        _ingestRequests(value) {
-            if (!Array.isArray(value?.requests))
-                return;
-            const provider = value.provider ?? 'unknown';
-            for (const request of value.requests) {
-                const parsed = Date.parse(request?.timestamp);
-                if (!Number.isFinite(parsed))
-                    continue;
-                const tsSeconds = Math.floor(parsed / 1000);
-                const text = String(request?.text ?? '')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                if (!text)
-                    continue;
-                const key = `${provider}:${tsSeconds}:${text.slice(0, 40)}`;
-                if (this._requestKeys.has(key))
-                    continue;
-                this._requestKeys.add(key);
-                this._requests.push({ts: tsSeconds, text, provider});
-            }
-            this._pruneRequests();
-        }
-
-        _pruneRequests() {
-            const oldest = nowSeconds() - this._requestWindowSeconds * 2;
-            this._requests = this._requests.filter(item => item.ts >= oldest);
-            this._requestKeys = new Set(
-                this._requests.map(
-                    item => `${item.provider}:${item.ts}:${item.text.slice(0, 40)}`
-                )
-            );
-        }
-
+        // Prompts the collector recorded, inside this graph's visible window.
+        // The recording, deduplication and memory bound are the collector's; the
+        // window is this widget's, because it is derived from its sampling
+        // cadence.
         _visibleRequests() {
             const now = nowSeconds();
             const oldest = now - this._requestWindowSeconds;
-            return this._requests
+            return (this._collector?.requests ?? [])
                 .filter(item => item.ts >= oldest && item.ts <= now)
                 .sort((a, b) => a.ts - b.ts);
         }
 
+
+        // Something arrived. The graph itself only changes on the next sample
+        // tick, but the request markers and the tooltip are live.
+        _onCollected() {
+            if (this._destroyed)
+                return;
+            if (this.hover && this._showTooltip)
+                this._updateTooltip();
+            this.queue_repaint();
+        }
+
+
+        _collecting() {
+            return !!this._collector?.running;
+        }
+
+
+        _providerValues() {
+            return this._collector?.providers.values() ?? [];
+        }
+
+
         _currentProvider() {
             const freshAfter = nowSeconds() - STALE_AFTER_SECONDS;
             let best = null;
-            for (const value of this._providers.values()) {
+            for (const value of this._providerValues()) {
                 if ((value.updated_monotonic ?? 0) < freshAfter)
                     continue;
                 if (!best || parseTokens(value) > parseTokens(best))
@@ -685,7 +367,7 @@ export const AiAgentUsageGraph = GObject.registerClass(
             const freshAfter = nowSeconds() - STALE_AFTER_SECONDS;
             let best = null;
             let bestTokens = 0;
-            for (const value of this._providers.values()) {
+            for (const value of this._providerValues()) {
                 if ((value.updated_monotonic ?? 0) < freshAfter)
                     continue;
                 const tokens = this._tokensForSampling(value);
@@ -785,6 +467,8 @@ export const AiAgentUsageGraph = GObject.registerClass(
         }
 
         _tooltipMarkup() {
+            if (!this._collecting())
+                return COLLECTOR_OFF_TEXT;
             const provider = this._currentProvider();
             if (!provider)
                 return 'AI tokens: none';
@@ -843,6 +527,21 @@ export const AiAgentUsageGraph = GObject.registerClass(
 
             context.setLineWidth(1);
             const foreground = [color.red / 255, color.green / 255, color.blue / 255];
+
+            // Nothing is collecting: a dim stroke through the graph body, the
+            // same "switched off" mark the status dot uses. An empty graph would
+            // otherwise be indistinguishable from a quiet hour, which is the
+            // confusion this widget was reported for. The tooltip says what to
+            // do about it.
+            if (!this._collecting()) {
+                context.setSourceRGBA(...foreground, 0.35);
+                context.moveTo(0, height - 1);
+                context.lineTo(width, 0);
+                context.stroke();
+                context.restore();
+                context.$dispose();
+                return;
+            }
             // Token graph: one column per sample, coloured by the provider that
             // won that sample (falls back to the theme foreground).
             for (let x = 0; x < HISTORY_WIDTH; x++) {
@@ -929,9 +628,11 @@ export const AiAgentUsageGraph = GObject.registerClass(
                 this._tooltip.destroy();
                 this._tooltip = null;
             }
-            this._stopCodexHelper();
-            this._stopGeminiHelper();
-            this._stopClaudeHttpHook();
+            if (this._collectorToken !== null) {
+                this._collector?.removeListener(this._collectorToken);
+                this._collectorToken = null;
+            }
+            this._collector = null;
             super.destroy();
         }
     }

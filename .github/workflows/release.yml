@@ -72,6 +72,11 @@ jobs:
       - name: Pack extension zip
         run: npm run pack
 
+      # Before anything is committed, tagged or uploaded: a zip Shexli flags
+      # would reach the EGO reviewer with the same findings.
+      - name: EGO static review (Shexli)
+        run: .github/scripts/shexli-check.sh dist/*.shell-extension.zip
+
       # Collect the release milestone's closed issues into dist/release-notes.md
       # and regenerate CHANGELOG.md + docs/process/releases.json. Uses the job token to
       # read issues; degrades to auto-only notes when no milestone matches.

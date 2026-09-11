@@ -46,6 +46,8 @@ import {
     pauseFraction,
     pauseRemainingSeconds,
     pauseReminders,
+    overtimeSeconds,
+    postponeDayEnd,
     postponeReminder,
     restoreElapsed,
     resumeReminders,
@@ -90,7 +92,7 @@ const ACTIVE_BAR_ALPHA = 0.95;
 
 export const BreakTimerGraph = GObject.registerClass(
     class BreakTimerGraph extends St.DrawingArea {
-        constructor(options = {}) {
+        constructor(options = {}, parent = null) {
             const width = Math.max(1, Math.round(toNumber(options.width, WIDTH)));
             super({
                 style_class: 'break-timer-graph',
@@ -100,6 +102,7 @@ export const BreakTimerGraph = GObject.registerClass(
                 track_hover: true,
             });
 
+            this._parent = parent;
             this._width = width;
             // Base (unrotated) size; the actor size is swapped when the panel is
             // vertical (see setPanelLayout / the rotated branch in _draw).
@@ -257,6 +260,8 @@ export const BreakTimerGraph = GObject.registerClass(
                     {
                         onPostpone: () => this._postpone(),
                         onSkip: () => this._skip(),
+                        onDayEndPostpone: seconds => this._postponeDayEnd(seconds),
+                        onOpenPreferences: () => this._openPreferences(),
                     },
                     this._messageAnchor
                 );
@@ -274,6 +279,41 @@ export const BreakTimerGraph = GObject.registerClass(
             this._syncReminder();
         }
 
+        // The end of the working day, put off until `seconds` from now. Only
+        // tonight moves: the configured end of day is a setting, and a window
+        // that rewrote it every evening would walk it into the night.
+        _postponeDayEnd(seconds) {
+            this._state = postponeDayEnd(this._state, nowSeconds() + seconds);
+            this._syncReminder();
+        }
+
+        _openPreferences() {
+            try {
+                this._parent?.openPreferences?.();
+            } catch (error) {
+                logError(error, 'break-timer: could not open the preferences window');
+            }
+        }
+
+        // What the end-of-day window shows besides its sentence. Only this
+        // object knows the timers and the clock, so it works the numbers out
+        // and the UI just renders them.
+        _dayEndDetails() {
+            const daily = this._timers.find(entry => entry.name === 'daily');
+            const startedAt = this._state.dayStartedAt ?? 0;
+            let startedLabel = '';
+            if (startedAt > 0) {
+                const started = GLib.DateTime.new_from_unix_local(startedAt);
+                startedLabel = started ? started.format('%H:%M') : '';
+            }
+            return {
+                workedSeconds: this._state.elapsed.daily ?? 0,
+                overtimeSeconds: overtimeSeconds(this._state, this._timers),
+                limitSeconds: daily ? limitSeconds(daily) : 0,
+                startedLabel,
+            };
+        }
+
         _syncReminder() {
             const reminder = this._state.reminder;
             if (!reminder) {
@@ -281,7 +321,10 @@ export const BreakTimerGraph = GObject.registerClass(
                 return;
             }
             const timer = this._timers.find(entry => entry.name === reminder.timer);
-            this._ensureReminderUi().sync(reminder, timer);
+            const details = reminder.reason === 'day-end'
+                ? this._dayEndDetails()
+                : null;
+            this._ensureReminderUi().sync(reminder, timer, details);
         }
 
         // Would a break *screen* right now do harm? A locked session or a

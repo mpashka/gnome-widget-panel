@@ -7,14 +7,11 @@
 // the `widgets` GSettings key; the running panel live-reloads on change.
 
 import Adw from 'gi://Adw';
-import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
-import * as ClaudeHook from '../ai-agent-usage/claudeHook.js';
 import {colorButton} from '../../prefsColor.js';
 import {addTemplateEditor} from '../../prefsTemplate.js';
 
-const DEFAULT_PORT = 17871;
 // Keep in sync with aiAgentStatus.ts DEFAULT_TOOLTIP_TEMPLATE / DEFAULT_COLORS.
 const DEFAULT_TOOLTIP_TEMPLATE = '{counts}\n{sessions}';
 const DEFAULT_COLORS = {
@@ -31,28 +28,6 @@ const SAMPLE_FRAGMENTS = {
         + '<span foreground="#4ca6ff">●</span> panel-widget  thinking     3:07\n'
         + '<span foreground="#4ca6ff">●</span> experiments   thinking    12:55</tt>',
 };
-
-function statusImage() {
-    return new Gtk.Image({valign: Gtk.Align.CENTER});
-}
-
-function setStatus(image, state) {
-    for (const css of ['success', 'error', 'dim-label'])
-        image.remove_css_class(css);
-    if (state === 'ok') {
-        image.icon_name = 'emblem-ok-symbolic';
-        image.add_css_class('success');
-        image.tooltip_text = 'Configured';
-    } else if (state === 'unconfigured') {
-        image.icon_name = 'dialog-warning-symbolic';
-        image.add_css_class('error');
-        image.tooltip_text = 'Not configured — press Configure';
-    } else {
-        image.icon_name = 'action-unavailable-symbolic';
-        image.add_css_class('dim-label');
-        image.tooltip_text = 'Not found on this system';
-    }
-}
 
 function spinRow(group, current, key, config, commit) {
     const row = new Adw.SpinRow({
@@ -85,59 +60,23 @@ export function fillWidgetPreferences(context) {
     });
     window.add(page);
 
-    // --- Providers ----------------------------------------------------------
-    const providers = new Adw.PreferencesGroup({
-        title: 'Providers',
-        description: 'The widget listens for Claude Code lifecycle hooks. The '
-            + 'status dot is green when the hooks are configured, red when not, '
-            + 'grey when Claude Code is not found on this system.',
-    });
-    page.add(providers);
-
-    const claudeRow = new Adw.ActionRow({
-        title: 'Claude Code hooks',
-        subtitle: 'UserPromptSubmit / Stop / Notification / SessionEnd events',
-    });
-    const claudeStatus = statusImage();
-    claudeRow.add_prefix(claudeStatus);
-    const configure = new Gtk.Button({
-        label: 'Configure',
-        valign: Gtk.Align.CENTER,
-    });
-    const refreshClaude = async () => setStatus(claudeStatus, await ClaudeHook.eventHooksStatus());
-    configure.connect('clicked', async () => {
-        try {
-            if (!current.secret)
-                current.secret = GLib.uuid_string_random();
-            const port = Number(current.port) || DEFAULT_PORT;
-            // Install the port-independent event hooks and register this
-            // endpoint so they reach a widget that has not reloaded yet.
-            await ClaudeHook.installEventHooks();
-            await ClaudeHook.registerPort(port, current.secret);
-            commit();
-        } catch (error) {
-            logError(error, 'Cannot configure Claude Code event hooks');
-        }
-        refreshClaude();
-    });
-    configure.sensitive = ClaudeHook.isClaudeInstalled();
-    claudeRow.add_suffix(configure);
-    refreshClaude();
-    providers.add(claudeRow);
-
     // --- Sessions -----------------------------------------------------------
-    const sessions = new Adw.PreferencesGroup({title: 'Sessions'});
+    // What counts as an open session. Where the events come from — Claude's
+    // hooks, the port they arrive on, which agents are watched at all — belongs
+    // to the collector (Settings → AI collector), which keeps running when this
+    // widget is removed. See ../../aiCollector.ts.
+    const sessions = new Adw.PreferencesGroup({
+        title: 'Sessions',
+        description: 'Session activity is collected by the panel\u2019s AI collector; '
+            + 'this is how long a quiet session still counts as open here.',
+    });
     page.add(sessions);
-    spinRow(sessions, current, 'port', {
-        title: 'Hook port',
-        subtitle: 'Localhost port for the Claude event endpoint',
-        lower: 1024, upper: 65535, page: 100, value: DEFAULT_PORT,
-    }, commit);
     spinRow(sessions, current, 'expireMinutes', {
         title: 'Expire after',
         subtitle: 'Minutes without any events before a session is dropped',
         lower: 5, upper: 1440, page: 30, value: 180,
     }, commit);
+
     // --- Appearance ---------------------------------------------------------
     const appearance = new Adw.PreferencesGroup({
         title: 'Appearance',

@@ -56,6 +56,10 @@ that in [`registry.ts`](registry.ts) with `hasPreferences: true`.
 - [`break-timer`](break-timer/index.md) — Workrave-style micro/rest/daily
   activity-based rest-reminder progress bars, with a focus-free warning and a
   dimmed break screen when one comes due (not in the default config).
+- [`version-status`](version-status/index.md) — developer widget: warns while
+  GNOME Shell still runs the build it loaded at login instead of the one just
+  installed, and is off screen entirely while the two agree (`devOnly`, so it is
+  listed apart in "Add a widget" and never in the default config).
 
 Further per-widget settings work is tracked in
 [`../../docs/roadmap/backlog.md`](../../docs/roadmap/backlog.md).

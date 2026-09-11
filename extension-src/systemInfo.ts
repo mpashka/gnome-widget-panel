@@ -15,6 +15,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {formatBuildId, parseBuildStamp} from './buildStamp.js';
 import {formatVersionLabel} from './version.js';
 
 // Async file reads keep the (best-effort) system-report and metadata reads off
@@ -114,16 +115,20 @@ function parseKeyValue(body, key) {
     return '';
 }
 
+// Directory of the extension tree this module was loaded from. Both the
+// metadata and the build stamp sit next to it, in a real install and in the
+// symlinked dev tree alike, so nothing has to plumb a path in.
+function treeDir() {
+    return GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
+}
+
 // The bundled metadata.json, read best-effort. In the generated install tree
 // this module sits next to metadata.json. Returns the parsed object or null;
 // never throws.
 async function readMetadata() {
     try {
-        const dir = GLib.path_get_dirname(
-            GLib.filename_from_uri(import.meta.url)[0]
-        );
         const body = await readTextFile(
-            GLib.build_filenamev([dir, 'metadata.json'])
+            GLib.build_filenamev([treeDir(), 'metadata.json'])
         );
         if (body)
             return JSON.parse(body);
@@ -131,6 +136,18 @@ async function readMetadata() {
         // fall through
     }
     return null;
+}
+
+// @tag:build-stamp
+// The `build-stamp.json` written by `./gwp build` into the tree, or null when
+// there is none — an install from extensions.gnome.org ships without one (the
+// release zip excludes it), and so does a tree built before stamps existed.
+// Best-effort and async; never throws. See ./buildStamp.ts.
+export async function readBuildStamp() {
+    const body = await readTextFile(
+        GLib.build_filenamev([treeDir(), 'build-stamp.json'])
+    );
+    return body ? parseBuildStamp(body) : null;
 }
 
 // Human-readable extension version (`version-name`, an `A.B.C` semver string),
@@ -148,10 +165,20 @@ export async function versionName(): Promise<string> {
     return 'unknown';
 }
 
-// Version plus the release-channel badge, e.g. `0.1.0 (alpha)`. Shown in the
-// control-button menu header and reported in bug reports.
+// Version plus the release-channel badge, e.g. `0.1.0 (alpha)`. The published
+// identity of a release, shown in the preferences About group.
 export async function versionDisplay(): Promise<string> {
     return formatVersionLabel(await versionName());
+}
+
+// @tag:build-stamp
+// Which build this is, as one token: `6308c4b`, or `6308c4b-dirty` when the tree
+// it was built from had uncommitted changes. Empty string when the tree carries
+// no stamp, so a caller can leave the line out entirely. Between two releases
+// the version is the same string for every build, so this is the only part of
+// the identity that answers "is this the change I just made?".
+export async function buildIdDisplay(): Promise<string> {
+    return formatBuildId(await readBuildStamp());
 }
 
 // The GitHub Release page for the *currently running* version, e.g.
@@ -190,6 +217,11 @@ export async function collectSystemInfo(): Promise<string> {
     const lines = [];
 
     lines.push(`Extension version: ${await versionDisplay()}`);
+    // Only from a locally built tree: a store install has no stamp, and there
+    // the version is the whole identity.
+    const buildId = await buildIdDisplay();
+    if (buildId)
+        lines.push(`Build: ${buildId}`);
     lines.push(`GNOME Shell version: ${await gnomeShellVersion()}`);
 
     const osRelease = await readTextFile('/etc/os-release');

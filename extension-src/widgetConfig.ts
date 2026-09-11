@@ -54,6 +54,35 @@ export function parseWidgetConfig(raw: string): WidgetConfig {
     return {schema: WIDGET_CONFIG_SCHEMA, plugins};
 }
 
+// Sort object keys, recursively, so two values that differ only in the order
+// their keys were written produce the same JSON text.
+function canonicalize(value: unknown): unknown {
+    if (Array.isArray(value))
+        return value.map(canonicalize);
+    if (value && typeof value === 'object') {
+        const source = value as Record<string, unknown>;
+        const sorted: Record<string, unknown> = {};
+        for (const key of Object.keys(source).sort())
+            sorted[key] = canonicalize(source[key]);
+        return sorted;
+    }
+    return value;
+}
+
+/**
+ * Signature of one configured widget instance: two entries produce the same
+ * string exactly when they would produce the same widget. The panel uses it to
+ * reuse the actors a configuration change did not touch, instead of rebuilding
+ * every widget whenever one of them is edited.
+ *
+ * Key order is normalized on purpose: the preferences window rewrites the whole
+ * `widgets` document on every edit, and a widget whose options came back with
+ * their keys in another order has not changed.
+ */
+export function widgetInstanceKey(item: PluginConfig): string {
+    return JSON.stringify([item.id, canonicalize(item.options ?? {})]);
+}
+
 /** Serialize a configuration to its on-disk JSON representation (trailing LF). */
 export function serializeWidgetConfig(config: WidgetConfig): string {
     return `${JSON.stringify(config, null, 2)}\n`;

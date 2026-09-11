@@ -71,7 +71,7 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
     {
         id: 'gnome-menu',
         label: 'Applications menu',
-        description: 'Button that opens the GNOME application grid.',
+        description: 'Two-column categorised applications menu with search.',
         hasPreferences: true,
         loadPreferences: () =>
             import('./gnome-menu/prefs.js') as Promise<PluginPreferencesModule>,
@@ -147,6 +147,15 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
         hasPreferences: true,
         loadPreferences: () =>
             import('./break-timer/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
+        id: 'version-status',
+        label: 'Version status',
+        description:
+            'Developer: whether GNOME Shell runs the installed build, or a '
+            + 'logout/login is still pending.',
+        hasPreferences: false,
+        devOnly: true,
     },
 ];
 

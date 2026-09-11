@@ -12,8 +12,9 @@ Two test layers:
 ## Running
 
 ```bash
-npm test          # unit: `npm run build` first, then `node --test tests/*.test.mjs`
-npm run test:ui   # UI regression suite (needs a GNOME 50 host; ~2-3 min)
+npm test           # unit: `npm run build` first, then `node --test tests/*.test.mjs`
+npm run test:ui    # UI regression suite (needs a GNOME 50 host; ~2-3 min)
+npm run test:prefs # every widget's settings page opens and survives clicking
 ```
 
 Tests import the compiled output from `../extension/` (a build artifact), so the
@@ -24,9 +25,12 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `tooltipTemplate.test.mjs` — `renderTemplate` from
   [`../extension-src/tooltipTemplate.ts`](../extension-src/tooltipTemplate.ts):
   token substitution, literal Pango-escaping, `\n` handling, unknown/empty tokens.
-- `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig` from
+- `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig`/
+  `widgetInstanceKey` from
   [`../extension-src/widgetConfig.ts`](../extension-src/widgetConfig.ts): schema
-  validation, `enabled`/`options` normalization, error cases, round-trip.
+  validation, `enabled`/`options` normalization, error cases, round-trip, and the
+  instance signature the panel reuses widget actors by (option order is
+  spelling, array order is meaning).
 - `colorUtils.test.mjs` — `hexToRgb`/`toNumber`/`nowSeconds` from
   [`../extension-src/colorUtils.ts`](../extension-src/colorUtils.ts): valid and
   invalid hex colours, numeric coercion/fallback, integer timestamp.
@@ -34,12 +38,29 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   [`../extension-src/version.ts`](../extension-src/version.ts): channel badge
   formatting, stable (empty-channel) case, default channel, empty-version
   fallback (`@tag:versioning`).
+- `buildStamp.test.mjs` — `parseBuildStamp`/`formatBuildId` from
+  [`../extension-src/buildStamp.ts`](../extension-src/buildStamp.ts): validating
+  the untrusted stamp file, stamps from older builds and from outside a
+  checkout, and the `commit[-dirty]` identity the handle menu shows
+  (`@tag:build-stamp`).
+- `versionState.test.mjs` — `evaluateVersionState` from
+  [`../extension-src/plugins/version-status/versionState.ts`](../extension-src/plugins/version-status/versionState.ts):
+  the three verdicts (running the installed build, relogin pending, no stamp),
+  whether each one is on screen, and the tooltip each one carries
+  (`@tag:widget-version-status`).
 - `claudeStatusLine.test.mjs` — `normalizeClaudeStatusLine`/`claudePromptRequest`
   from
   [`../extension-src/plugins/ai-agent-usage/claudeStatusLine.ts`](../extension-src/plugins/ai-agent-usage/claudeStatusLine.ts):
   token/context/rate-limit mapping (including the null-`current_usage` and
   missing-`rate_limits` cases) and `UserPromptSubmit` → request-marker
   extraction (`@tag:widget-ai-agent-usage`, issue #6).
+- `statusLineText.test.mjs` — `formatClaudeStatusLine` from
+  [`../extension-src/plugins/ai-agent-usage/statusLineText.ts`](../extension-src/plugins/ai-agent-usage/statusLineText.ts):
+  the Codex-shaped line (model, `~`-abbreviated directory, context, both
+  windows), rate limits shown as remaining, omitted rather than zeroed segments,
+  the delivery lamp, and that `FORMAT_STATUS_LINE_FN` — the source embedded into
+  the generated hook — still runs with no module scope around it
+  (`@tag:widget-ai-agent-usage`).
 - `clockMarkup.test.mjs` — `hasMarkup`/`stripMarkup` from
   [`../extension-src/plugins/clock/clockMarkup.ts`](../extension-src/plugins/clock/clockMarkup.ts):
   which formatted times count as markup (a literal `&` or `<` does not), which
@@ -90,6 +111,11 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   executable and desktop id), every query word having to match in any order, the
   ranking (shown name over keyword, prefix over substring, alphabetical ties) and
   the result cap (`@tag:widget-gnome-menu`).
+- `hookScriptText.test.mjs` — `hookScriptText`/`eventHookScriptText` from
+  [`../extension-src/plugins/ai-agent-usage/hookScriptText.ts`](../extension-src/plugins/ai-agent-usage/hookScriptText.ts):
+  both hooks ask for gjs module mode, owning the slot renders the whole line, the
+  segment shape prints the lamp and nothing else, both shapes still deliver the
+  payload, and the event hook stays mute.
 - `hookStdin.test.mjs` — `READ_STDIN_FN` from
   [`../extension-src/plugins/ai-agent-usage/hookStdin.ts`](../extension-src/plugins/ai-agent-usage/hookStdin.ts):
   the generated Claude hook reads fd 0 as a Unix stream (Claude passes hook input
@@ -99,6 +125,9 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 
 - [`ui/`](ui/index.md) — headless GNOME Shell UI test harness, regression tests
   (`t-*.sh`) and the feature-debug stub.
+- [`prefs/`](prefs/index.md) — the preferences process: builds and clicks
+  through every widget's settings page, catching the `undefined`-in-initializer
+  class that makes a settings button silently do nothing.
 
 ## Adding tests
 

@@ -68,8 +68,7 @@ instead of green. Verify credentials and the endpoint without queueing a
 submission:
 
 ```bash
-. ~/.profile
-python3 .github/scripts/ego-upload.py --dry-run dist/*.shell-extension.zip
+cfg secret run ego -- python3 .github/scripts/ego-upload.py --dry-run dist/*.shell-extension.zip
 ```
 
 To upload by hand — the GitHub Release stays the reliable artifact:
@@ -78,7 +77,10 @@ To upload by hand — the GitHub Release stays the reliable artifact:
    GitHub Release (or rebuild it with `npm run pack` — the same bytes).
 2. `python3 .github/scripts/ego-upload.py dist/*.shell-extension.zip`, or use the
    form at <https://extensions.gnome.org/upload/> in a browser.
-3. EGO requires the integer `version` in `metadata.json` to strictly increase,
+3. Run `npm run check:ego` first: it runs Shexli — the checker whose findings
+   the reviewer sees — over the same zip and fails on any finding (see
+   [`release.md`](release.md#shexli-before-ego-does)).
+4. EGO requires the integer `version` in `metadata.json` to strictly increase,
    and reviewers read the **generated** `extension/*.js` — see
    [`release.md`](release.md) and the "Code formatting" section of
    [`../../AGENTS.md`](../../AGENTS.md).
@@ -102,14 +104,49 @@ the pages the public gets a 404 for:
   every file:line it hit.
 
 ```bash
-. ~/.profile                       # EGO_LOGIN / EGO_PASSWORD live there
-tools/ego-status.py                                  # human-readable
-tools/ego-status.py --state ~/.cache/gwp-ego.json    # exit 20 when anything changed
-tools/ego-status.py --dump-html /tmp/ego             # keep the HTML when parsing fails
+cfg secret run ego -- tools/ego-status.py                # human-readable
+cfg secret run ego -- tools/ego-status.py --comparable   # the snapshot a watcher stores
+cfg secret run ego -- tools/ego-status.py --state ~/.cache/gwp-ego.json
+cfg secret run ego -- tools/ego-status.py --dump-html /tmp/ego   # keep the HTML on a parse failure
 ```
+
+### Where the credentials come from
+
+The script only ever reads `EGO_USERNAME`/`EGO_LOGIN` and `EGO_PASSWORD` from the
+environment, which keeps this repository free of any credential handling — CI
+supplies them as GitHub secrets. **Locally they are not exported anywhere**: they
+live encrypted in the maintainer's private secret store, and `cfg secret run ego`
+(the household CLI in `~/Projects/home/home-infra`) reads them at call time and
+hands them to the child process, so no shell profile or file on disk holds the
+password. Without that wrapper the script simply reports the author pages as
+unavailable and falls back to the credential-free "is it published yet?" probe.
 
 `--state` is what a watcher polls: it stores the comparable part of the result
 and exits **20** the moment a status, a comment or a Shexli finding changes.
+`--comparable` prints that same part instead of keeping a file, for a watcher that
+stores the snapshot itself. It refuses to print a half-result: when the author
+pages cannot be read (login failed, EGO down) it exits **2** with an empty stdout,
+so a broken run is never mistaken for "the reviewer withdrew every comment".
+Shexli findings are compared by rule code and hit count, not by `file:line` —
+line numbers move with every rebuild and would otherwise flag a change on every
+upload.
+
+### The review state is watched for us
+
+Waiting for a verdict is not work, so it is not a session's job: the card
+`ego-review-monitoring` in the maintainer's local task dispatcher
+(`~/Projects/home/ai_dispatcher`, "Iron Uvarov") carries a `script` watch that
+runs `tools/ego-status.py --comparable` every few hours and messages Slack the
+moment a status, a reviewer comment or a Shexli finding moves. It goes through
+`cfg secret run` for the same reason as above — the systemd service holds no
+password. Set up with:
+
+```bash
+ai_dispatcher watch add ego-review-monitoring script \
+    --command "cfg secret run ego -- tools/ego-status.py --comparable" --every 4h \
+    --reason "вердикт ревьюера EGO по загруженной версии"
+ai_dispatcher watch list          # what it remembers about the review right now
+```
 
 The page markup is unversioned and changes without notice, so an unparsed page is
 reported as an error, never as "nothing to see"; re-fix the selectors from
