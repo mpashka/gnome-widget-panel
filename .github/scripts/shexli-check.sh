@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# @tag:versioning
 # Run Shexli — the static checker extensions.gnome.org runs on every upload and
 # shows the reviewer next to the code — over a packed extension zip, and fail on
 # any finding. A finding caught here costs a rebuild; the same finding caught on
