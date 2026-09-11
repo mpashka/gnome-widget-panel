@@ -8,13 +8,19 @@ Which plugin version to install for your GNOME Shell version:
 
 | GNOME Shell | Min plugin version | Latest plugin version |
 | --- | --- | --- |
-| 46 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.3](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.3) |
-| 47 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.3](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.3) |
-| 48 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.3](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.3) |
-| 49 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.3](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.3) |
-| 50 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.3](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.3) |
+| 46 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.4](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4) |
+| 47 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.4](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4) |
+| 48 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.4](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4) |
+| 49 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.4](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4) |
+| 50 | [0.1.0](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.1.0) | [0.2.4](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4) |
 
 ## Releases
+
+### [v0.2.4](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4) — 2026-09-11
+
+Supported GNOME Shell: 46–50.
+
+[Release notes →](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.4)
 
 ### [v0.2.3](https://github.com/mpashka/gnome-widget-panel/releases/tag/v0.2.3) — 2026-09-03
 
