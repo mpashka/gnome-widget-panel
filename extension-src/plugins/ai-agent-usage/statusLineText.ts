@@ -99,7 +99,7 @@ export function formatClaudeStatusLine(
         parts.push(`7d ${sevenDay}%`);
 
     if (context.lamp)
-        parts.push('🔴');
+        parts.push('🚨');
     return parts.join(' · ');
 }
 

@@ -40,7 +40,7 @@ test('as a segment it prints the lamp and nothing else', () => {
     const text = hookScriptText(PATHS, {segment: true});
     assert.doesNotMatch(text, /formatClaudeStatusLine/);
     assert.doesNotMatch(text, /readCaption/);
-    assert.match(text, /if \(expected && !delivered\)\n {4}print\('🔴'\);/);
+    assert.match(text, /if \(expected && !delivered\)\n {4}print\('🚨'\);/);
     assert.equal(text.match(/\bprint\(/g).length, 1);
 });
 

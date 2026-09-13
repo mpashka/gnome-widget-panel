@@ -85,9 +85,9 @@ test('the model falls back to its id, and effort is optional', () => {
 test('the lamp is appended last, and only when asked', () => {
     assert.equal(
         formatClaudeStatusLine({model: {display_name: 'Opus 5'}}, {lamp: true}),
-        'Opus 5 · 🔴'
+        'Opus 5 · 🚨'
     );
-    assert.equal(formatClaudeStatusLine({}, {lamp: true}), '🔴');
+    assert.equal(formatClaudeStatusLine({}, {lamp: true}), '🚨');
     assert.equal(formatClaudeStatusLine({}, {lamp: false}), '');
 });
 

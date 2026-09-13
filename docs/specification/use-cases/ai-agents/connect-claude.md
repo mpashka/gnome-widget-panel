@@ -27,11 +27,13 @@ telling you which file to edit would be one more step *and* a research task.
   no setup: it writes session files the panel reads directly.
 - **It worked, then stopped.** Press **Configure** again — that repairs the hook
   — or restart GNOME Shell, which also repairs it.
-- **A red lamp appeared at the end of my Claude status line.** The widget is
-  switched on, the hook has data for it, and nothing accepted it: the widget
-  crashed, its port is taken, or GNOME Shell restarted without it. Press
-  **Configure**, or restart GNOME Shell. Switching the widget off clears the lamp
-  too — with no widget enabled the hook neither sends nor reports.
+- **A 🚨 appeared at the end of my Claude status line.** AI collection is
+  switched on, the hook has data for it, and nothing accepted it: the screen was
+  locked (GNOME Shell disables extensions while locked, so the collector is not
+  listening), the extension crashed, or GNOME Shell restarted without it. After
+  an unlock it clears on the session's next status-line redraw; otherwise press
+  **Configure**, or restart GNOME Shell. Switching AI collection off clears it
+  too — with collection off the hook neither sends nor reports.
 - **Two widgets, one hook each.** The usage graph and the status dot each have
   their own **Configure** button for their own hook; connecting one does not
   connect the other.
