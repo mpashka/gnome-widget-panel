@@ -28,11 +28,10 @@ telling you which file to edit would be one more step *and* a research task.
 - **It worked, then stopped.** Press **Configure** again — that repairs the hook
   — or restart GNOME Shell, which also repairs it.
 - **A 🚨 appeared at the end of my Claude status line.** AI collection is
-  switched on, the hook has data for it, and nothing accepted it: the screen was
-  locked (GNOME Shell disables extensions while locked, so the collector is not
-  listening), the extension crashed, or GNOME Shell restarted without it. After
-  an unlock it clears on the session's next status-line redraw; otherwise press
-  **Configure**, or restart GNOME Shell. Switching AI collection off clears it
+  switched on, the hook has data for it, and nothing accepted it: the extension
+  was disabled or crashed, or GNOME Shell restarted without it. A screen lock is
+  not a cause — collection keeps running behind it. Press **Configure**, or
+  restart GNOME Shell. Switching AI collection off clears it
   too — with collection off the hook neither sends nor reports.
 - **Two widgets, one hook each.** The usage graph and the status dot each have
   their own **Configure** button for their own hook; connecting one does not

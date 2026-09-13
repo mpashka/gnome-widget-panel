@@ -41,8 +41,8 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   first pointer movement, not after the `LONGPRESS_MS` timer, so raising that
   threshold for right-click does not make the widget feel "glued" (issue #3
   follow-up, `controlButton.ts` MOTION handler).
-- `t-13-disable-enable-no-crash.sh` — disabling and re-enabling the extension (the
-  path the shell drives around screen lock/unlock) does not throw; the panel
+- `t-13-disable-enable-no-crash.sh` — disabling and re-enabling the extension
+  (the panel teardown a screen lock also drives) does not throw; the panel
   returns and no `super.destroy` / JS error is logged (issue #7 regression).
 - `t-14-agent-status-merge.sh` — ai-agent-status collapses several sessions into
   one dot showing the most-urgent state (priority `waiting > idle > thinking`),
@@ -133,6 +133,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   the `ai-collector` setting stops and starts it live, and both AI widgets say
   the collector is off rather than drawing the empty picture a quiet hour draws
   (`@tag:ai-collector`).
+- `t-27-lock-keeps-collector.sh` — across a screen lock (`unlock-dialog` session
+  mode) the extension stays enabled, the panel is gone from the lock screen, the
+  collector keeps listening, and on unlock the rebuilt panel views the same
+  collector (`@tag:ai-collector`). The test driver declares `unlock-dialog` too,
+  or its `Eval` would vanish with the lock.
 
 ## Directories
 

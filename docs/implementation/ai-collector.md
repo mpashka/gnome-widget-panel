@@ -60,10 +60,21 @@ to recreate than to diff.
 
 ## Lifecycle
 
-`extension.ts` builds the collector **before** the widgets — they read it in
-`create()` through the host contract's `parent.aiCollector` — and destroys it
-**after** them, since they hold listeners on it. `destroy()` releases the socket,
-deregisters the Claude endpoint and kills the helper processes.
+The extension entry point (`FloatingMiniPanelExtension` in `extension.ts`) builds
+the collector in `enable()`, **before** the panel and its widgets — they read it in
+`create()` through the host contract's `parent.aiCollector` — and destroys it in
+`disable()`, **after** them, since they hold listeners on it. `destroy()` releases
+the socket, deregisters the Claude endpoint and kills the helper processes.
+
+**The collector outlives a screen lock; the panel does not.** The extension
+declares `session-modes: ["user", "unlock-dialog"]`, so the Shell no longer
+disables it on lock. It watches `Main.sessionMode` instead: while
+`isLocked`, the panel is destroyed — nothing of it exists on the lock screen —
+and on unlock a new panel is built around the **same** collector. Before this,
+every lock stopped collection and deregistered the endpoint, so agents working
+behind the lock had their data dropped and every Claude status line redrawn
+meanwhile showed the delivery lamp. Pinned by
+[`t-27-lock-keeps-collector.sh`](../../tests/ui/t-27-lock-keeps-collector.sh).
 
 A widget subscribes with `addListener()` and re-renders when told; it never polls
 the collector for change. Stopping collection deliberately **keeps** the data:
@@ -102,6 +113,9 @@ a specific setting and two copies would drift.
   what it collected meanwhile is there when a widget comes back.
 - [`../../tests/ui/t-14-agent-status-merge.sh`](../../tests/ui/t-14-agent-status-merge.sh)
   — the session state machine, driven through the collector.
+- [`../../tests/ui/t-27-lock-keeps-collector.sh`](../../tests/ui/t-27-lock-keeps-collector.sh)
+  — it keeps listening across a screen lock while the panel is gone from the lock
+  screen.
 
 ## Related
 

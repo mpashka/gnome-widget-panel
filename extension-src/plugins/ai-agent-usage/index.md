@@ -246,9 +246,10 @@ Delivery to the panel is gated and checked. The hook reads the panel's
 `org.gnome.shell.extensions.floating-mini-panel`, loaded from the installed
 extension's `schemas/` directory — it is not in the system schema source); it
 POSTs only while collection is on, counts any **2xx** as delivered, and appends
-` · 🚨` when collection is on but nothing accepted the payload — a locked screen (the
-Shell disables extensions while locked, which stops the collector), a crashed
-shell, a dead port, a stale registry entry. With collection off there is no POST and no
+` · 🚨` when collection is on but nothing accepted the payload — a disabled extension, a
+crashed shell, a dead port, a stale registry entry. A screen lock is not one of
+them: the collector keeps listening behind it
+([`ai-collector.md`](../../../docs/implementation/ai-collector.md#lifecycle)). With collection off there is no POST and no
 lamp. It used to ask whether an AI *widget* was configured, which was the wrong
 question: it conflated "show me this" with "watch this".
 

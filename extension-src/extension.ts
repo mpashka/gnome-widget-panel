@@ -79,7 +79,7 @@ const Alignment = {
 
 const FloatingMiniPanel = GObject.registerClass(
     class FloatingMiniPanel extends St.BoxLayout {
-        constructor(sets, extensionPath, extension) {
+        constructor(sets, extensionPath, extension, aiCollector) {
             super({
                 name: 'FloatingMiniPanel',
                 style_class: 'button',
@@ -157,13 +157,11 @@ const FloatingMiniPanel = GObject.registerClass(
             );
 
             // AI activity collector --------------------------------------------
-            // Built before the widgets, because the AI widgets are views of it
-            // and read it in `create()`. It belongs to the panel and not to any
-            // widget on purpose: collection follows the `ai-collector` setting,
-            // so removing or editing an AI widget does not stop it, and a widget
-            // can tell "nothing is happening" from "nobody is collecting".
-            // See aiCollector.ts.
-            this.aiCollector = new AiCollector(extensionPath, this._sets);
+            // Set before the widgets, because the AI widgets are views of it and
+            // read it in `create()`. The extension owns it, not the panel: it
+            // outlives the panel across a screen lock (see
+            // FloatingMiniPanelExtension). See aiCollector.ts.
+            this.aiCollector = aiCollector;
 
             // Control Button --------------------------------------------------
             this._ctlBtn = new ControlButton.ControlButton(this);
@@ -1084,13 +1082,7 @@ const FloatingMiniPanel = GObject.registerClass(
                 actor.destroy();
             this._plugins = [];
 
-            // After the widgets: they hold listeners on it, and the collector's
-            // stop() releases the localhost socket, the Claude endpoint
-            // registration and the helper child processes.
-            if (this.aiCollector) {
-                this.aiCollector.destroy();
-                this.aiCollector = null;
-            }
+            this.aiCollector = null;
 
             // Release the config-change listener and any pending debounced reload.
             if (this._reloadTimeoutId) {
@@ -1214,24 +1206,59 @@ export default class FloatingMiniPanelExtension extends Extension {
     }
 
     enable() {
-        const settings = this.getSettings();
-        this._floatingMiniPanel = new FloatingMiniPanel(
-            settings,
-            this.path,
-            this
+        this._settings = this.getSettings();
+        this._floatingMiniPanel = null;
+        this._aiCollector = new AiCollector(this.path, this._settings);
+        this._sessionModeId = Main.sessionMode.connect('updated', () =>
+            this._syncPanelWithSession()
         );
+        this._syncPanelWithSession();
 
         // One-time async migration of a legacy widgets.json into the `widgets`
         // GSettings key. Best-effort and NOT awaited: when it writes the key the
         // panel's `changed::widgets` handler reloads the widgets. The panel above
         // built from defaults (empty key) meanwhile, which is correct.
-        migrateLegacyConfigIfNeeded(settings).catch(e =>
+        migrateLegacyConfigIfNeeded(this._settings).catch(e =>
             logError(e, 'widget-panel: legacy config migration failed')
         );
     }
 
-    disable() {
-        this._floatingMiniPanel.destroy();
+
+    _syncPanelWithSession() {
+        if (Main.sessionMode.isLocked) {
+            this._destroyPanel();
+        } else if (!this._floatingMiniPanel) {
+            this._floatingMiniPanel = new FloatingMiniPanel(
+                this._settings,
+                this.path,
+                this,
+                this._aiCollector
+            );
+        }
+    }
+
+
+    _destroyPanel() {
+        this._floatingMiniPanel?.destroy();
         this._floatingMiniPanel = null;
+    }
+
+
+    // `session-modes` lists `unlock-dialog` for the AI collector alone: agents
+    // keep working behind a locked screen, and a collector torn down on lock
+    // made every Claude status line redrawn meanwhile report it as broken and
+    // dropped what it had collected. Nothing of the panel exists on the lock
+    // screen — no actor, widget, keybinding or top-bar change: the panel is
+    // destroyed on lock and rebuilt on unlock (_syncPanelWithSession).
+    disable() {
+        Main.sessionMode.disconnect(this._sessionModeId);
+        this._sessionModeId = 0;
+        this._destroyPanel();
+        // After the panel: its widgets hold listeners on the collector, whose
+        // destroy() releases the localhost socket, the Claude endpoint
+        // registration and the helper child processes.
+        this._aiCollector.destroy();
+        this._aiCollector = null;
+        this._settings = null;
     }
 }

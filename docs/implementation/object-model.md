@@ -27,8 +27,12 @@ should be introduced incrementally around stable contracts first.
 
 ### `FloatingMiniPanelExtension`
 
-GNOME Shell extension entrypoint. It owns enable/disable lifecycle and creates a
-single `FloatingMiniPanel` instance.
+GNOME Shell extension entrypoint. It owns enable/disable lifecycle, the
+`AiCollector`, and a single `FloatingMiniPanel` instance that exists only while the
+session is not locked: the extension stays enabled on the lock screen
+(`unlock-dialog` session mode) so the collector keeps running, and the panel is
+destroyed on lock and rebuilt on unlock (see
+[`ai-collector.md`](ai-collector.md#lifecycle)).
 
 ### `FloatingMiniPanel`
 
