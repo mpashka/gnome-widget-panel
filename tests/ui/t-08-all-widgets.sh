@@ -14,6 +14,7 @@ ui_start '{"schema":1,"plugins":[
   {"id":"ai-agent-status","enabled":true},
   {"id":"break-timer","enabled":true},
   {"id":"caffeine","enabled":true},
+  {"id":"screen-keyboard","enabled":true},
   {"id":"launch","enabled":true,"options":{"command":"true"}},
   {"id":"printscreen","enabled":true},
   {"id":"clock","enabled":true},
@@ -21,7 +22,7 @@ ui_start '{"schema":1,"plugins":[
   {"id":"version-status","enabled":true}]}'
 
 count="$(ui_eval 'panel.get_children().filter(c => c._panelPluginId).length')"
-assert_eq "$count" "15" "all 15 configured widgets created"
+assert_eq "$count" "16" "all 16 configured widgets created"
 assert_true 'panel.visible && panel.mapped' "panel alive with every widget"
 
 if grep -q "JS ERROR" "$GWP_UI_TMP/shell.log"; then

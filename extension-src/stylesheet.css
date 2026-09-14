@@ -302,3 +302,50 @@
 .version-status-stale {
   color: #ffb82e;
 }
+
+/* screen-keyboard: the floating keyboard. Keys keep one width, so switching
+   script or case never moves a key from under the pointer. */
+.gwp-screen-keyboard {
+  background-color: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 8px;
+  spacing: 6px;
+  color: #ffffff;
+}
+
+.gwp-screen-keyboard-row {
+  spacing: 6px;
+}
+
+.gwp-screen-keyboard-key {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 17px;
+}
+
+.gwp-screen-keyboard-key:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.gwp-screen-keyboard-key:active,
+.gwp-screen-keyboard-key:checked {
+  background-color: rgba(53, 132, 228, 0.9);
+}
+
+.gwp-screen-keyboard-key-wide {
+  width: 64px;
+  font-size: 14px;
+}
+
+.gwp-screen-keyboard-key-space {
+  width: 338px;
+  font-size: 14px;
+}
+
+.gwp-screen-keyboard-icon {
+  icon-size: 18px;
+}

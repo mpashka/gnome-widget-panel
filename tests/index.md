@@ -31,6 +31,10 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
   validation, `enabled`/`options` normalization, error cases, round-trip, and the
   instance signature the panel reuses widget actors by (option order is
   spelling, array order is meaning).
+- `screenKeyboard.test.mjs` — the Serbian layouts and keyboard placement from
+  [`../extension-src/plugins/screen-keyboard/`](../extension-src/plugins/screen-keyboard/index.md):
+  both alphabets complete, shared key positions, capitals, the `script` option,
+  above/below/side placement clamped to the screen (`@tag:widget-screen-keyboard`).
 - `colorUtils.test.mjs` — `hexToRgb`/`toNumber`/`nowSeconds` from
   [`../extension-src/colorUtils.ts`](../extension-src/colorUtils.ts): valid and
   invalid hex colours, numeric coercion/fallback, integer timestamp.

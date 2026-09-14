@@ -130,6 +130,16 @@ export const PLUGIN_DESCRIPTORS: PluginDescriptor[] = [
             import('./caffeine/prefs.js') as Promise<PluginPreferencesModule>,
     },
     {
+        id: 'screen-keyboard',
+        label: 'Screen keyboard',
+        description:
+            'On-screen keyboard with Serbian Cyrillic and Latin letters, for '
+            + 'typing Serbian without adding an input source.',
+        hasPreferences: true,
+        loadPreferences: () =>
+            import('./screen-keyboard/prefs.js') as Promise<PluginPreferencesModule>,
+    },
+    {
         id: 'app-windows',
         label: 'App windows',
         description:

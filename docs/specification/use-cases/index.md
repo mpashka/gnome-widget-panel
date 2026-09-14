@@ -83,6 +83,7 @@ grep -rn "@tag:widget-break-timer" extension-src docs tests
 | [`launch/`](launch/index.md) | start applications, open folders, reach a window |
 | [`monitor/`](monitor/index.md) | see the machine's state without opening anything |
 | [`ai-agents/`](ai-agents/index.md) | run AI coding agents without babysitting a terminal |
+| [`write/`](write/index.md) | type what the physical keyboard has no keys for |
 | [`wellbeing/`](wellbeing/index.md) | stop working at sane intervals, and be left alone when it matters |
 | [`support/`](support/index.md) | report what is broken, see what changed |
 

@@ -114,6 +114,10 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   GTK window per title argument under a single application id, spawned from
   inside the shell so it reaches the session's compositor; it self-quits after
   two minutes.
+- [`text-entry-client.js`](text-entry-client.js) — test client for `t-28`: a
+  GTK window with a focused entry that writes its text to a file on every
+  change, so a test reads back what reached the application; self-quits after
+  two minutes.
 - [`feature-debug.stub.sh`](feature-debug.stub.sh) — copy-paste boilerplate for
   throwaway feature-debug scripts (`local-*` copies are gitignored).
 - [`png-stats.js`](png-stats.js) — PNG pixel statistics (screenshot smoke +
@@ -138,6 +142,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   collector keeps listening, and on unlock the rebuilt panel views the same
   collector (`@tag:ai-collector`). The test driver declares `unlock-dialog` too,
   or its `Eval` would vanish with the lock.
+- `t-28-screen-keyboard.sh` — the screen keyboard types into a focused GTK
+  entry (started with `text-entry-client.js`) without taking its focus: Cyrillic
+  letters, a one-shot capital, the script switch to Latin on the same keys,
+  Backspace and Enter; the keyboard drags by its gaps and reopens with the same
+  script and place (`@tag:widget-screen-keyboard`).
 
 ## Directories
 

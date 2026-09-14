@@ -246,7 +246,7 @@ the Shell-only plugin modules. The pieces:
   object back into the `widgets` GSettings key. Widgets with settings today:
   `ai-agent-status`, `ai-agent-usage`, `app-windows`, `break-timer`,
   `caffeine`, `clock`, `cpu-load-monitor`, `favorites`, `gnome-action`,
-  `gnome-menu`, `launch` and `printscreen`.
+  `gnome-menu`, `launch`, `printscreen` and `screen-keyboard`.
 
 The widget settings open as an **in-window subpage**, not an
 `Adw.PreferencesDialog`. `_openWidgetPreferences` builds an `Adw.NavigationPage`

@@ -218,6 +218,32 @@ quiet hour shows.
 
 ---
 
+## Typing
+
+### Screen keyboard — `screen-keyboard`  *(optional)*
+- **Icon:** `input-keyboard-symbolic`; the button looks pressed while the
+  keyboard is open.
+- **What it does:** opens a floating on-screen keyboard with the **Serbian
+  Cyrillic and Latin** letters, which types into the application you are writing
+  in — without adding a Serbian input source to GNOME. Your physical keyboard
+  keeps working alongside it, so the keyboard is only for the letters it lacks.
+  Both scripts use the phone layout and put their letters on the same keys
+  (`љ`/`q`, `ш`/`š`, `ч`/`č`, `ђ`/`đ`, `ж`/`ž`).
+- **Interactions:** click the button to open or close it. On the keyboard:
+  **⇧** capitalizes the next letter (or hold the physical Shift while clicking);
+  the bottom-left key switches the script and names the one it switches to
+  (`Lat` / `Ћир`); the space bar names the current one; `⌫`, `↵`, `,` and `.`
+  do what they say; the last key hides it. Drag it by the gaps between the keys;
+  it reopens where you left it, in the script you used last.
+- **Limits:** letters reach Wayland applications (GTK, Qt, browsers) whatever
+  your layout is; an X11 application may not receive the Serbian ones. It has no
+  `Escape`: the keyboard never takes the keyboard focus from your text.
+- **Settings:** icon, label, and the script it shows when first opened
+  (Cyrillic by default).
+- **Full behaviour:** [`screen-keyboard`](../../extension-src/plugins/screen-keyboard/index.md).
+
+---
+
 ## Wellbeing & session
 
 ### Caffeine — `caffeine`  *(optional)*

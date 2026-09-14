@@ -17,6 +17,7 @@ import * as GnomeMenu from './plugins/gnome-menu/index.js';
 import * as KeyboardLayout from './plugins/keyboard-layout/index.js';
 import * as Launch from './plugins/launch/index.js';
 import * as PrintScreen from './plugins/printscreen/index.js';
+import * as ScreenKeyboard from './plugins/screen-keyboard/index.js';
 import * as UbuntuSystemStatus from './plugins/ubuntu-system-status/index.js';
 import * as VersionStatus from './plugins/version-status/index.js';
 
@@ -36,6 +37,7 @@ const REGISTRY = new Map([
     ['printscreen', PrintScreen],
     ['launch', Launch],
     ['caffeine', Caffeine],
+    ['screen-keyboard', ScreenKeyboard],
     ['break-timer', BreakTimer],
     ['app-windows', AppWindows],
     ['version-status', VersionStatus],
