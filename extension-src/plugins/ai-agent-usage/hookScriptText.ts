@@ -54,9 +54,11 @@ function readCaption(sessionId) {
 //
 // The panel is now an optional consumer of the same payload. The hook POSTs to
 // the registered endpoints only while the `ai-collector` setting is on, and
-// appends a red lamp (🚨) to the line when it is on but no endpoint accepted the
-// payload (crashed shell, dead port, stale registry entry). Collection switched
-// off means no POST and no lamp — a feature the user turned off is not a fault.
+// appends a green lamp (⚠) to the line when it is on but no endpoint accepted
+// the payload (crashed shell, dead port, stale registry entry). Green, because
+// red in a status line is for what the user must go and fix, and this is not
+// that. Collection switched off means no POST and no lamp — a feature the user
+// turned off is not a fault.
 //
 // Because the hook file content embeds no port/secret, multiple running widgets
 // no longer overwrite each other's hook — they only add their endpoint to the
@@ -161,7 +163,7 @@ ${segment ? `
 // here", and the dispatcher drops it together with its separator. Collection
 // switched off means no lamp — a feature the user turned off is not a fault.
 if (expected && !delivered)
-    print('🚨');
+    print('\\u001b[32m⚠\\u001b[0m');
 ` : `
 const caption = readCaption(payload?.session_id);
 

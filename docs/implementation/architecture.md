@@ -68,8 +68,10 @@ caption file `~/.claude/statusline/<session_id>.json` (`{place, task}`), written
 by whoever tracks the user's tasks, and falls back to the working directory's own
 name when there is none. It reads the panel's
 `ai-collector` GSettings key to decide whether anything is listening, POSTs the
-payload only then, and appends a red lamp (🚨) to the line when collection is on but
-no endpoint accepted the payload. Collection switched off means no POST and no
+payload only then, and appends a green lamp (⚠) to the line when collection is on but
+no endpoint accepted the payload. Green because red in that line is taken by
+segments reporting something the user has to fix, and a panel that is not
+listening is not one. Collection switched off means no POST and no
 lamp.
 
 The direction of that dependency is the point. The widget used to author the

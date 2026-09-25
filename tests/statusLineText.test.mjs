@@ -82,12 +82,15 @@ test('the model falls back to its id, and effort is optional', () => {
     assert.equal(formatClaudeStatusLine({model: {id: 'claude-opus-5'}}), 'claude-opus-5');
 });
 
-test('the lamp is appended last, and only when asked', () => {
+// Green on purpose: red in a status line is reserved for what the user has to
+// go and fix, and a panel that is merely not listening is not that.
+test('the lamp is appended last, green, and only when asked', () => {
+    const LAMP = '\u001b[32m⚠\u001b[0m';
     assert.equal(
         formatClaudeStatusLine({model: {display_name: 'Opus 5'}}, {lamp: true}),
-        'Opus 5 · 🚨'
+        `Opus 5 · ${LAMP}`
     );
-    assert.equal(formatClaudeStatusLine({}, {lamp: true}), '🚨');
+    assert.equal(formatClaudeStatusLine({}, {lamp: true}), LAMP);
     assert.equal(formatClaudeStatusLine({}, {lamp: false}), '');
 });
 
@@ -96,9 +99,12 @@ test('the embedded source is the same function, callable on its own', () => {
     // it. If the renderer ever grows a module-level dependency, this breaks here
     // instead of silently emptying every status line on the next install.
     const embedded = new Function(`${FORMAT_STATUS_LINE_FN}\nreturn formatClaudeStatusLine;`)();
-    const context = {place: 'ai_dispatcher', task: 'ISS-9639'};
+    const context = {place: 'ai_dispatcher', task: 'ISS-9639', lamp: true};
     assert.equal(
         embedded(FULL_PAYLOAD, context),
         formatClaudeStatusLine(FULL_PAYLOAD, context)
     );
+    // The lamp's ANSI escape travels through `toString()` into a file gjs parses
+    // again, so the embedded source must still spell it, not carry a raw ESC byte.
+    assert.match(FORMAT_STATUS_LINE_FN, /'\\u001b\[32m⚠\\u001b\[0m'/);
 });

@@ -98,8 +98,12 @@ export function formatClaudeStatusLine(
     if (sevenDay !== null)
         parts.push(`7d ${sevenDay}%`);
 
+    // Green, and only the sign. A red ⚠ is already spoken for by segments
+    // reporting something the user has to go and fix; nothing here is broken —
+    // collection is on and the panel is not listening — so the lamp keeps the
+    // shape and changes the colour.
     if (context.lamp)
-        parts.push('🚨');
+        parts.push('\u001b[32m⚠\u001b[0m');
     return parts.join(' · ');
 }
 

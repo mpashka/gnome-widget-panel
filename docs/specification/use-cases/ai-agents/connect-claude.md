@@ -27,10 +27,13 @@ telling you which file to edit would be one more step *and* a research task.
   no setup: it writes session files the panel reads directly.
 - **It worked, then stopped.** Press **Configure** again — that repairs the hook
   — or restart GNOME Shell, which also repairs it.
-- **A 🚨 appeared at the end of my Claude status line.** AI collection is
+- **A green ⚠ appeared at the end of my Claude status line.** AI collection is
   switched on, the hook has data for it, and nothing accepted it: the extension
   was disabled or crashed, or GNOME Shell restarted without it. A screen lock is
-  not a cause — collection keeps running behind it. Press **Configure**, or
+  not a cause — collection keeps running behind it. **Nothing is broken and
+  nothing needs fixing** — that is what the green says; only the panel's numbers
+  are missing while it shows. A red ⚠ in that line belongs to something else and
+  does mean "fix me". To clear the green one: press **Configure**, or
   restart GNOME Shell. Switching AI collection off clears it
   too — with collection off the hook neither sends nor reports.
 - **Two widgets, one hook each.** The usage graph and the status dot each have

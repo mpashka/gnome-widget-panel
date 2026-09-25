@@ -40,7 +40,12 @@ test('as a segment it prints the lamp and nothing else', () => {
     const text = hookScriptText(PATHS, {segment: true});
     assert.doesNotMatch(text, /formatClaudeStatusLine/);
     assert.doesNotMatch(text, /readCaption/);
-    assert.match(text, /if \(expected && !delivered\)\n {4}print\('🚨'\);/);
+    // The escape reaches the generated script as source text, not as a literal
+    // ESC byte: the script is written to a file and parsed again by gjs.
+    assert.match(
+        text,
+        /if \(expected && !delivered\)\n {4}print\('\\u001b\[32m⚠\\u001b\[0m'\);/
+    );
     assert.equal(text.match(/\bprint\(/g).length, 1);
 });
 
