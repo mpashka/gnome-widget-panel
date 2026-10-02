@@ -35,5 +35,7 @@ Inherited by every case in this directory:
   stand the panel up as a vertical strip.
 - [`collapse-panel.md`](collapse-panel.md) — "I need the screen space right now,
   but not to uninstall anything."
+- [`presets.md`](presets.md) — "Home and office need different panels" — save
+  each once, switch in two clicks.
 - [`replace-top-bar.md`](replace-top-bar.md) — "If I have this panel, the GNOME
   top bar is a wasted row."

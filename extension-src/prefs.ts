@@ -20,6 +20,15 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 import {addAiCollectorGroup} from './prefsAiCollector.js';
 import {loadWidgetConfig, saveWidgetConfig} from './configStore.js';
+import {
+    NO_PRESET,
+    activatePreset,
+    deleteStoredPreset,
+    loadPresetStore,
+    renameStoredPreset,
+    restorePresetStore,
+    saveAsNewPreset,
+} from './presetStore.js';
 import {DESCRIPTORS_BY_ID, PLUGIN_DESCRIPTORS} from './plugins/registry.js';
 import * as SystemInfo from './systemInfo.js';
 import {RELEASE_CHANNEL} from './version.js';
@@ -73,10 +82,10 @@ const MAIN_PANEL_MODES = [
     },
 ];
 
-// Auto-position presets offered in the position group. The first entry keeps
-// the exact dragged position (no snapping); the rest mirror the six presets the
+// Snap positions offered in the position group. The first entry keeps
+// the exact dragged position (no snapping); the rest mirror the six positions the
 // old control-button menu had. Each value is an `aligned` bitfield.
-const ALIGN_PRESETS = [
+const SNAP_POSITIONS = [
     {label: 'Floating (keep position)', value: Alignment.NONE},
     {label: 'Top - Start', value: Alignment.TOP | Alignment.LEFT},
     {label: 'Top - Center', value: Alignment.TOP | Alignment.CENTER},
@@ -106,6 +115,8 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         });
         window.add(page);
 
+        this._addPresetGroup(page, window, settings);
+
         const configuredGroup = new Adw.PreferencesGroup({
             title: 'Panel widgets',
             description:
@@ -134,10 +145,106 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         );
         rebuild();
 
+        // A preset switched from the panel's menu rewrites `widgets` under an
+        // open window; the list must follow, but not rebuild on its own writes.
+        const widgetsChangedId = settings.connect('changed::widgets', () => {
+            const config = loadWidgetConfig(settings);
+            if (JSON.stringify(config) === JSON.stringify(state.config))
+                return;
+            state.config = config;
+            rebuild();
+        });
+        page.connect('destroy', () => settings.disconnect(widgetsChangedId));
+
         this._addPanelGroups(page);
         this._addMainPanelGroup(page, window);
         addAiCollectorGroup(page, this.getSettings());
         this._addAboutGroup(page);
+    }
+
+    // First on the page: everything below it is saved into the active preset,
+    // so which one that is must be visible before anything is changed.
+    _addPresetGroup(page, window, settings) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Preset',
+            description:
+                'Changes below are saved into the active preset. Switch ' +
+                'presets here or from the panel handle’s menu.',
+        });
+        page.add(group);
+
+        let rows = [];
+        let syncing = false;
+        const rebuild = () => {
+            for (const row of rows)
+                group.remove(row);
+            rows = [];
+            const store = loadPresetStore(settings);
+            const entries = [{id: NO_PRESET, name: 'No preset'}, ...store.presets];
+
+            const activeRow = new Adw.ComboRow({
+                title: 'Active preset',
+                model: Gtk.StringList.new(entries.map(e => e.name)),
+            });
+            syncing = true;
+            activeRow.selected = Math.max(
+                0,
+                entries.findIndex(e => e.id === store.active)
+            );
+            syncing = false;
+            activeRow.connect('notify::selected', () => {
+                if (syncing)
+                    return;
+                const entry = entries[activeRow.selected];
+                if (entry)
+                    activatePreset(settings, entry.id);
+            });
+            rows.push(activeRow);
+
+            for (const preset of store.presets)
+                rows.push(this._presetRow(window, settings, preset));
+
+            const addRow = new Adw.ButtonRow({
+                title: 'New preset from current',
+                start_icon_name: 'list-add-symbolic',
+            });
+            addRow.connect('activated', () => saveAsNewPreset(settings));
+            rows.push(addRow);
+
+            for (const row of rows)
+                group.add(row);
+        };
+        rebuild();
+
+        const changedId = settings.connect('changed::presets', rebuild);
+        group.connect('destroy', () => settings.disconnect(changedId));
+    }
+
+    _presetRow(window, settings, preset) {
+        const row = new Adw.EntryRow({
+            title: 'Name',
+            text: preset.name,
+            show_apply_button: true,
+        });
+        row.connect('apply', () => {
+            const name = row.text.trim();
+            if (name && name !== preset.name)
+                renameStoredPreset(settings, preset.id, name);
+        });
+        row.add_suffix(
+            this._linkButton('user-trash-symbolic', 'Delete preset', () => {
+                const before = deleteStoredPreset(settings, preset.id);
+                const toast = new Adw.Toast({
+                    title: `Preset “${preset.name}” deleted`,
+                    button_label: 'Undo',
+                });
+                toast.connect('button-clicked', () =>
+                    restorePresetStore(settings, before)
+                );
+                window.add_toast(toast);
+            })
+        );
+        return row;
     }
 
     // Detect the standalone "Hide Top Bar" extension. `installed` means its
@@ -544,7 +651,7 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
     }
 
     // Panel-level settings that used to live in the control button context menu
-    // (auto-position preset + orientation). They are stored in the panel
+    // (snap position + orientation). They are stored in the panel
     // GSettings and applied live by FloatingMiniPanel. Folded into the single
     // preferences page.
     _addPanelGroups(page) {
@@ -561,8 +668,8 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
         page.add(layoutGroup);
 
         const model = new Gtk.StringList();
-        for (const preset of ALIGN_PRESETS)
-            model.append(preset.label);
+        for (const position of SNAP_POSITIONS)
+            model.append(position.label);
 
         const alignedRow = new Adw.ComboRow({
             title: 'Position',
@@ -572,12 +679,12 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
 
         const syncSelected = () => {
             const current = settings.get_int('aligned');
-            const index = ALIGN_PRESETS.findIndex(
-                (preset) => preset.value === current
+            const index = SNAP_POSITIONS.findIndex(
+                (position) => position.value === current
             );
-            // `aligned === 0` matches the Floating preset (first entry).
+            // `aligned === 0` matches the Floating entry (first one).
             // Gtk.INVALID_LIST_POSITION when the stored value is some other
-            // custom drag position that matches no preset; leave it unselected.
+            // custom drag position that matches no snap position; leave it unselected.
             alignedRow.selected =
                 index >= 0 ? index : Gtk.INVALID_LIST_POSITION;
         };
@@ -585,9 +692,9 @@ export default class WidgetPanelPreferences extends ExtensionPreferences {
 
         alignedRow.connect('notify::selected', () => {
             const index = alignedRow.selected;
-            if (index < 0 || index >= ALIGN_PRESETS.length)
+            if (index < 0 || index >= SNAP_POSITIONS.length)
                 return;
-            const value = ALIGN_PRESETS[index].value;
+            const value = SNAP_POSITIONS[index].value;
             if (settings.get_int('aligned') !== value) {
                 logPanelSettingWrite('aligned', value);
                 settings.set_int('aligned', value);

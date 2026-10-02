@@ -74,19 +74,10 @@ Done:
   UI (the preferences UI edits `widgets.json` via `configStore.ts`).
 - [ ] Isolate plugin failures and provide rollback to the previous pinned
   revision.
-- [ ] **Panel presets, and what the "Mini Panel" quick-settings tile is for.**
-  The tile (`extension.ts`, `QuickSettings.QuickMenuToggle`) is inherited from
-  Floating Mini Panel, where the panel was a stand-in for a hidden GNOME top bar
-  — hence its `Automatic` (show only while the top bar is hidden) and
-  `Permanent` modes, and hence a system-level entry point, since the panel had
-  no UI of its own. Here it has: the drag handle's menu, Collapse and the
-  preferences window. The tile now duplicates Collapse and exposes a *setting*
-  from a *quick-launch* surface, which is why it reads as noise.
-  What would earn its place instead: **named presets** (Office, Home, …) — a
-  saved widget set + position + orientation each — switched from that tile in
-  one click. Decide the tile's fate together with presets: either it becomes the
-  preset switcher, or it goes and the modes stay in preferences only. See the
-  `state` GSettings key and `docs/implementation/object-model.md`.
+- [x] **Panel presets, and what the "Mini Panel" quick-settings tile is for.**
+  Decided: the tile is gone (#35) and presets are switched from the drag handle's
+  menu — `docs/specification/use-cases/setup/presets.md`. Still open: switching a
+  preset automatically when the monitor set changes (#30).
 
 ## Requested features (backlog)
 

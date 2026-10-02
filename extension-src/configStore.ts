@@ -90,6 +90,24 @@ export async function migrateLegacyConfigIfNeeded(
     }
 }
 
+const TILE_STATE_KEY = 'state';
+const TILE_STATE_PERMANENT = 1;
+const TILE_STATE_MIGRATED = 0;
+
+/**
+ * The removed Quick Settings tile's Permanent mode (the `state` default) hid
+ * the GNOME top bar by itself, while `main-panel` still said `visible`. Carry
+ * that over once, so the top bar does not come back after the upgrade.
+ */
+export function migrateTileTopBarMode(settings: Gio.Settings): void {
+    if (settings.get_int(TILE_STATE_KEY) !== TILE_STATE_PERMANENT)
+        return;
+    if (settings.get_string('main-panel') === 'visible')
+        settings.set_string('main-panel', 'hide');
+    settings.set_int(TILE_STATE_KEY, TILE_STATE_MIGRATED);
+}
+
+
 /**
  * Read the effective configuration from the `widgets` GSettings key, degrading
  * gracefully so a broken or incompatible value can never crash the panel:

@@ -14,6 +14,9 @@ settings plumbing behind them. The user-visible side of the same features is in
 - [`ai-collector.md`](ai-collector.md) — the AI activity collector the extension
   owns: why it is not a widget's job, what it collects, its settings and its
   lifecycle (`@tag:ai-collector`).
+- [`presets.md`](presets.md) — the `presets` key, why the live settings are the
+  active preset, and the modules behind the handle menu and the Preset group
+  (`@tag:presets`).
 - [`object-model.md`](object-model.md) — runtime object map: which object owns
   which actor, signal and timer (`@tag:ui`).
 - [`preferences.md`](preferences.md) — the widget-management preferences window,

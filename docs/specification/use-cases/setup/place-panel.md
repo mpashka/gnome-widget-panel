@@ -22,7 +22,7 @@ For a one-off move:
 To pin it to a screen edge instead:
 
 1. [S2](../steps.md#s2) — open preferences.
-2. In **Panel layout**, set **Position** to one of the six presets — **Top** or
+2. In **Panel layout**, set **Position** to one of the six snap positions — **Top** or
    **Bottom** × **Start**, **Center** or **End**. The panel jumps there and
    stays put when the screen resolution changes.
 
@@ -34,11 +34,13 @@ To pin it to a screen edge instead:
   means — the default; nothing snaps.
 - **Give the widgets more room to breathe.** **Content padding** in the same
   group sets the space in pixels around the widgets.
+- **A different place at home and in the office.** Position is part of a
+  [preset](presets.md).
 - **Stand it up on its side.** [`orientation.md`](orientation.md).
 - **Hide it for a while rather than move it.** [`collapse-panel.md`](collapse-panel.md).
 
 ## Result
 
 The panel's position and alignment [apply live](../steps.md#r1) and
-[survive a restart](../steps.md#r2). A snap preset keeps working across
+[survive a restart](../steps.md#r2). A snap position keeps working across
 resolution and monitor changes; a dragged position is remembered as coordinates.

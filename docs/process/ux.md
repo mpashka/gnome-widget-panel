@@ -51,11 +51,12 @@ harmless, and it is reversible).
 The panel handle's right-click menu is small on purpose, and it is **not** the
 place to surface a gesture that has no visible route. A menu row costs every
 user who opens the menu a line to read past, forever; so a row is earned in one
-of exactly three ways:
+of exactly four ways:
 
 | Why it is there | Rows | The test it passes |
 | --- | --- | --- |
 | **Needs to be fast**, even if it is not frequent | Collapse / Expand | The panel is suddenly in the way — collapse it and move on. Rarely done, but when it is wanted it is wanted *now*, and a trip to preferences is the wrong shape for it. |
+| **Frequent** | the preset list (only once a preset exists) | Switching between the home and the office panel happens twice a day; [two clicks on the handle](../specification/use-cases/setup/presets.md) instead of a trip to preferences. Creating, renaming and deleting presets is configuration and stays in preferences. |
 | **Convention** | Settings… | Right-click → *Settings* is where every modern interface keeps this. Being where people already look costs one row and saves a search. |
 | **Giving the extension a chance** | build header, Release notes, extensions.gnome.org, Report a bug, Suggest a feature | For someone who installed it to "just try it". The version answers "is my problem already fixed in a newer one" before they write the report; the rest turn a shrug into a report, a request or a rating instead of an uninstall. |
 
@@ -68,7 +69,7 @@ where orientation already lives — and the fix for an undiscoverable gesture is
 Two consequences worth stating:
 
 - **A hidden gesture is not evidence that a menu row is missing.** Ask which of
-  the three tests the action passes. If none, it belongs in preferences, and the
+  the four tests the action passes. If none, it belongs in preferences, and the
   gesture is either kept as a shortcut for whoever learned it, or dropped.
 - **The cheap gestures are a scarce resource.** There are only so many things a
   pointer can do to one handle, so they should go to what needs to be fast, not

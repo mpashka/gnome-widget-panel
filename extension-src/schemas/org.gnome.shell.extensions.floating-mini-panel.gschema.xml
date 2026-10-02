@@ -13,9 +13,12 @@
   <schema path="/org/gnome/shell/extensions/floating-mini-panel/" id="org.gnome.shell.extensions.floating-mini-panel">
     <key name="state" type="i">
       <default>1</default>
-      <summary>Panel State</summary>
+      <summary>Deprecated: former Off/Permanent/Automatic panel state</summary>
       <description>
-        0 = Off, 1 = On, 2 = Auto
+        Held the removed Quick Settings tile's mode (0 = Off, 1 = Permanent,
+        2 = Automatic). Read once on enable: Permanent hid the top bar, so it
+        becomes main-panel 'hide' and the key is set to 0. Otherwise unused;
+        kept so existing dconf values remain valid.
       </description>
     </key>
     <key name="pos-x" type="i">
@@ -76,6 +79,17 @@
       <description>
         Padding in pixels around the widgets' working body (the space between the
         panel edge and its contents).
+      </description>
+    </key>
+    <key name="presets" type="s">
+      <default>''</default>
+      <summary>Panel presets</summary>
+      <description>
+        JSON document with the named presets ({"schema":1,"active":id,"presets":
+        [{id,name,snapshot}],"noPreset":snapshot}). A snapshot holds the widgets,
+        aligned, orientation, content-padding and main-panel keys. The live keys
+        are the active preset; its stored snapshot is refreshed when the user
+        switches away. Empty means no presets. See presets.ts.
       </description>
     </key>
     <key name="collapsed" type="b">

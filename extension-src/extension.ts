@@ -32,17 +32,16 @@ import St from 'gi://St';
 
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
-import * as LoginManager from 'resource:///org/gnome/shell/misc/loginManager.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
 import {AiCollector} from './aiCollector.js';
-import {migrateLegacyConfigIfNeeded} from './configStore.js';
+import {
+    migrateLegacyConfigIfNeeded,
+    migrateTileTopBarMode,
+} from './configStore.js';
 import * as ControlButton from './controlButton.js';
 import * as MainPanel from './mainPanel.js';
 import * as PluginManager from './pluginManager.js';
-import * as Utils from './utils.js';
 import {parseWidgetConfig} from './widgetConfig.js';
 
 // Persistent variable until restart of GNOME Shell
@@ -50,23 +49,9 @@ import {parseWidgetConfig} from './widgetConfig.js';
 let startupComplete = null;
 
 const LAYOUTMANAGER = Main.layoutManager;
-const PANEL = Main.panel;
-const PANELBOX = LAYOUTMANAGER.panelBox;
-const OVERVIEW = Main.overview;
 const DISPLAY = global.display;
-const QUICKSETTINGS = PANEL.statusArea['quickSettings'];
 
 const shellVersion = parseFloat(Config.PACKAGE_VERSION);
-
-// Panel-Hiding Extensions
-const DTP_UUID = 'dash-to-panel@jderose9.github.com';
-const HTB_UUID = 'hidetopbar@mathieu.bidon.ca';
-
-const State = {
-    OFF: 0,
-    ON: 1,
-    AUTO: 2,
-};
 
 const Alignment = {
     NONE: 0,
@@ -94,7 +79,6 @@ const FloatingMiniPanel = GObject.registerClass(
             this._sets = sets;
             this._extensionPath = extensionPath;
             this._extension = extension;
-            this._state = this._sets.get_int('state');
 
             this.set_position(
                 this._sets.get_int('pos-x'),
@@ -138,16 +122,8 @@ const FloatingMiniPanel = GObject.registerClass(
                 }
             );
 
-            this._panelHidingExts = [];
-
             // Main panel (GNOME top bar) behaviour -----------------------------
-            // A dedicated controller owns the top bar for the non-'visible'
-            // modes ('autohide' slides it in on a top-edge pressure barrier,
-            // 'hide' keeps it down). While it owns the bar, the legacy
-            // Permanent-mode top-bar hiding further down is suppressed (see
-            // `_topBarManagedExternally`) so two controllers never fight over
-            // `panelBox`. Guarded so a stale schema without the key cannot throw
-            // out of the constructor and disable the whole extension.
+            // The controller is the only code that moves `panelBox`.
             this._mainPanel = new MainPanel.MainPanelController(
                 this._getMainPanelMode()
             );
@@ -253,167 +229,6 @@ const FloatingMiniPanel = GObject.registerClass(
                 }
             });
 
-            // QuickSettings Toggle --------------------------------------------
-            this._fmpQuickToggle = new QuickSettings.QuickMenuToggle({
-                icon_name: 'view-restore-symbolic',
-                title: 'Mini Panel',
-                menu_enabled: true,
-                toggleMode: true,
-            });
-            this._fmpQuickToggle.menu.setHeader(
-                'view-restore-symbolic',
-                'Mini Panel',
-                null
-            );
-            this._autoItem = new PopupMenu.PopupImageMenuItem(
-                'Automatic',
-                null
-            );
-            this._fmpQuickToggle.menu.addMenuItem(this._autoItem);
-            this._permItem = new PopupMenu.PopupImageMenuItem(
-                'Permanent',
-                null
-            );
-            this._fmpQuickToggle.menu.addMenuItem(this._permItem);
-
-            // Initialize menu
-            if (this._state === State.AUTO) {
-                this._fmpQuickToggle.subtitle = this._autoItem.label.text;
-                this._permItem.setOrnament(PopupMenu.Ornament.NONE);
-                this._autoItem.setOrnament(PopupMenu.Ornament.CHECK);
-            } else {
-                this._fmpQuickToggle.subtitle = this._permItem.label.text;
-                this._permItem.setOrnament(PopupMenu.Ornament.CHECK);
-                this._autoItem.setOrnament(PopupMenu.Ornament.NONE);
-            }
-
-            // Initialize Toggle
-            this._fmpQuickToggle.checked = this._state;
-
-            // Menu item clicked
-            // Kept and disconnected in destroy(): destroying the toggle would
-            // take these handlers with it, but EGO's checker reads the source
-            // rather than the object graph and wants every connect() answered by
-            // a disconnect() in disable() (EGO-L-003).
-            this._qtMenuConId = this._fmpQuickToggle.menu.connect('activate', (obj, menuItem) => {
-                if (this._fmpQuickToggle.subtitle !== menuItem.label.text) {
-                    QUICKSETTINGS.menu.close();
-                    this._autoItem.setOrnament(PopupMenu.Ornament.NONE);
-                    this._permItem.setOrnament(PopupMenu.Ornament.NONE);
-                    switch (menuItem) {
-                        case this._autoItem:
-                            if (this.visible) this._hideFloatingMiniPanel();
-                            this._preparePermanentMode(false);
-                            this._state = State.AUTO;
-                            if (Utils.panelBoxHidden()) {
-                                this._showFloatingMiniPanel();
-                            }
-                            break;
-                        case this._permItem:
-                            this._state = State.ON;
-                            this._preparePermanentMode(true);
-                            if (!OVERVIEW.visible)
-                                this._showFloatingMiniPanel();
-                            break;
-                        default:
-                    }
-                    this._sets.set_int('state', this._state);
-                    menuItem.setOrnament(PopupMenu.Ornament.CHECK);
-                    this._fmpQuickToggle.subtitle = menuItem.label.text;
-                    this._fmpQuickToggle.checked = true;
-                    if (this.visible || PANELBOX.visible)
-                        QUICKSETTINGS.menu.open();
-                }
-                return Clutter.Event_STOP;
-            });
-
-            // Toggle clicked
-            this._qtClickedConId = this._fmpQuickToggle.connect('clicked', () => {
-                QUICKSETTINGS.menu.close();
-                if (this._state !== State.OFF) {
-                    this._hideFloatingMiniPanel();
-                    this._preparePermanentMode(false);
-                    this._state = State.OFF;
-                    this._sets.set_int('state', this._state);
-                } else {
-                    if (this._autoItem._ornament === PopupMenu.Ornament.CHECK) {
-                        this._state = State.AUTO;
-                        this._preparePermanentMode(false);
-                        if (!PANELBOX.visible && !OVERVIEW.visible)
-                            this._showFloatingMiniPanel();
-                    } else {
-                        this._state = State.ON;
-                        this._preparePermanentMode(true);
-                        this._showFloatingMiniPanel();
-                    }
-                    this._sets.set_int('state', this._state);
-                }
-                if (this.visible || PANELBOX.visible) QUICKSETTINGS.menu.open();
-                return Clutter.Event_STOP;
-            });
-
-            this._fmpQuickIndicator = new QuickSettings.SystemIndicator();
-            this._fmpQuickIndicator.quickSettingsItems.push(
-                this._fmpQuickToggle
-            );
-            QUICKSETTINGS.addExternalIndicator(this._fmpQuickIndicator);
-
-            // FloatingMiniPanel Controlling -----------------------------------
-
-            // Auto Mode controlling
-            this._pvConId = PANELBOX.connect('notify::visible', () => {
-                if (this._state === State.AUTO) {
-                    if (!PANELBOX.visible) {
-                        if (this._correctPanelBoxVisibleState) {
-                            this._correctPanelBoxVisibleState = false;
-                        } else {
-                            if (!this.visible) {
-                                this._showFloatingMiniPanel();
-                            }
-                        }
-                    } else {
-                        // Timeout and testing needed because transitions are
-                        // used by 'HideTopPanel' and 'DashToPanel' and
-                        // PanelBox.visible signal by itself is not sufficiant
-                        // to decide if the PanelBox is really shown or not!
-                        if (this._timeoutId1) {
-                            GLib.Source.remove(this._timeoutId1);
-                            this._timeoutId1 = null;
-                        }
-                        // A timeout of 50ms seams ok, but has to be verified.
-                        this._timeoutId1 = GLib.timeout_add(
-                            GLib.PRIORITY_DEFAULT,
-                            50,
-                            () => {
-                                // Test 'HideTopPanel' / 'DashToPanel' show PanelBox
-                                let priMonGeo = Utils.priMonitorGeometry();
-                                if (
-                                    (PANELBOX.y >
-                                        priMonGeo.y - PANELBOX.height &&
-                                        Math.abs(PANELBOX.translation_y) <
-                                            PANELBOX.height &&
-                                        Math.abs(PANELBOX.translation_x) <
-                                            PANELBOX.width) ||
-                                    OVERVIEW.visible
-                                ) {
-                                    if (this._correctPanelBoxVisibleState) {
-                                        this._correctPanelBoxVisibleState = false;
-                                    }
-                                    this._hideFloatingMiniPanel();
-                                } else {
-                                    // Correct unwanted PanelBox visible signal!
-                                    PANELBOX.visible = false;
-                                    this._correctPanelBoxVisibleState = true;
-                                }
-                                this._timeoutId1 = null;
-                                return GLib.SOURCE_REMOVE;
-                            }
-                        );
-                    }
-                }
-                return Clutter.Event_PROPAGATE;
-            });
-
             this.connect_object(
                 'notify::width',
                 () => {
@@ -432,75 +247,8 @@ const FloatingMiniPanel = GObject.registerClass(
 
             this._wcConId = DISPLAY.connect('workareas-changed', () => {
                 this._relocate(false);
-                // Bug: Main Panel becomes visible and so we have to
-                // hide it by showing this again in Permanent Mode!
-                if (this._state === State.ON && !OVERVIEW.visible) {
-                    this._showFloatingMiniPanel();
-                }
                 return Clutter.Event_PROPAGATE;
             });
-
-            this._ovConId1 = OVERVIEW.connect('showing', () => {
-                if (this._state === State.ON) {
-                    this._hideFloatingMiniPanel();
-                }
-                return Clutter.Event_PROPAGATE;
-            });
-
-            this._ovConId2 = OVERVIEW.connect('hiding', () => {
-                if (this._state === State.ON) {
-                    this._showFloatingMiniPanel();
-                }
-                return Clutter.Event_PROPAGATE;
-            });
-
-            // Set this to Auto Mode and disable Permanent Mode if the
-            // panel-hiding extension 'Dash-To-Panel' or 'Hide-Top-Bar'
-            // is enabled to make sure no problems occur!
-            // Check during runtime
-            this._meConId = Main.extensionManager.connect(
-                'extension-state-changed',
-                (obj, ext) => {
-                    if (
-                        startupComplete &&
-                        (ext.metadata.uuid === DTP_UUID ||
-                            ext.metadata.uuid === HTB_UUID)
-                    ) {
-                        if (ext.enabled) {
-                            if (
-                                this._panelHidingExts.indexOf(
-                                    ext.metadata.uuid
-                                ) < 0
-                            ) {
-                                this._disablePermanentMode(ext.metadata.uuid);
-                            }
-                        } else {
-                            if (
-                                this._panelHidingExts.indexOf(
-                                    ext.metadata.uuid
-                                ) >= 0
-                            ) {
-                                this._panelHidingExts.splice(
-                                    this._panelHidingExts.indexOf(
-                                        ext.metadata.uuid
-                                    ),
-                                    1
-                                );
-                                if (this._panelHidingExts.length === 0) {
-                                    if (this.visible)
-                                        this._hideFloatingMiniPanel();
-                                    this._permItem.reactive = true;
-                                    Main.notify(
-                                        'Floating Mini Panel allowing Permanent Mode again,',
-                                        'because no panel-hiding extension is active!'
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    return Clutter.Event_PROPAGATE;
-                }
-            );
 
             // Complete startup
             LAYOUTMANAGER.addTopChrome(this, {trackFullscreen: false});
@@ -522,144 +270,26 @@ const FloatingMiniPanel = GObject.registerClass(
 
             // The Shell may have finished starting up BEFORE this extension was
             // enabled: a runtime enable (installing/enabling from the Extensions
-            // app) or simply losing the startup race in a fast session. Then the
-            // 'startup-complete' signal has already fired and the handler below
-            // would never run, leaving `startupComplete` false and the panel
-            // invisible forever. Treat startup as complete in that case.
+            // app), an unlock, or simply losing the startup race in a fast
+            // session. Then 'startup-complete' has already fired and would never
+            // reach the handler below, leaving the panel invisible forever.
             if (!startupComplete && LAYOUTMANAGER._startingUp === false)
                 startupComplete = true;
 
-            // If this is in 'permanent mode' and disabled/enabled during
-            // runtime (not accross sessions!) or screen is unlocked.
-            if (startupComplete && this._state === State.ON) {
-                this._checkPanelHidingExts();
-                if (this._permItem.reactive) {
-                    this._preparePermanentMode(true);
+            if (startupComplete) {
+                this._showFloatingMiniPanel();
+            } else {
+                this._lsConId = LAYOUTMANAGER.connect('startup-complete', () => {
+                    startupComplete = true;
+                    LAYOUTMANAGER.disconnect(this._lsConId);
+                    this._lsConId = null;
                     this._showFloatingMiniPanel();
-                }
-            }
-            // If this is in 'auto mode' and disabled/enabled during runtime
-            // (not accross sessions!) or screen is unlocked.
-            if (startupComplete && this._state === State.AUTO) {
-                this._checkPanelHidingExts();
-                if (Utils.panelBoxHidden()) this._showFloatingMiniPanel();
-            }
-
-            // If this is in 'permanent mode' and already enabled,
-            // wait for GNOME Shell to finish startup
-            this._lsConId = LAYOUTMANAGER.connect('startup-complete', () => {
-                // START CODE PANEL-HIDING EXTENSIONS
-                // Set this to Auto Mode and disable Permanent Mode if the
-                // panel-hiding extension 'Dash-To-Panel' or 'Hide-Top-Bar'
-                // is enabled to make sure no problems occur!
-                // Check at startup
-                this._checkPanelHidingExts();
-
-                if (this._state === State.ON) {
-                    this._preparePermanentMode(true);
-                    if (!OVERVIEW.visible) this._showFloatingMiniPanel();
-                }
-                startupComplete = true;
-
-                // Remove connection, we don't need it anymore
-                // in the running session.
-                LAYOUTMANAGER.disconnect(this._lsConId);
-                this._lsConId = null;
-
-                return Clutter.Event_PROPAGATE;
-            });
-
-            // Recognize Suspend
-            this._loginManager = LoginManager.getLoginManager();
-            this._lpConId = this._loginManager.connect(
-                'prepare-for-sleep',
-                (obj, state) => {
-                    if (this._state === State.ON && state) {
-                        this._hideFloatingMiniPanel();
-                    }
-                    if (this._state === State.ON && !state) {
-                        this._showFloatingMiniPanel();
-                    }
                     return Clutter.Event_PROPAGATE;
-                }
-            );
+                });
+            }
         }
 
         // FloatingMiniPanel Procedures ----------------------------------------
-
-        // Prepare the system for permanent mode and vice versa
-        // It would work without, but then we would have a lot of
-        // allocation errors!
-        // It has to be done before Overview is toggled, to take effect.
-        // Therefore it can't be done in the show / hide functions.
-        _preparePermanentMode(on) {
-            // The main-panel controller owns the top bar in autohide/hide mode;
-            // do not also track/untrack its chrome or pad the overview search
-            // entry here, or the two would fight over `panelBox`.
-            if (this._topBarManagedExternally())
-                return;
-            if (on) {
-                LAYOUTMANAGER.untrackChrome(PANELBOX);
-                OVERVIEW._overview._controls._searchEntryBin.set_style(
-                    `padding-top: ${PANELBOX.height}px;`
-                );
-            } else {
-                if (LAYOUTMANAGER._findActor(PANELBOX) === -1) {
-                    LAYOUTMANAGER.trackChrome(PANELBOX, {
-                        affectsStruts: true,
-                        trackFullscreen: true,
-                    });
-                    OVERVIEW._overview._controls._searchEntryBin.set_style(
-                        null
-                    );
-                }
-            }
-        }
-
-        // Check Panel-Hiding extensions
-        _checkPanelHidingExts() {
-            if (Main.extensionManager._extensionOrder.indexOf(DTP_UUID) >= 0) {
-                let disabled = global.settings.get_strv('disabled-extensions');
-                if (disabled.indexOf(DTP_UUID) < 0) {
-                    this._disablePermanentMode(DTP_UUID);
-                }
-            }
-            if (Main.extensionManager._extensionOrder.indexOf(HTB_UUID) >= 0) {
-                let disabled = global.settings.get_strv('disabled-extensions');
-                if (disabled.indexOf(HTB_UUID) < 0) {
-                    this._disablePermanentMode(HTB_UUID);
-                }
-            }
-        }
-
-        _disablePermanentMode(phext) {
-            if (this._panelHidingExts.indexOf(phext) < 0) {
-                this._panelHidingExts.push(phext);
-                if (this._permItem.reactive) {
-                    if (this._state === State.ON) {
-                        this._hideFloatingMiniPanel();
-                        this._preparePermanentMode(false);
-                        this._state = State.AUTO;
-                        this._sets.set_int('state', this._state);
-                        this._fmpQuickToggle.subtitle =
-                            this._autoItem.label.text;
-                        this._autoItem.setOrnament(PopupMenu.Ornament.CHECK);
-                        this._permItem.setOrnament(PopupMenu.Ornament.NONE);
-                        this._permItem.reactive = false;
-                        Main.notify(
-                            'Floating Mini Panel switched into Auto Mode,',
-                            'because ' + phext + ' is active!'
-                        );
-                    } else {
-                        this._permItem.reactive = false;
-                        Main.notify(
-                            'Floating Mini Panel disabed Permanent Mode,',
-                            'because ' + phext + ' is active!'
-                        );
-                    }
-                }
-            }
-        }
 
         openPreferences() {
             this._extension.openPreferences();
@@ -832,13 +462,6 @@ const FloatingMiniPanel = GObject.registerClass(
             }
         }
 
-        // True while the MainPanelController owns the GNOME top bar (any mode
-        // other than 'visible'). The legacy Permanent-mode top-bar hiding must
-        // stand down then, so the controller is the single authority.
-        _topBarManagedExternally() {
-            return this._mainPanel?.ownsTopBar?.() === true;
-        }
-
         _applyPanelLayoutToPlugins() {
             if (!this._plugins)
                 return;
@@ -932,17 +555,6 @@ const FloatingMiniPanel = GObject.registerClass(
         }
 
         _showFloatingMiniPanel() {
-            // If in Permanent Mode hide the Main Panel — unless the main-panel
-            // controller already owns the top bar (autohide/hide mode).
-            if (this._state !== State.AUTO && !this._topBarManagedExternally()) {
-                let priMonGeo = Utils.priMonitorGeometry();
-                PANELBOX.set_position(
-                    priMonGeo.x,
-                    Math.abs(priMonGeo.y - priMonGeo.y) - PANELBOX.height
-                );
-            }
-
-            // Show this with animation
             this.remove_all_transitions();
             this.opacity = 0;
             this.visible = true;
@@ -952,18 +564,6 @@ const FloatingMiniPanel = GObject.registerClass(
                 mode: Clutter.AnimationMode.EASE_LINEAR,
                 onComplete: () => {},
             });
-        }
-
-        _hideFloatingMiniPanel() {
-            // Hide this w/o animation
-            this.visible = false;
-
-            // If in Permanent Mode show the Main Panel — unless the main-panel
-            // controller owns the top bar (autohide/hide mode).
-            if (this._state !== State.AUTO && !this._topBarManagedExternally()) {
-                let priMonGeo = Utils.priMonitorGeometry();
-                PANELBOX.set_position(priMonGeo.x, priMonGeo.y);
-            }
         }
 
         // If this was moved, its width changed or the workarea has changed-----
@@ -1075,7 +675,7 @@ const FloatingMiniPanel = GObject.registerClass(
         }
 
         destroy() {
-            this._hideFloatingMiniPanel();
+            this.visible = false;
 
             this._ctlBtn.destroy();
             for (const {actor} of [...this._plugins].reverse())
@@ -1096,11 +696,6 @@ const FloatingMiniPanel = GObject.registerClass(
             if (this._collapsedChangedId) {
                 this._sets.disconnect(this._collapsedChangedId);
                 this._collapsedChangedId = null;
-            }
-
-            if (this._timeoutId1) {
-                GLib.Source.remove(this._timeoutId1);
-                this._timeoutId1 = null;
             }
 
             // A relocate scheduled by the last resize may still be pending; it
@@ -1127,44 +722,13 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._contentPaddingChangedId = null;
             }
 
-            PANELBOX.disconnect(this._pvConId);
-            this._pvConId = null;
-
             if (this._lsConId) {
                 LAYOUTMANAGER.disconnect(this._lsConId);
                 this._lsConId = null;
             }
 
-            this._loginManager.disconnect(this._lpConId);
-            this._lpConId = null;
-
-            Main.extensionManager.disconnect(this._meConId);
-            this._meConId = null;
-
             DISPLAY.disconnect(this._wcConId);
             this._wcConId = null;
-
-            OVERVIEW.disconnect(this._ovConId1);
-            this._ovConId1 = null;
-
-            OVERVIEW.disconnect(this._ovConId2);
-            this._ovConId2 = null;
-
-            if (this._qtMenuConId) {
-                this._fmpQuickToggle.menu.disconnect(this._qtMenuConId);
-                this._qtMenuConId = null;
-            }
-            if (this._qtClickedConId) {
-                this._fmpQuickToggle.disconnect(this._qtClickedConId);
-                this._qtClickedConId = null;
-            }
-            this._fmpQuickToggle = null;
-
-            this._fmpQuickIndicator.quickSettingsItems.forEach(item =>
-                item.destroy()
-            );
-            this._fmpQuickIndicator.destroy();
-            this._fmpQuickIndicator = null;
 
             LAYOUTMANAGER.removeChrome(this);
 
@@ -1180,9 +744,6 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._enaUnredirectFunc = null;
             }
 
-            // Release the main-panel controller (restores the top bar and its
-            // strut reservation) BEFORE the legacy restore below, which is a
-            // no-op while the controller still owns the bar.
             if (this._mainPanelChangedId) {
                 this._sets.disconnect(this._mainPanelChangedId);
                 this._mainPanelChangedId = null;
@@ -1191,8 +752,6 @@ const FloatingMiniPanel = GObject.registerClass(
                 this._mainPanel.destroy();
                 this._mainPanel = null;
             }
-
-            this._preparePermanentMode(false);
 
             super.destroy();
         }
@@ -1207,6 +766,7 @@ export default class FloatingMiniPanelExtension extends Extension {
 
     enable() {
         this._settings = this.getSettings();
+        migrateTileTopBarMode(this._settings);
         this._floatingMiniPanel = null;
         this._aiCollector = new AiCollector(this.path, this._settings);
         this._sessionModeId = Main.sessionMode.connect('updated', () =>

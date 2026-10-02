@@ -52,6 +52,7 @@ TITLE_OF="i => i.get_children().map(c => c.text).filter(t => t)[0]"
 ui_click "plugin('app-windows')" >/dev/null
 ui_wait_js "plugin('app-windows')._menu.isOpen" \
     || fail "clicking the button did not open the window menu"
+ui_park_pointer
 
 # The client presents its windows as Beta, Gamma, Alpha; by title they must come
 # out sorted, whatever the shell's own (most-recently-used) order is.

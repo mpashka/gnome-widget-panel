@@ -25,6 +25,9 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `tooltipTemplate.test.mjs` — `renderTemplate` from
   [`../extension-src/tooltipTemplate.ts`](../extension-src/tooltipTemplate.ts):
   token substitution, literal Pango-escaping, `\n` handling, unknown/empty tokens.
+- `presets.test.mjs` — the gi-free preset operations in
+  [`../extension-src/presets.ts`](../extension-src/presets.ts): parsing, switching
+  stores the slot being left, create/rename/remove.
 - `widgetConfig.test.mjs` — `parseWidgetConfig`/`serializeWidgetConfig`/
   `widgetInstanceKey` from
   [`../extension-src/widgetConfig.ts`](../extension-src/widgetConfig.ts): schema

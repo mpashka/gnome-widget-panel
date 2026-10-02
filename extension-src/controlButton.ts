@@ -32,6 +32,11 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {clickModifiers} from './clickModifiers.js';
+import {
+    NO_PRESET,
+    activatePreset,
+    loadPresetStore,
+} from './presetStore.js';
 import * as SystemInfo from './systemInfo.js';
 
 const DISPLAY = global.display;
@@ -383,6 +388,9 @@ export const ControlButton = GObject.registerClass(
                 .catch(() => {});
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+            this._presetSection = new PopupMenu.PopupMenuSection();
+            this.menu.addMenuItem(this._presetSection);
+
             // Collapse / Expand. Collapsing hides every widget and leaves only
             // this drag handle on screen — its context menu is what brings the
             // panel back, so the action is always reversible from what stays
@@ -445,6 +453,8 @@ export const ControlButton = GObject.registerClass(
                 // panel each time the menu opens so an external change to the
                 // `collapsed` key (gsettings, another session) is reflected.
                 this._syncCollapseLabel();
+                if (this.menu.isOpen)
+                    this._rebuildPresetSection();
                 if (this.has_style_pseudo_class('active')) {
                     this.remove_style_pseudo_class('active');
                 } else {
@@ -494,6 +504,34 @@ export const ControlButton = GObject.registerClass(
                 this._parent.isCollapsed() ? 'Expand' : 'Collapse'
             );
         }
+
+        // Read on every open, so a preset created or renamed in preferences
+        // shows up without a reload. Empty while there are no presets: then
+        // "No preset" would be the only, already chosen, entry.
+        _rebuildPresetSection() {
+            this._presetSection.removeAll();
+            const store = loadPresetStore(this._parent._sets);
+            if (store.presets.length === 0)
+                return;
+            const entries = [
+                {id: NO_PRESET, name: 'No preset'},
+                ...store.presets,
+            ];
+            for (const {id, name} of entries) {
+                const item = new MenuItem(name, '', () => {
+                    activatePreset(this._parent._sets, id);
+                });
+                item.setOrnament(
+                    id === store.active
+                        ? PopupMenu.Ornament.DOT
+                        : PopupMenu.Ornament.NO_DOT
+                );
+                this._presetSection.addMenuItem(item);
+            }
+            this._presetSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        }
+
+
 
         _doAlign(align) {
             this._parent._sets.set_int('aligned', align);

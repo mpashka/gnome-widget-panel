@@ -76,6 +76,13 @@ rather than a method on the preferences class, so the settings smoke test can
 build it — a group that throws here costs the user the whole settings window,
 not one page (see [`../../tests/prefs/index.md`](../../tests/prefs/index.md)).
 
+## Preset group
+
+The first group on the page names the **Active preset** (`Adw.ComboRow`: **No
+preset** plus each preset), lists every preset as an `Adw.EntryRow` (rename on
+apply, bin button with an Undo toast) and offers **New preset from current**. It
+rebuilds on `changed::presets`. Mechanism: [`presets.md`](presets.md).
+
 ## Panel settings
 
 A single **Panel layout** `Adw.PreferencesGroup` on the same page exposes the
@@ -84,21 +91,21 @@ now keeps a non-reactive **build header** (`GNOME Widget Panel` + the version an
 release channel, e.g. `0.1.0 (alpha)`, from `systemInfo.versionDisplay()` — see
 [`release.md`](../process/release.md) — and under it the build's
 `commit[-dirty]` from `systemInfo.buildIdDisplay()` when the tree carries a build
-stamp), then **Settings…**, **Release notes** (this
+stamp), then the presets (see [`presets.md`](presets.md)), **Collapse**, **Settings…**, **Release notes** (this
 version's GitHub Release page) and **Report a bug**; all other panel control is
 via mouse gestures on the panel handle). It edits the panel `GSettings`
 (`this.getSettings()`) directly, using its own keys (not the `widgets` key), and
 is applied **live** to the running panel — no reload needed. It has these rows:
 
 - **Position** — an `Adw.ComboRow` whose first entry is
-  **Floating (keep position)** (`aligned = 0`), followed by the six snap presets
+  **Floating (keep position)** (`aligned = 0`), followed by the six snap positions
   the old menu offered (Top/Bottom × Start/Center/End). Selecting one writes the
   `aligned` int bitfield (`NONE 0, TOP 1, BOTTOM 2, LEFT 4, RIGHT 8, CENTER 16`).
   The running `FloatingMiniPanel` listens on `changed::aligned` and calls
   `_relocate(false)`; `aligned === 0` keeps the exact dragged position with no
   snapping. `syncSelected` maps `aligned === 0` to the Floating row, so it shows
-  as selected. Any other custom value that matches no preset leaves the combo
-  unselected until a preset is picked again.
+  as selected. Any other custom value that matches no snap position leaves the combo
+  unselected until one is picked again.
 - **Orientation** — a single `Adw.ComboRow` bound to the single `orientation`
   GSettings **enum** key (`horizontal` / `left` / `right`, index == nick):
     - **Horizontal** → `orientation = 'horizontal'`.

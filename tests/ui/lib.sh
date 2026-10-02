@@ -129,7 +129,7 @@ ui_start() {
     # Values the tests rely on that differ from the schema defaults (the reset
     # above already restored everything else, `collapsed` included).
     ui_config_write "$config_json"
-    ui_set state 1
+    ui_set state 0
     ui_set orientation horizontal
     ui_set content-padding 0
     ui_set aligned 0
@@ -267,7 +267,9 @@ ui_click_button() {
     "
 }
 
-# Move the pointer into the top-left corner and let the main loop settle.
+# Move the pointer into the bottom-left corner and let the main loop settle.
+# Not the top-left one: the GNOME top bar is on screen there, and a pointer
+# parked on it opens the overview, which closes any open menu.
 # Call this between two injected gestures: the previous release is still being
 # dispatched when the next ui_eval returns, and a gesture started on top of it
 # is delivered against stale pick/grab state (a click that never clicks, a drag
@@ -278,7 +280,8 @@ ui_park_pointer() {
             const seat = Clutter.get_default_backend().get_default_seat();
             globalThis._gwpVdev ??=
                 seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
-            globalThis._gwpVdev.notify_absolute_motion(GLib.get_monotonic_time(), 2, 2);
+            globalThis._gwpVdev.notify_absolute_motion(
+                GLib.get_monotonic_time(), 2, global.stage.height - 2);
             await new Promise(res => setTimeout(res, 120));
             return 'parked';
         })()

@@ -40,7 +40,7 @@ Main panel actor. It owns:
 
 - panel positioning and relocation. On startup the constructor restores the raw
   `pos-x`/`pos-y` and then calls `_relocate(false)` so the saved `aligned`
-  preset (edge snapping / centering) is re-applied after a reload. When
+  snap position (edge snapping / centering) is re-applied after a reload. When
   `aligned === NONE` the panel keeps its exact stored (floating) position across
   restarts; only out-of-bounds positions are clamped back on screen. A resize
   relocates through `_scheduleRelocate()`, which keeps the id of its idle source
@@ -50,12 +50,17 @@ Main panel actor. It owns:
   behind issue #7; EGO flags the untracked form as EGO-L-004). Holding one id
   also collapses the `notify::width` and `notify::height` a single resize emits
   into one relocate;
-- auto/permanent/off state;
-- top-panel hiding integration (legacy Permanent-mode `panelBox` hiding, now
-  gated by `_topBarManagedExternally()` — see `MainPanelController`);
+- visibility: the panel is shown (faded in) once the Shell has finished
+  starting up and stays shown while the extension is enabled — in the overview
+  too. There is no on/off/automatic mode and no Quick Settings tile (removed in
+  issue #35); "off" is the Extensions app switch, "widgets out of the way" is
+  the `collapsed` key, and the top bar belongs to `MainPanelController`. The
+  `state` GSettings key that held the old mode is kept in the schema and read
+  once on enable (`configStore.migrateTileTopBarMode`): Permanent hid the top
+  bar on its own, so it becomes `main-panel = hide` and `state` is set to 0
+  (`tests/ui/t-30-tile-migration.sh`);
 - the GNOME top-bar behaviour controller (`MainPanelController`), driven by the
   `main-panel` GSettings enum;
-- GNOME Shell quick settings toggle;
 - control button;
 - configured plugin actors returned by `PluginManager`.
 
@@ -94,7 +99,7 @@ independently of the floating mini panel. Lives in
 the `main-panel` GSettings enum via `FloatingMiniPanel`
 (`_getMainPanelMode()` + `changed::main-panel`). Three modes:
 
-- `visible` — leave the bar untouched (`ownsTopBar()` is false);
+- `visible` — leave the bar untouched;
 - `hide` — keep it hidden (slid up, no strut, hidden even in the overview);
 - `autohide` — hidden, but slid back in by a `Layout.PressureBarrier` on the top
   monitor edge and while the overview is open, then hidden again on pointer
@@ -104,12 +109,11 @@ the `main-panel` GSettings enum via `FloatingMiniPanel`
 It reimplements the proven core of the standalone **Hide Top Bar** extension
 (pressure barrier + `panelBox.y` slide + `affectsStruts:false` chrome + overview
 search-entry padding) minus intellihide, the keyboard shortcut and desktop-icons
-integration. While it owns the bar (`ownsTopBar()`), `FloatingMiniPanel`
-suppresses its legacy Permanent-mode `panelBox` manipulation
-(`_topBarManagedExternally()` gates `_showFloatingMiniPanel`,
-`_hideFloatingMiniPanel` and `_preparePermanentMode`) so the two never fight over
-the same actor. Every barrier, pointer watch, signal and timer is released in
-`destroy()`, which restores the bar and its strut reservation.
+integration. It is the only code that moves `panelBox`: the floating panel no
+longer shoves the top bar itself, which is what used to let the former
+Permanent mode and this controller fight over the same actor. Every barrier,
+pointer watch, signal and timer is released in `destroy()`, which restores the
+bar and its strut reservation.
 
 ### `PluginManager`
 
@@ -130,7 +134,8 @@ gestures. Its context menu holds a non-reactive header — the extension name, a
 on the right the version with the release channel over the build's
 `commit[-dirty]` (`systemInfo.versionDisplay()` / `buildIdDisplay()`, stacked
 rather than joined so the row does not outgrow the menu, `@tag:build-stamp`) —
-followed by "Collapse"/"Expand", "Settings…" (opens preferences), "Release notes",
+followed by the preset section (`_presetSection`, rebuilt from the `presets` key
+on every open and empty while there are none, `@tag:presets`), "Collapse"/"Expand", "Settings…" (opens preferences), "Release notes",
 "View on extensions.gnome.org", "Report a bug" and "Suggest a feature" (the last
 two open the prefilled GitHub issue forms via `systemInfo`). The former
 Auto-Position and Control-Functions menu sections were moved to the preferences

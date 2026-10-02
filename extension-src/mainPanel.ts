@@ -87,13 +87,6 @@ export class MainPanelController {
         this.setMode(mode);
     }
 
-    // True while this controller is the authority over the top bar, i.e. the
-    // floating panel must not also poke `panelBox`. Callers gate their own
-    // legacy top-bar manipulation on this.
-    ownsTopBar() {
-        return this._mode !== MainPanelMode.VISIBLE;
-    }
-
     setMode(mode) {
         const next = normalizeMode(mode);
         if (next === this._mode && this._applied)

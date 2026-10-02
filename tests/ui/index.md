@@ -19,7 +19,7 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   the standing strip is as thick as the lying one is tall (per-orientation sizing
   in `stylesheet.css`).
 - `t-03-content-padding-live.sh` — `content-padding` applies/clears live.
-- `t-04-position-preset.sh` — `aligned` presets snap the panel.
+- `t-04-position-preset.sh` — `aligned` snap positions snap the panel.
 - `t-05-config-live-reload.sh` — `widgets` GSettings key edits live-reload;
   a widget whose options did not change keeps its actor (only the edited one is
   rebuilt); reordering moves actors instead of recreating them; broken config is
@@ -150,6 +150,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
 
 ## Directories
 
+- `t-29-presets.sh` — presets in the handle menu: the list appears once a preset
+  exists, switching restores each slot's widgets and snap position, and an edit
+  made in a preset comes back with it (`@tag:presets`).
+- `t-30-tile-migration.sh` — the removed tile's Permanent mode is carried over
+  once into `main-panel = hide` on enable; other modes leave it alone.
 - [`driver/`](driver/gwp-test-driver@gwp.test/extension.js) — test-only GNOME
   Shell extension exporting `org.gwp.TestDriver.Eval` on the test session bus
   (replaces the removed `org.gnome.Shell.Eval`). Never enable it in a real
