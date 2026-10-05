@@ -131,6 +131,9 @@ export const BreakTimerGraph = GObject.registerClass(
             // Reminders silenced right now, by the manual pause or by something
             // holding the session awake. Drawn dimmed, reported in the tooltip.
             this._silent = false;
+            // What the last paint actually drew (_paintSignature); the tick
+            // repaints only when that would come out different.
+            this._paintedSignature = null;
             this._inhibited = false;
             this._inhibitPending = false;
             this._inhibitCheckedAt = 0;
@@ -249,7 +252,7 @@ export const BreakTimerGraph = GObject.registerClass(
 
             if (this.hover)
                 this._updateTooltip();
-            this.queue_repaint();
+            this._queueRepaintIfChanged();
         }
 
         // --- Reminders ------------------------------------------------------
@@ -643,7 +646,42 @@ export const BreakTimerGraph = GObject.registerClass(
 
         // --- Drawing --------------------------------------------------------
 
+        // Everything the bars show, as one short token: the drawing box, the
+        // silent flag, and per enabled timer whether it is overdue plus its bar
+        // width rounded to whole pixels. Taken from the allocation rather than
+        // the paint-time surface size so that _tick and _draw compute it from
+        // the same numbers.
+        _paintSignature() {
+            const [width] = drawingBox(this._rotated, this.width, this.height);
+            const paused = pauseRemainingSeconds(this._state, nowSeconds());
+            if (paused > 0)
+                return `paused:${paused}`;
+            const bars = this._timers
+                .filter(timer => timer.enabled)
+                .map(timer => {
+                    const overdue = this._isOverdue(timer);
+                    const barWidth = overdue
+                        ? width
+                        : width * this._fractionFor(timer);
+                    return `${overdue ? 'o' : 'n'}${Math.round(barWidth)}`;
+                });
+            return `${this._silent ? 's' : 'a'}|${width}|${bars.join(',')}`;
+        }
+
+        // The tick runs every second because the state has to; the picture does
+        // not change nearly that often. A bar is ~32 px wide for a 10-minute
+        // timer, so one pixel is about 19 s of work — repainting every second
+        // redrew the identical bars nineteen times out of twenty (gwp-231).
+        // Callers that change something this signature does not carry (colours,
+        // orientation, the template) still call queue_repaint directly.
+        _queueRepaintIfChanged() {
+            if (this._paintSignature() === this._paintedSignature)
+                return;
+            this.queue_repaint();
+        }
+
         _draw() {
+            this._paintedSignature = this._paintSignature();
             const context = this.get_context();
             const [sw, sh] = this.get_surface_size();
             const [width, height] = drawingBox(this._rotated, sw, sh);

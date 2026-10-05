@@ -247,7 +247,19 @@ vertically with an even height split and a 1px gap between bars. Each bar
 has a faint track (theme foreground at low alpha) behind it; the fill width
 is `min(1, elapsed/limit)` of the bar in the timer's `color`. Once
 `elapsed >= limit` ("overdue") the bar is drawn full-width in the timer's
-`overdueColor` instead. Repaints every tick. The reminder actors are styled in
+`overdueColor` instead.
+
+The tick runs every second because the state must, but the **bars are repainted
+only when they would come out different**: `_paintSignature()` boils the drawing
+down to the box size, the silent flag and each bar's overdue flag plus its width
+in whole pixels, `_draw()` records what it drew, and the tick compares. A 32 px
+bar for a 10-minute timer moves one pixel per ~19 s, so this is the difference
+between one repaint a second and one every twenty
+([CPU cost](../../../docs/testing/cpu-cost.md)). Callers that change something
+the signature does not carry — colours, orientation, the template — still call
+`queue_repaint()` directly.
+
+The reminder actors are styled in
 [`../../stylesheet.css`](../../stylesheet.css) (`.break-timer-message`,
 `.break-timer-screen*`).
 

@@ -21,6 +21,7 @@ import {COLLECTOR_OFF_TEXT} from '../../aiCollector.js';
 import {hexToRgb, nowSeconds, toNumber} from '../../colorUtils.js';
 import {animateTooltipVisibility, positionTooltip} from '../../tooltip.js';
 import {renderTemplate} from '../../tooltipTemplate.js';
+import {pulseOpacity} from './pulse.js';
 
 const DOT_SIZE = 12;
 const DOT_SPACING = 4;
@@ -29,7 +30,14 @@ const DEFAULT_EXPIRE_MINUTES = 180;
 // we never saw) and reads as 'idle' — still open, ready for the next prompt.
 const THINKING_STALE_SECONDS = 10 * 60;
 const TICK_INTERVAL_SECONDS = 5;
+// One half of the pulse — full brightness down to dim, or back up.
 const PULSE_INTERVAL_MS = 600;
+// How long one opacity step lasts. The pulse is stepped rather than eased
+// because an eased one interpolates at the monitor's frame rate: ~3 % of a CPU
+// core for one 12 px dot, for as long as a promptable session exists (gwp-231,
+// measured in the headless stand). One frame per step makes that price a
+// setting, and 100 ms (10 steps a second) is smooth to the eye.
+const PULSE_STEP_MS = 100;
 const PULSE_LOW_OPACITY = 120;
 // The three per-session states (options carry these default colours). 'waiting'
 // (the agent explicitly wants you) and 'idle' (finished — ready for your next
@@ -107,7 +115,9 @@ export const AiAgentStatus = GObject.registerClass(
                 ? this._collector.addListener(() => this._refresh())
                 : null;
             this._dots = [];
-            this._pulsePhase = false;
+            this._dotState = undefined;
+            this._pulseStep = 0;
+            this._pulseTimeoutId = 0;
             this._rotated = false;
 
             this._tooltip = new St.Label({
@@ -129,17 +139,8 @@ export const AiAgentStatus = GObject.registerClass(
                     return GLib.SOURCE_CONTINUE;
                 }
             );
-            // Attention pulse: ease the promptable dots' opacity between full and
-            // dim on a fixed cadence (Clutter has no auto-reversing loop ease).
-            this._pulseTimeoutId = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT,
-                PULSE_INTERVAL_MS,
-                () => {
-                    this._pulseTick();
-                    return GLib.SOURCE_CONTINUE;
-                }
-            );
-
+            // The attention pulse is started by _syncPulseTimer, from here via
+            // _rebuildDots, and only while a dot actually pulses.
             this._rebuildDots();
         }
 
@@ -196,10 +197,6 @@ export const AiAgentStatus = GObject.registerClass(
         // would waste panel space and split the user's attention. The tooltip
         // breaks the aggregate down per session (which agent needs what).
         _rebuildDots() {
-            for (const dot of this._dots)
-                dot.destroy();
-            this._dots = [];
-
             // Three pictures, not two: the most urgent session's colour, a hollow
             // dot when the collector is running with nothing open, and a struck
             // dot when it is switched off. The last two used to be the same dot,
@@ -207,7 +204,20 @@ export const AiAgentStatus = GObject.registerClass(
             const state = this._collecting()
                 ? this._openSessions()[0]?.state ?? null
                 : 'off';
+            // Almost nothing that gets here changes that one state: the 5 s tick
+            // re-reads timestamps the dot does not draw, and the collector
+            // notifies on every provider payload — token counts only the usage
+            // widget reads. Rebuilding regardless destroyed and recreated the
+            // actor about twice a second, relaying out the panel to draw the
+            // identical dot (gwp-231).
+            if (this._dots.length > 0 && state === this._dotState)
+                return;
+            this._dotState = state;
+            for (const dot of this._dots)
+                dot.destroy();
+            this._dots = [];
             this.add_child(this._makeDot(state));
+            this._syncPulseTimer();
         }
 
         _makeDot(state) {
@@ -275,21 +285,42 @@ export const AiAgentStatus = GObject.registerClass(
             context.$dispose();
         }
 
-        _pulseTick() {
-            this._pulsePhase = !this._pulsePhase;
-            const target = this._pulsePhase ? PULSE_LOW_OPACITY : 255;
-            for (const dot of this._dots) {
-                if (!dot._pulses) {
-                    if (dot.opacity !== 255)
-                        dot.opacity = 255;
-                    continue;
-                }
-                dot.ease({
-                    opacity: target,
-                    duration: PULSE_INTERVAL_MS,
-                    mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
-                });
+        // A never-ending opacity animation keeps Clutter's frame clock awake for
+        // as long as it runs, so it exists only while there is a promptable
+        // session to point at — not for the whole life of the session, easing an
+        // opacity no dot was using (gwp-231).
+        _syncPulseTimer() {
+            const pulsing = this._dots.some(dot => dot._pulses);
+            if (pulsing === !!this._pulseTimeoutId)
+                return;
+            if (pulsing) {
+                this._pulseStep = 0;
+                this._pulseTimeoutId = GLib.timeout_add(
+                    GLib.PRIORITY_DEFAULT,
+                    PULSE_STEP_MS,
+                    () => {
+                        this._pulseTick();
+                        return GLib.SOURCE_CONTINUE;
+                    }
+                );
+                return;
             }
+            GLib.Source.remove(this._pulseTimeoutId);
+            this._pulseTimeoutId = 0;
+            this._pulseStep = 0;
+            for (const dot of this._dots)
+                dot.opacity = 255;
+        }
+
+        _pulseTick() {
+            this._pulseStep += 1;
+            const opacity = pulseOpacity(
+                this._pulseStep,
+                PULSE_INTERVAL_MS / PULSE_STEP_MS,
+                PULSE_LOW_OPACITY
+            );
+            for (const dot of this._dots)
+                dot.opacity = dot._pulses ? opacity : 255;
         }
 
         // --- tooltip ------------------------------------------------------------
@@ -376,7 +407,7 @@ export const AiAgentStatus = GObject.registerClass(
             }
             if (this._pulseTimeoutId) {
                 GLib.Source.remove(this._pulseTimeoutId);
-                this._pulseTimeoutId = null;
+                this._pulseTimeoutId = 0;
             }
             if (this._hoverId) {
                 this.disconnect(this._hoverId);

@@ -14,6 +14,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   clicks (`ui_click` primary-button shorthand, `ui_click_button` for another
   button and/or a press-and-hold duration, `ui_drag` for a press-move-release
   drag), screenshots, assertions.
+- [`cpu-bench.sh`](cpu-bench.sh) — CPU measuring stand, not a regression test:
+  boots the same isolated headless shell for one scenario (no extensions, the
+  panel alone, one widget, a full set, the agent-status pulse forced on) and
+  prints what that shell's own process cost over a window. See
+  [`../../docs/testing/cpu-cost.md`](../../docs/testing/cpu-cost.md).
 - `t-01-panel-loads.sh` — panel loads, widgets in config order, no JS errors.
 - `t-02-orientation-live.sh` — `orientation` setting applies live; graphs rotate;
   the standing strip is as thick as the lying one is tall (per-orientation sizing
@@ -155,6 +160,11 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   made in a preset comes back with it (`@tag:presets`).
 - `t-30-tile-migration.sh` — the removed tile's Permanent mode is carried over
   once into `main-panel = hide` on enable; other modes leave it alone.
+- `t-31-idle-cost.sh` — what the panel may do while nothing happens: the
+  agent-status pulse timer exists only while a dot pulses and steps the opacity
+  rather than easing it, an unchanged state keeps its dot actor, and the
+  break-timer tick has nothing to repaint right after a paint (gwp-231,
+  [CPU cost](../../docs/testing/cpu-cost.md)).
 - [`driver/`](driver/gwp-test-driver@gwp.test/extension.js) — test-only GNOME
   Shell extension exporting `org.gwp.TestDriver.Eval` on the test session bus
   (replaces the removed `org.gnome.Shell.Eval`). Never enable it in a real

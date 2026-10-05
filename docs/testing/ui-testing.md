@@ -74,6 +74,14 @@ Requires a GNOME 50 host with `gnome-shell` and `dbus-run-session` (headless
 rendering uses llvmpipe; no display needed). Not part of `npm test` (which
 stays Node-only and CI-cheap).
 
+## Measuring CPU cost
+
+The same isolated headless shell is also how the panel's cost to an idle
+`gnome-shell` is measured, one widget at a time:
+[`cpu-bench.sh`](../../tests/ui/cpu-bench.sh), described in
+[`cpu-cost.md`](cpu-cost.md). It is a measuring tool, not a regression test —
+`run.sh` does not pick it up.
+
 ## Writing a regression test
 
 Copy the shape of [`../../tests/ui/t-02-orientation-live.sh`](../../tests/ui/t-02-orientation-live.sh):

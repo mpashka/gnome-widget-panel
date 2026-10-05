@@ -17,6 +17,9 @@ Test cases and the harnesses that run them. Two layers cover the extension:
 
 ## Files
 
+- [`cpu-cost.md`](cpu-cost.md) — what the panel costs an idle GNOME Shell, how
+  that is measured without touching anyone's desktop, and the two rules the
+  numbers produced (`@tag:cpu-cost`).
 - [`ui-testing.md`](ui-testing.md) — the headless UI harness: approaches
   considered, architecture (isolated headless shell + test-driver extension),
   the regression suite and the feature-debug stub workflow (`@tag:ui-testing`).

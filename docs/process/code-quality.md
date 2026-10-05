@@ -85,6 +85,16 @@ seams are what let the next change refactor safely.
   an unrelated fix.
 - Author generated output in `extension-src/`; never hand-edit `extension/*.js`.
 
+## 6. A widget's cost to the shell is part of its design
+
+The panel is drawn by `gnome-shell` itself, so a widget's timers and animations
+are CPU the whole desktop pays for, permanently. Two rules, both measured rather
+than argued: **no permanent eased animation** (it interpolates at the frame rate
+and holds Clutter's frame clock awake — step the property on a timer, and keep
+the timer only while the state it serves lasts), and **a periodic tick repaints
+only when the picture would differ**. Numbers, the headless measuring stand and
+the cases that produced both: [`../testing/cpu-cost.md`](../testing/cpu-cost.md).
+
 ## The ratchet, restated
 
 Each change should leave the code **at least as easy to change as it found it**:

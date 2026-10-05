@@ -41,6 +41,8 @@ Not in the default config; add it via the panel preferences.
 - `aiAgentStatus.ts` — the widget: reads the collector's sessions, applies the
   expiry and staleness policy this widget configures, and draws the single
   aggregated dot and its templated tooltip.
+- `pulse.ts` — the attention pulse's opacity curve as plain arithmetic, gi-free
+  and unit tested (`../../../tests/pulseOpacity.test.mjs`).
 - `prefs.ts` — widget settings UI: the expiry row, the three state colours, the
   pulse switch and the tooltip template editor with live preview. Which agents
   are watched, and on which port, is the collector's settings group. See
@@ -97,8 +99,19 @@ in the colour of the **most-urgent** session state. `_openSessions()` orders
 sessions by `waiting`, `idle`, `thinking` (then by recency), and element 0 wins,
 so one glyph reflects "the loudest thing an agent needs from you right now". The
 two **promptable** states (`waiting`, `idle`) get a brighter 1 px ring and pulse
-their opacity (600 ms ease cadence) — a pulsing dot means "a session you can type
-into now"; `pulseIdle: false` limits the pulse to `waiting`. `thinking` is solid.
+their opacity (600 ms from full to dim and back) — a pulsing dot means "a session
+you can type into now"; `pulseIdle: false` limits the pulse to `waiting`.
+`thinking` is solid.
+
+That pulse is **stepped, not eased**, and its timer runs only while a dot
+actually pulses. An eased pulse interpolates at the monitor's frame rate, and
+measurement put this one dot at ~3 % of a CPU core for as long as any session was
+promptable — six times the whole rest of the panel; stepping the opacity every
+100 ms costs a third of that and looks the same
+([`pulse.ts`](pulse.ts), [CPU cost](../../../docs/testing/cpu-cost.md)).
+The dot is also rebuilt only when the state it draws changes: the 5 s tick and
+every collector notification used to destroy and recreate the actor about twice a
+second to draw the identical dot.
 With no sessions a dim grey hollow placeholder dot keeps the widget visible and
 hoverable; with **collection switched off** that same dot carries a diagonal
 stroke, because "nothing is happening" and "nobody is collecting" are different
