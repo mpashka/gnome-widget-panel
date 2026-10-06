@@ -20,7 +20,10 @@ Developer and build tooling for the GNOME Widget Panel. Parent:
   `--state FILE` diffs against the previous run and exits 20 on any change;
   `--comparable` prints that same snapshot for a watcher that stores it itself
   (and exits 2 with no output when the author pages cannot be read). Polled every
-  few hours by the dispatcher's `ego-review-monitoring` watch. See
+  few hours by the dispatcher's `ego-review-monitoring` watch.
+  `--comment FILE --comment-version 0.2.4` answers the reviewer in that version's
+  review thread and reads the thread back to prove the text arrived (`--dry-run`
+  shows the request without sending). See
   [`../docs/process/promotion.md`](../docs/process/promotion.md).
 - [`wiki-screenshots.sh`](wiki-screenshots.sh) — regenerates the published
   screenshots (panel, collapsed panel, settings window) headlessly on top of the

@@ -11,3 +11,5 @@ node_modules
 tests/ui/local-*
 # Per-task working files live in docs/requests/<task-name>/ and are excluded
 # locally via .git/info/exclude (see AGENTS.md, "Documentation: LLM wiki").
+# Python bytecode from the tools/ scripts.
+__pycache__/

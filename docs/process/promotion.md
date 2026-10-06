@@ -110,6 +110,30 @@ cfg secret run ego -- tools/ego-status.py --state ~/.cache/gwp-ego.json
 cfg secret run ego -- tools/ego-status.py --dump-html /tmp/ego   # keep the HTML on a parse failure
 ```
 
+### Answering the reviewer in the thread
+
+The same `/review/<pk>/` page carries the author's own comment form, so a reply or
+a question about the queue does not need a mailbox or a chat account:
+
+```bash
+cfg secret run ego -- tools/ego-status.py \
+    --comment docs/requests/<task>/ego-ping.md --comment-version 0.2.4 --dry-run
+```
+
+Drop `--dry-run` to send. Two things make this safe to script:
+
+- the author's form offers the single status **`none` ("No change")** — verified on
+  every submitted version's page — so a comment cannot change a verdict or a
+  queue position; the script refuses to post if the form ever offers more;
+- after posting it re-reads the thread and fails unless the text is there, because
+  a silent no-op would otherwise be indistinguishable from a delivered reminder.
+
+The comment then shows up in `--comparable` under
+`reviews.<version>.comments`, which is what makes "did we actually nudge them?"
+a question with an answer. A reminder sent through a chat room is not checkable
+that way and should not be the plan: it needs an account the maintainer may not
+have, and it leaves no record anywhere the next session reads.
+
 ### Where the credentials come from
 
 The script only ever reads `EGO_USERNAME`/`EGO_LOGIN` and `EGO_PASSWORD` from the

@@ -21,15 +21,19 @@ EGO has no official API, so this drives the two things that do work:
    Reviewer comments also arrive by email to the account owner; this reads them
    from the site so a watcher can notice them without mailbox access.
 
+   `/review/<pk>/` also carries the author's own comment form, which is how an
+   answer to the reviewer gets into the thread — see `--comment`.
+
 Exit codes:
-    0   published
+    0   published (or the comment was posted and read back)
     10  not published (submitted / unreviewed / rejected)
     20  --state given and something changed since the previous run
-    2   error (network, login, unparseable page)
+    2   error (network, login, unparseable page, comment not posted)
 
 Usage:
     tools/ego-status.py [--uuid UUID] [--extension-id N] [--json] [--comparable]
                         [--state FILE] [--dump-html DIR]
+    tools/ego-status.py --comment FILE --comment-version VERSION [--dry-run]
 
 See docs/process/promotion.md.
 """
@@ -65,12 +69,12 @@ def _opener_with_cookies():
     return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar)), jar
 
 
-def _request(opener, url, data=None):
+def _request(opener, url, data=None, referer=LOGIN_URL):
     req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
     req.add_header("User-Agent", USER_AGENT)
     if data:
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        req.add_header("Referer", LOGIN_URL)
+        req.add_header("Referer", referer)
     return opener.open(req, timeout=TIMEOUT)
 
 
@@ -223,6 +227,63 @@ def author_state(opener, extension_id, dump_dir=None):
     return {"versions": versions, "reviews": reviews, "url": url}
 
 
+def parse_review_form(page):
+    """{action, csrf, statuses} of the comment form on a /review/<pk>/ page.
+
+    The author's form offers the single status `none` ("No change"), so posting a
+    comment leaves the version in the queue; a reviewer's form offers the verdicts.
+    """
+    form = re.search(
+        r'<form[^>]+id="review_form"[^>]+action="([^"]+)"(.*?)</form>', page, flags=re.S
+    )
+    if not form:
+        return None
+    body = form.group(2)
+    csrf = re.search(r'name="csrfmiddlewaretoken"\s+value="([^"]+)"', body)
+    return {
+        "action": BASE + form.group(1),
+        "csrf": csrf.group(1) if csrf else "",
+        "statuses": re.findall(r'<option value="([^"]+)"', body),
+    }
+
+
+def post_comment(opener, review_url, text, status="none"):
+    """Add `text` to that version's review thread, then read it back.
+
+    Returns the comments the page shows afterwards. Raises when the form is gone,
+    when it does not offer `status`, or when the posted text does not come back —
+    a silent no-op would otherwise read as "the reminder was sent".
+    """
+    with _request(opener, review_url) as resp:
+        page = resp.read().decode("utf-8", "replace")
+    form = parse_review_form(page)
+    if not form:
+        raise RuntimeError(f"no comment form on {review_url} (markup changed?)")
+    if status not in form["statuses"]:
+        raise RuntimeError(
+            f"{review_url} does not offer status {status!r}; it offers "
+            f"{form['statuses']} — posting would change the verdict, refusing"
+        )
+    payload = urllib.parse.urlencode(
+        {
+            "csrfmiddlewaretoken": form["csrf"],
+            "comments": text,
+            "status": status,
+        }
+    ).encode()
+    with _request(opener, form["action"], payload, referer=review_url) as resp:
+        resp.read()
+    with _request(opener, review_url) as resp:
+        after = parse_review(resp.read().decode("utf-8", "replace"))
+    probe = _text(text.strip().splitlines()[0])[:60]
+    if not any(probe in c for c in after["comments"]):
+        raise RuntimeError(
+            f"posted to {form['action']} but {review_url} does not show the text; "
+            "nothing was delivered — check the page by hand before retrying"
+        )
+    return after["comments"]
+
+
 def summarise(result):
     lines = []
     if result["published"]:
@@ -280,6 +341,69 @@ def comparable(result):
     }
 
 
+def _credentials():
+    # EGO_USERNAME is the release workflow's secret; EGO_LOGIN is what
+    # `cfg secret run ego` exports. Accept either instead of making one rename.
+    return (
+        os.environ.get("EGO_USERNAME") or os.environ.get("EGO_LOGIN"),
+        os.environ.get("EGO_PASSWORD"),
+    )
+
+
+def run_comment(args):
+    """--comment: put the author's text into one version's review thread."""
+    if not args.comment_version:
+        print("error: --comment needs --comment-version (e.g. 0.2.4)", file=sys.stderr)
+        return 2
+    try:
+        with open(args.comment) as fh:
+            text = fh.read().strip()
+    except OSError as e:
+        print(f"error: cannot read the comment text: {e}", file=sys.stderr)
+        return 2
+    if not text:
+        print(f"error: {args.comment} is empty, nothing to post", file=sys.stderr)
+        return 2
+
+    user, password = _credentials()
+    if not (user and password):
+        print(
+            "error: posting needs the account: run under `cfg secret run ego --`, "
+            "which supplies EGO_LOGIN/EGO_PASSWORD",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        opener = _login(user, password)
+        with _request(opener, f"{BASE}/extension/{args.extension_id}/") as resp:
+            versions = parse_versions(resp.read().decode("utf-8", "replace"))
+        target = next(
+            (v for v in versions if v["version"] == args.comment_version), None
+        )
+        if not target:
+            print(
+                f"error: version {args.comment_version} is not among the submitted "
+                f"ones ({', '.join(v['version'] for v in versions) or 'none parsed'})",
+                file=sys.stderr,
+            )
+            return 2
+        if args.dry_run:
+            print(f"would post to {target['review_url']} "
+                  f"({target['version']}, {target['status']}), status=none:")
+            print(text)
+            return 0
+        comments = post_comment(opener, target["review_url"], text)
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    print(f"posted to {target['review_url']} ({target['version']}); thread now:")
+    for comment in comments:
+        print(f"  - {comment}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -302,7 +426,27 @@ def main():
         "exit 20 when anything changed",
     )
     ap.add_argument("--dump-html", metavar="DIR", help="save the fetched pages")
+    ap.add_argument(
+        "--comment",
+        metavar="FILE",
+        help="post the text of FILE to a version's review thread as the author "
+        "(the only status the author's form offers is 'No change', so the version "
+        "keeps its place in the queue); reads the thread back to prove it arrived",
+    )
+    ap.add_argument(
+        "--comment-version",
+        metavar="VERSION",
+        help="which submitted version's thread --comment writes to, e.g. 0.2.4",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --comment: print the request that would be sent, send nothing",
+    )
     args = ap.parse_args()
+
+    if args.comment:
+        return run_comment(args)
 
     result = {"uuid": args.uuid, "published": False}
     try:
@@ -316,10 +460,7 @@ def main():
         result["version_name"] = payload.get("version_name")
         result["shell_version_map"] = payload.get("shell_version_map")
 
-    # EGO_USERNAME is the release workflow's secret; EGO_LOGIN is what the
-    # developer's ~/.profile exports. Accept either instead of making one rename.
-    user = os.environ.get("EGO_USERNAME") or os.environ.get("EGO_LOGIN")
-    password = os.environ.get("EGO_PASSWORD")
+    user, password = _credentials()
     if user and password:
         try:
             opener = _login(user, password)
