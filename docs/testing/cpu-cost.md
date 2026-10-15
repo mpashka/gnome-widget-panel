@@ -90,6 +90,30 @@ most of the working day.
 
 Both are the same mistake twice: periodic *work* confused with periodic *change*.
 
+## The same thing on the real machine (2026-10-15)
+
+The table above is the stand. The owner's own session picked the new build up on
+2026-10-15 at 22:31 (a logout/login is what makes a running shell load a new
+extension module), and the shell was sampled again the same way as before — GUI
+idle, windows of 20 s on `utime+stime` of `gnome-shell` itself:
+
+| Real session, GUI idle | Before (2026-10-05) | After (2026-10-15) |
+| --- | --- | --- |
+| `gnome-shell`, 20 s windows | 1,3–4,2 % | 1,3–3,9 % (mean 2,9 % over 10 windows) |
+| of that, main thread / KMS thread | 91 % / 3 % over 5 days | 0,75 % / 0,55 % in one window |
+| `codex-usage-helper` | 0,5–0,9 % | 0,2–0,65 % |
+| `gemini-usage-helper` | 0,0 % | 0,0 % |
+
+**The two bands overlap, and that is the expected result, not a failure.** What
+the stand resolves — the panel's whole widget set at 0,85 % → 0,47 % of a core —
+is smaller than what a real session varies by on its own: the first three windows
+after login read 4,2–7,7 % while the session was still settling, and a window
+whose top consumers were measured showed the shell at 1,3 % while the author's own
+agent processes took 42 % between them. So a real-session sample can confirm that
+nothing regressed and that the panel is not what burns a third of a core; it
+cannot measure a half-percent change. For that, use the stand — which is why the
+stand exists.
+
 ## What it is not
 
 `gnome-shell` on this machine averaged 10,9 % of a core over five days
