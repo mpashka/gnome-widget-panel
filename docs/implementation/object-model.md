@@ -177,7 +177,7 @@ relocates. Visibility has one owner — the panel — because otherwise expandin
 collapsed panel put a self-hidden widget back on screen. The
 [`version-status`](../../extension-src/plugins/version-status/index.md) widget is
 the case that needs it: it is a warning, and a warning is shown only while it
-stands ([a warning is shown only while it stands](../../.claude/rules/ux/core.md)).
+stands (ux-principles `core.md`: a warning is shown only while it stands).
 
 ### `IndicatorsDrawer`
 

@@ -25,6 +25,10 @@ the links down to the code under [`../extension-src/index.md`](../extension-src/
 
 ## Files
 
+- [`CODE_REQUIREMENTS.md`](CODE_REQUIREMENTS.md) — what is specific to this
+  repository's code: architecture invariants, contract typing, formatting of
+  the emitted JS, no sync I/O on the Shell thread, which test suite a change
+  needs (`@tag:process`).
 - [`tags.md`](tags.md) — registry of `@tag:<slug>` cross-links between code and
   documentation. Every category and every widget is reachable by tag.
 

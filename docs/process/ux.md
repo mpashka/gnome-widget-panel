@@ -2,13 +2,12 @@
 
 `@tag:ux`
 
-**The general rules are not here.** They live in
-[`.claude/rules/ux/`](../../.claude/rules/ux/) — an installed copy of the
-[ux-principles](https://github.com/mpashka/home-incubator) convention. Claude
-Code loads them automatically; other agents must read them there. Start with
-[`core.md`](../../.claude/rules/ux/core.md) (any interface) and
-[`desktop.md`](../../.claude/rules/ux/desktop.md) (pointer, keyboard, windows,
-shell), then come back here.
+**The general rules are not here.** They are the **ux-principles** convention,
+maintained outside this repository (agents on the maintainer's machine:
+`~/Projects/github/m_pashka/ai/ux/rules/`, reached through the `ux-design`
+occasion rule) — no copy is kept here, because copies fall behind the canon.
+Its `core.md` covers any interface, `desktop.md` pointer, keyboard, windows and
+shell; read them, then come back here.
 
 This page holds what is **true of this panel and nowhere else**: the rules that
 name its parts, the worked examples with the gestures they cost, and any
@@ -77,7 +76,7 @@ Two consequences worth stating:
 
 ## The case behind "inheriting the top bar's duties"
 
-The general rule is in [`desktop.md`](../../.claude/rules/ux/desktop.md); this
+The general rule is in ux-principles `desktop.md`; this
 is the case that produced it.
 
 This panel offers to hide the GNOME top bar. GNOME shows a **red recording
@@ -115,12 +114,11 @@ Two, and the second is the expensive one:
 ## Departures from the general rules
 
 None recorded. When one is needed, it goes here with its reason — never by
-editing the installed copy in `.claude/rules/ux/`, which is a copy of a shared
-convention.
+editing the shared convention.
 
 ## Related
 
-- [`.claude/rules/ux/`](../../.claude/rules/ux/) — the general rules this page
+- ux-principles (`core.md`, `desktop.md`) — the general rules this page
   sharpens.
 - [`code-quality.md`](code-quality.md) — the code-side bar for the same changes.
 - [Use cases](../specification/use-cases/index.md) — the goals these rules are

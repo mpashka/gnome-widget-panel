@@ -19,7 +19,7 @@ marginal cost of change flat.
 - **Extract pure logic from Shell code.** Anything that does not need GJS/Clutter
   goes into a gi-free module so it is unit-testable with `npm test` (e.g.
   `tooltipTemplate.ts`, `widgetConfig.ts`). Prefer this over loading Shell-only
-  code in tests (AGENTS.md).
+  code in tests ([`../CODE_REQUIREMENTS.md`](../CODE_REQUIREMENTS.md)).
 - **Respect the boundaries.** Config flows through `configStore.ts`; plugins are
   reached through the `pluginManager.ts` registry; contracts live in
   `contracts.ts`. Do not add a second settings model or a second registry, and
@@ -73,8 +73,8 @@ same change (AGENTS.md documentation rule). Cross-file concepts also get a
 
 Runtime files may stay `// @ts-nocheck`, but every contract you touch gets typed
 in the same change: widget config, plugin registry/lifecycle, provider payloads,
-per-provider history, helper/hook messages (AGENTS.md "TypeScript contract typing
-rules"). Validate untrusted JSON at runtime before treating it as typed. Typed
+per-provider history, helper/hook messages ([`../CODE_REQUIREMENTS.md`](../CODE_REQUIREMENTS.md), "TypeScript contract
+typing"). Validate untrusted JSON at runtime before treating it as typed. Typed
 seams are what let the next change refactor safely.
 
 ## 5. Minimal, reversible changes

@@ -89,7 +89,7 @@ timer's message).
 
 ## Departure from the UX rules
 
-[`desktop.md` rule 1](../../../.claude/rules/ux/desktop.md) says every layer is
+ux-principles `desktop.md` rule 1 says every layer is
 dismissed by `Escape`. This keyboard cannot hear `Escape`: taking keyboard focus
 to hear it would take it from the text being typed. It closes by the hide key or
 by the panel button, both one click.

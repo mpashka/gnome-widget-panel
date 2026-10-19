@@ -22,8 +22,9 @@ the relevant page **before** the matching task.
   supported GNOME versions, notes URL, issues). The Release workflow updates it
   and regenerates [`../../CHANGELOG.md`](../../CHANGELOG.md) from it; see
   [`release.md`](release.md) (`@tag:versioning`).
-- [`bug-report-howto.md`](bug-report-howto.md) — the rule for filing bugs
-  (mandatory configuration + screenshot/screencast), for humans and agents
+- [`bug-report-howto.md`](bug-report-howto.md) — searching existing issues before filing
+  one, and the rule for filing bugs (mandatory configuration +
+  screenshot/screencast), for humans and agents
   (`@tag:process`).
 - [`bug-fixing-workflow.md`](bug-fixing-workflow.md) — the staged workflow
   (reproduce → analyse → fix → regression test → verify → code review), the

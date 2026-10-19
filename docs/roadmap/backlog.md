@@ -170,7 +170,7 @@ Specification: [`../specification/break-timer.md`](../specification/break-timer.
 
 ### Truncated text with no way to read it
 
-[Truncate only what stays reachable](../../.claude/rules/ux/core.md) says an
+"Truncate only what stays reachable" (ux-principles, `core.md`) says an
 ellipsis is only allowed where
 the full value stays reachable. Two menus cut text that nothing then reveals:
 

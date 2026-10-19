@@ -9,6 +9,34 @@ attachments do most of that work; a report without them usually stalls on
 round-trips. This page is the rule for both humans and agents filing issues in
 this repository.
 
+## First: search the existing issues
+
+Before opening a bug report or a feature request, review the existing GitHub
+issues — **open and closed**. If one matches, **comment** on it instead of filing
+a duplicate; **reopen** a closed one when it recurs or is worth reconsidering.
+One concern in one issue is what lets demand be judged and the backlog
+prioritised.
+
+Searching means reading, not glancing at titles — a request is a duplicate when
+it shares the **need**, however differently it is worded. Dump every issue once
+and search the bodies:
+
+```bash
+gh issue list --state all --limit 100 --json number,title,body > /tmp/issues.json
+# then grep that file for the concept, not just the words you would have used
+```
+
+(`gh search issues --state all` is rejected by the CLI — it takes only
+`open`/`closed`, which is how duplicates get filed.)
+
+When one matches, **comment with what your version adds** — the new case, the
+wider model, the constraint the original missed — and say it arrived as a
+separate ask and was merged here. File a new issue only when the *need* differs,
+and then **link the neighbours both ways** ("complementary to #N, not a
+substitute"). Every feature request states the **use case and its frequency**,
+and what the operation costs in gestures today versus after; see
+[`ux.md`](ux.md) and the [use-case tree](../specification/use-cases/index.md).
+
 ## The rule: every bug report includes configuration + a screenshot/screencast
 
 1. **Configuration is mandatory.** Layout and per-widget behaviour depend

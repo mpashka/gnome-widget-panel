@@ -5,7 +5,7 @@
 // `extension/**/*.js`. `tsc` strips every blank line when it emits JS, so the
 // shipped extension would otherwise be an unreadable wall of code (the EGO
 // reviewers read the generated JS). This runs AFTER `tsc` in `./gwp build` and
-// restores the spacing required by AGENTS.md "Code formatting":
+// restores the spacing required by docs/CODE_REQUIREMENTS.md "Code formatting":
 //
 //   - TWO blank lines between top-level functions.
 //   - THREE blank lines between top-level classes, including

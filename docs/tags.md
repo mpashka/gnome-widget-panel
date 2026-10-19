@@ -2,9 +2,9 @@
 
 Registry of `@tag:<slug>` cross-links between code and documentation. A tag
 groups files and folders that share a concept but are scattered across the tree,
-so one search surfaces every related location. The rules live in
-[`../.claude/rules/llm-wiki-tags/tags.md`](../.claude/rules/llm-wiki-tags/tags.md),
-summarised in the "Tags" section of [`../AGENTS.md`](../AGENTS.md).
+so one search surfaces every related location. The rules are the
+[llm-wiki-tags](https://github.com/mpashka/llm-wiki-tags) convention
+(`rules/tags.md`); what differs here is in [`../AGENTS.md`](../AGENTS.md).
 
 ## How to use
 
@@ -39,7 +39,7 @@ code, user guide, internals and tests.
 | Tag | Description |
 | --- | --- |
 | `process` | Contributor/agent process rules: how to file a bug, the staged bug-fixing workflow (with subagents) and the code-quality rules that keep change cost flat (`docs/process/bug-report-howto.md`, `docs/process/bug-fixing-workflow.md`, `docs/process/code-quality.md`, `.github/ISSUE_TEMPLATE/`, `AGENTS.md` Process section). |
-| `ux` | The interaction bar this panel is designed against. The **general** rules are an installed copy of the ux-principles convention (`.claude/rules/ux/`: `core`, `desktop`, `process`, `positions`); `docs/process/ux.md` holds what is true of this panel only — the worked examples with their step counts (the applications menu, what earns a row in the handle menu), the cases that produced a general rule, and any documented departure. |
+| `ux` | The interaction bar this panel is designed against. The **general** rules are the ux-principles convention, kept outside this repository (`core`, `desktop`, `process`, `positions`); `docs/process/ux.md` holds what is true of this panel only — the worked examples with their step counts (the applications menu, what earns a row in the handle menu), the cases that produced a general rule, and any documented departure. |
 | `use-case` | The user-goal tree: one page per thing people do with the panel, the gestures it costs, and the two reuse mechanisms behind it — context inherited from each directory's `index.md`, plus the shared `P`/`S`/`R` library (`docs/specification/use-cases/`, `docs/specification/use-cases/steps.md`). Every case page also carries the `widget-<id>` tag of the widget it exercises. |
 | `mechanism` | Plugin host mechanism: registry, config store, ordering, lifecycle, preferences plumbing and the About/GitHub-issue helper (`extension.ts`, `pluginManager.ts`, `configStore.ts`, `contracts.ts`, `plugins/registry.ts`, `prefs.ts`, `systemInfo.ts`, `docs/implementation/architecture.md`, `docs/implementation/preferences.md`). |
 | `ui` | Panel and preferences UI: floating panel actor, control button, indicator drawer, rendering, the widget-management settings window, the searchable icon picker, the shared templated-tooltip renderer and the shared duration formatter (`extension.ts`, `controlButton.ts`, `indicatorsDrawer.ts`, `prefs.ts`, `tooltipTemplate.ts`, `duration.ts`, `plugins/iconPicker.ts`, `docs/implementation/object-model.md`, `docs/implementation/preferences.md`). |

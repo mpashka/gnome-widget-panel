@@ -74,7 +74,7 @@ async function readTextFile(path) {
 // synchronous spawn blocks the compositor's main loop for the lifetime of the
 // child. The synchronous GLib spawn that used to be here was flagged as
 // EGO-X-002 by the store's automated review and violated the "no synchronous
-// I/O on the Shell thread" rule in AGENTS.md. `Gio.Subprocess` with
+// I/O on the Shell thread" rule in docs/CODE_REQUIREMENTS.md. `Gio.Subprocess` with
 // `communicate_utf8_async` is the sanctioned equivalent, and is what the
 // plugin's out-of-process collectors already use.
 async function runCommand(argv) {

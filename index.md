@@ -21,9 +21,10 @@ generated GJS runtime code.
   [`requests/`](docs/requests/index.md) (per-task working files) and the
   [tag registry](docs/tags.md).
 - [`schema/`](schema/) — JSON schemas for future external widget manifests.
-- `.claude/rules/llm-wiki-tags/` — the documentation and tagging rules Claude
-  Code loads on every task; summarised in [`AGENTS.md`](AGENTS.md) for other
-  agents.
+- `.claude/rules/llm-wiki-tags/` — where the `@tag:` token goes in TypeScript
+  and shell code, loaded by path; the convention itself is
+  [llm-wiki-tags](https://github.com/mpashka/llm-wiki-tags), and what differs
+  here is in [`AGENTS.md`](AGENTS.md).
 - [`tests/`](tests/index.md) — Node unit tests for the gi-free pure-logic
   modules (`npm test`) and the headless GNOME Shell UI regression suite
   (`npm run test:ui`, [`tests/ui/`](tests/ui/index.md)).
@@ -33,7 +34,7 @@ generated GJS runtime code.
 The repository root is kept minimal: this index, the agent/user entry documents,
 the licence, the build and install entry-point scripts, and the files tooling
 requires there. Everything else is documentation and lives under `docs/` — see
-the "Documentation: llm-wiki-tags" section in [`AGENTS.md`](AGENTS.md).
+the "Documentation and tags" section in [`AGENTS.md`](AGENTS.md).
 
 - [`AGENTS.md`](AGENTS.md) — working rules, including where each kind of
   document belongs and the LLM-wiki/tag conventions.

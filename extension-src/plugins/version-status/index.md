@@ -19,8 +19,8 @@ mistake this widget exists to prevent.
 It is a **warning, not a display.** Its whole message is "the build on disk is
 newer than the one this Shell is running — testing what you see is pointless
 until you log out and back in", so once the two agree it has nothing to say and
-**takes no space in the panel** ([a warning is shown only while it
-stands](../../../.claude/rules/ux/core.md)). Between installs the panel looks
+**takes no space in the panel** (ux-principles `core.md`: a warning is shown only while it
+stands). Between installs the panel looks
 exactly as it would without the widget; it comes back the moment a newer build
 lands. The panel is told through `selfHidden` on the actor plus the host's
 `updateWidgetVisibility()` (see [`../../contracts.ts`](../../contracts.ts)):

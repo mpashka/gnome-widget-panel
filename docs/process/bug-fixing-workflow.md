@@ -173,7 +173,9 @@ The preferred way to exercise a manual repro. The agent produces **one script
 with sub-commands** plus a numbered **use-case** (in
 `docs/requests/<task-name>/manual-testing.md`, git-excluded via
 `.git/info/exclude`); the user runs the steps and ticks each one
-`done / worked` or `couldn't do`. Design the script to **minimise manual steps**:
+`done / worked` or `couldn't do`. The file holds only the current test: recreate it
+from scratch for each new manual-testing task — past runs live in issues and
+commits. Design the script to **minimise manual steps**:
 
 - **Self-state (drive the plan from a state file):** persist progress and any
   prior settings to a **state file**. On each run the script reads that state
