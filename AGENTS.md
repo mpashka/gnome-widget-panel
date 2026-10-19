@@ -103,6 +103,9 @@ purpose.
   renamed `release/A.B.C`, squashed onto `main` as one tagged commit, and a
   fresh `dev` is cut; a new widget is a minor bump, changes inside widgets a
   patch. Procedure: [`docs/process/release.md`](docs/process/release.md).
+- 🚨 **The repository is public** (`github.com/mpashka/gnome-widget-panel`): no
+  secrets, nothing from work. A password or token lives in `~/Projects/home/secrets`
+  (`ansible-vault`) or Bitwarden; the repository gets a reference to the record.
 - **Commit a task when it is finished** — code, docs and tests together, suite
   green. Two sessions' unfinished hunks in one tree cannot be split cheaply.
 
