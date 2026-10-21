@@ -269,7 +269,8 @@ quiet hour shows.
   `#f03333` when overdue. A disabled timer drops its bar.
 - **What it does:** Workrave-style rest reminders. Three activity-based timers
   (micro / rest / daily) fill as you type and move, and reset when you step away
-  long enough. The daily one can also watch the **clock**: switch on *end of the
+  long enough — idle, locked or suspended. A micro break is not offered when the
+  rest break is only minutes away. The daily one can also watch the **clock**: switch on *end of the
   working day* (21:30 by default) and its bar shows whichever comes first —
   the hours worked, or the hour itself. When one comes due it warns you with a message that never steals
   focus, then dims the screen for the break itself (Postpone / Skip / `Esc`).

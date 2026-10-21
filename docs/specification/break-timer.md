@@ -69,7 +69,20 @@ Three consequences worth stating explicitly:
 
 The reset is driven purely by idle time, so it happens whether the break came
 from a reminder, from lunch, or from an unrelated interruption. Nothing needs to
-be pressed for a break to count.
+be pressed for a break to count — and it does not matter how the time away is
+spent: idle at an unlocked screen, behind the **lock screen** (the time before
+the lock counts too, not only the time after it), or with the machine
+**suspended**. Away at least as long as a timer's break, that timer starts over.
+
+**A micro break is not offered when the rest break is close.** If, when a micro
+break comes due, the rest break is less than **two thirds of the micro
+interval** away (under 6:40 with the default 10 minutes), or is owed and being
+offered right now, the micro break is settled silently: its timer starts over
+as if it had been taken, and the rest break — which settles it anyway —
+follows within minutes. Two interruptions in a row for the same purpose would
+only teach you to wave both away. A rest break you **postponed** (or whose
+message you let pass) does not count: it is not coming soon, so the micro
+breaks go on as usual. Nor does the daily limit — it is not a break.
 
 ## Resetting the daily counter
 
@@ -147,9 +160,11 @@ were last updated, and restored on start:
   end-of-day window was put off**, under the same rule: changing a setting
   (which rebuilds the widget) neither brings back a window you have answered
   nor forgets the evening.
-- The micro and rest counters are restored only when the gap between the stored
-  timestamp and now is shorter than the timer's break length — a longer gap is
-  itself a break, so those timers start at zero.
+- The micro and rest counters are restored only when the time away is shorter
+  than the timer's break length — a longer absence is itself a break, so those
+  timers start at zero. The time away is the gap since the save **plus the idle
+  already running at it**: the screen locks minutes into an absence, and the
+  panel is put away (and saves) at that moment.
 
 ## The reminders
 

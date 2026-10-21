@@ -51,8 +51,11 @@ is alive and feeds `advance()`:
   elapsed-activity counter is incremented by 1 s. Nothing accumulates while a
   break screen is up.
 - **Break detection:** each enabled timer (except `daily`, whose
-  `breakSeconds` is 0) compares the *current continuous idle time* against its
-  own `breakSeconds`. Once continuous idle reaches that length, the timer's
+  `breakSeconds` is 0) compares the *time away* against its own
+  `breakSeconds`: the current continuous idle reading, or across a suspend
+  (`input.sleptSeconds`, no tick ran) the idle before it plus the time asleep,
+  whichever is longer (`awaySeconds()`). Time behind the lock screen is
+  credited on restore (below), since the panel does not exist while locked. Once continuous idle reaches that length, the timer's
   elapsed counter resets to 0 — i.e. taking the break resets it. Because idle
   time is a single shared clock, a long enough idle period resets every timer
   whose `breakSeconds` it has reached; a rest-length idle (8 min by default) is
@@ -246,6 +249,16 @@ so the UI is a function of the state rather than a pile of events:
 
 - `prelude` — the advance warning, `leadSeconds` long (default: half the break,
   clamped to 5–30 s).
+
+  Before anything is offered, `isCoveredByLongerBreak()` settles a break that
+  a longer one will cover shortly: if another enabled, not-`off` break timer
+  (never `daily`) with a longer break is due in less than
+  `COVERED_BY_LONGER_BREAK_FRACTION` (2/3) of this timer's interval — or owed
+  and offered now, i.e. not deferred by `quietUntil` (postponed, message
+  expired, screen suppressed) — this timer is reset silently
+  (`resetTimer`, as if taken). In practice: no micro break within 6:40 of the
+  rest break. Taking the rest break resets the micro timer anyway
+  (`completeBreak`, and the idle rule).
 - `break` — the modal break screen, `breakSeconds` long. Completing it resets
   the timer and every shorter one.
 - `due` — the message alone, 30 s, used by `notify` mode, by the daily limit and
@@ -311,8 +324,12 @@ dayEndSnoozedUntil, dayAnchorAt, absenceIdleSeconds, absenceAway}` to
 `$XDG_STATE_HOME/gnome-widget-panel/break-timer.json` every 30 s and on
 `destroy()` (fire-and-forget — `destroy()` cannot await), all through async Gio.
 `restoreElapsed()` decides what survives: the daily counter only within the same
-boot and a gap shorter than `dailyResetHours`, micro/rest only when the gap is
-shorter than their own break (a longer gap *is* a break). The boot id comes from
+boot and short of the long-absence reset, micro/rest only when the time away is
+shorter than their own break (a longer absence *is* a break). The time away is
+the gap since `savedAt` **plus the stored `idleSeconds`** — the idle reading at
+the save. The panel is destroyed on lock (`extension.ts`
+`_syncPanelWithSession`) and saves then, minutes into the absence; counting the
+gap alone left the rest timer owed after eleven minutes away (gwp-344 round 2). The boot id comes from
 `/proc/sys/kernel/random/boot_id`; if it cannot be read, a value that matches
 nothing is used, so the daily counter starts over.
 

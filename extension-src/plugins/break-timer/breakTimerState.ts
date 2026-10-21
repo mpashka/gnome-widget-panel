@@ -200,6 +200,12 @@ export interface StoredState {
     dayStartedAt?: number;
     dayEndSnoozedUntil?: number;
     dayAnchorAt?: number;
+    /**
+     * The idle reading at the save. The panel is destroyed when the screen
+     * locks, and the lock comes minutes into an absence: the time away is this
+     * plus the gap since the save, not the gap alone.
+     */
+    idleSeconds?: number;
     /** `absence.idleSeconds` and `absence.away`, so a rebuild keeps the night. */
     absenceIdleSeconds?: number;
     absenceAway?: boolean;
@@ -253,6 +259,15 @@ export const ABSENCE_BURST_SECONDS = 5 * 60;
  * and costs a night at most a few short stretches.
  */
 export const ABSENCE_STRETCH_SECONDS = 20 * 60;
+
+/**
+ * A shorter break is not offered when a longer one is this close: if the rest
+ * break is due in less than this share of the micro interval, the micro break
+ * that comes due now is settled silently — the rest break, which settles it
+ * anyway, follows within minutes, and two interruptions in a row for the same
+ * purpose teach the user to wave both away.
+ */
+export const COVERED_BY_LONGER_BREAK_FRACTION = 2 / 3;
 
 /**
  * The pause lengths the context menu offers, in minutes. Three of them: a menu
@@ -831,6 +846,7 @@ export function advance(
         next.reminder = null;
     const inBreak = !silent && state.reminder?.stage === 'break';
     const working = input.idleSeconds < ACTIVE_IDLE_THRESHOLD_SECONDS;
+    const away = awaySeconds(next, input);
 
     trackAbsence(next, input);
     if (input.dailyIdleResetSeconds > 0
@@ -844,7 +860,7 @@ export function advance(
     for (const timer of timers) {
         if (!timer.enabled)
             continue;
-        if (timer.breakSeconds > 0 && input.idleSeconds >= timer.breakSeconds) {
+        if (timer.breakSeconds > 0 && away >= timer.breakSeconds) {
             if (timer.name === 'daily')
                 resetDay(next, 'break', input);
             else
@@ -866,11 +882,59 @@ export function advance(
 
     advanceReminder(next, timers, input);
     if (!next.reminder) {
+        for (const timer of timers) {
+            if (isOffered(next, timer, input) && isCoveredByLongerBreak(next, timer, timers))
+                resetTimer(next, timer.name);
+        }
         const due = timers.filter(timer => isOffered(next, timer, input)).sort(byUrgency);
         if (due.length > 0)
             next.reminder = startedReminder(next, due[0], input.canInterrupt, input);
     }
     return next;
+}
+
+
+/**
+ * How long the user has been away, as the break timers judge it: the idle
+ * reading, or — across a suspend, when no tick ran — the idle before it plus
+ * the time asleep, whichever is longer (the reading may or may not have grown
+ * through the suspend).
+ */
+function awaySeconds(state: BreakTimerState, input: TickInput): number {
+    const idle = Math.max(0, input.idleSeconds);
+    const slept = Math.max(0, input.sleptSeconds ?? 0);
+    if (slept <= 0)
+        return idle;
+    return Math.max(idle, state.absence.lastIdleSeconds + slept);
+}
+
+
+/**
+ * Is a longer break coming so soon that this one is not worth interrupting
+ * for? Another break timer with a longer break that will be offered: due in
+ * less than `COVERED_BY_LONGER_BREAK_FRACTION` of this timer's own interval,
+ * or owed and offered now. Not one that is owed but deferred — postponed, its
+ * message gone unanswered, its screen waiting to be shown (`quietUntil`): that
+ * break is not coming soon, and this one would be silenced for as long as it
+ * waits. Never the daily limit: it is not a break, and past it the evening
+ * would silence every other timer.
+ */
+function isCoveredByLongerBreak(
+    state: BreakTimerState,
+    timer: TimerConfig,
+    timers: TimerConfig[]
+): boolean {
+    if (timer.breakSeconds <= 0)
+        return false;
+    const window = limitSeconds(timer) * COVERED_BY_LONGER_BREAK_FRACTION;
+    return timers.some(longer => {
+        if (longer.name === 'daily' || !longer.enabled || longer.reminder === 'off'
+            || longer.breakSeconds <= timer.breakSeconds)
+            return false;
+        const elapsed = state.elapsed[longer.name] ?? 0;
+        const deferred = elapsed < (state.quietUntil[longer.name] ?? 0);
+        return !deferred && limitSeconds(longer) - elapsed < window;
+    });
 }
 
 
@@ -1117,6 +1181,7 @@ export function serializeState(
         dayStartedAt: state.dayStartedAt ?? 0,
         dayEndSnoozedUntil: state.dayEndSnoozedUntil ?? 0,
         dayAnchorAt: state.dayAnchorAt ?? 0,
+        idleSeconds: Math.round(state.absence?.lastIdleSeconds ?? 0),
         absenceIdleSeconds: state.absence?.idleSeconds ?? 0,
         absenceAway: state.absence?.away === true,
     };
@@ -1133,24 +1198,32 @@ interface RestoreContext {
 }
 
 
-// A stored state this version can read, and the seconds since it was saved;
-// null for a foreign or damaged store.
-function readStored(stored: unknown, now: number): {state: StoredState; gap: number} | null {
+// A stored state this version can read, the seconds since it was saved, and
+// how long the user has been away by now — the gap plus the idle already
+// running at the save; null for a foreign or damaged store.
+function readStored(
+    stored: unknown,
+    now: number
+): {state: StoredState; gap: number; away: number} | null {
     const state = stored as StoredState | null;
     if (!state || typeof state !== 'object' || state.schema !== STORE_SCHEMA)
         return null;
     const savedAt = toNumber(state.savedAt, NaN);
     if (!Number.isFinite(savedAt))
         return null;
-    return {state, gap: Math.max(0, now - savedAt)};
+    const gap = Math.max(0, now - savedAt);
+    return {state, gap, away: gap + Math.max(0, toNumber(state.idleSeconds, 0))};
 }
 
 
-// The stored absence count with the gap since the save added — the gap is
-// time away, and counts like any idle stretch once it is long enough.
-function storedAbsenceSeconds(state: StoredState, gap: number): number {
+// The stored absence count with the time away since added — it counts like
+// any idle stretch once long enough. A stretch already long at the save was
+// counted up to it, so only the gap is new; otherwise the whole stretch is.
+function storedAbsenceSeconds(state: StoredState, gap: number, away: number): number {
     const stored = Math.max(0, toNumber(state.absenceIdleSeconds, 0));
-    return stored + (gap >= ABSENCE_STRETCH_SECONDS ? gap : 0);
+    if (away - gap >= ABSENCE_STRETCH_SECONDS)
+        return stored + gap;
+    return stored + (away >= ABSENCE_STRETCH_SECONDS ? away : 0);
 }
 
 
@@ -1160,22 +1233,25 @@ function storedAbsenceSeconds(state: StoredState, gap: number): number {
 function storedDayEnded(
     state: StoredState,
     gap: number,
+    away: number,
     context: RestoreContext
 ): DayResetReason | null {
     if (state.bootId !== context.bootId)
         return 'boot';
     const reset = context.dailyIdleResetSeconds;
-    if (reset > 0 && (gap >= reset || storedAbsenceSeconds(state, gap) >= reset))
+    if (reset > 0 && (away >= reset || storedAbsenceSeconds(state, gap, away) >= reset))
         return 'absence';
     return null;
 }
 
 
 /**
- * Counters to start from after a restart. The gap since the last save is itself
- * time away from the keyboard, so it is read as a break: micro and rest survive
- * only a gap shorter than their own break, and the daily counter survives only
- * within the same boot and a gap shorter than the long-absence reset.
+ * Counters to start from after a restart. The gap since the last save — plus
+ * the idle already running at it, since the screen locks minutes into an
+ * absence — is time away from the keyboard, so it is read as a break: micro
+ * and rest survive only an absence shorter than their own break, and the daily
+ * counter survives only within the same boot and short of the long-absence
+ * reset.
  */
 export function restoreElapsed(
     stored: unknown,
@@ -1186,7 +1262,7 @@ export function restoreElapsed(
     const read = readStored(stored, context.now);
     if (!read)
         return fresh;
-    const {state, gap} = read;
+    const {state, gap, away} = read;
     const elapsed = (state.elapsed ?? {}) as Record<string, unknown>;
 
     for (const timer of timers) {
@@ -1194,11 +1270,11 @@ export function restoreElapsed(
         if (!Number.isFinite(value) || value < 0)
             continue;
         if (timer.name === 'daily') {
-            if (!storedDayEnded(state, gap, context))
+            if (!storedDayEnded(state, gap, away, context))
                 fresh.daily = value;
             continue;
         }
-        if (timer.breakSeconds <= 0 || gap < timer.breakSeconds)
+        if (timer.breakSeconds <= 0 || away < timer.breakSeconds)
             fresh[timer.name] = value;
     }
     return fresh;
@@ -1233,10 +1309,10 @@ export function restoreDay(
     const read = readStored(stored, context.now);
     if (!read)
         return none;
-    const {state, gap} = read;
+    const {state, gap, away} = read;
     const dayStartedAt = Math.max(0, toNumber(state.dayStartedAt, 0));
     const daily = Math.max(0, toNumber(state.elapsed?.daily, 0));
-    const ended = storedDayEnded(state, gap, context);
+    const ended = storedDayEnded(state, gap, away, context);
     // A day that ended while the widget was away starts now, and after
     // today's "stop working" time it is tomorrow's — exactly as a reset seen
     // by the tick would make it. The panel is rebuilt on every unlock, so a
@@ -1253,8 +1329,8 @@ export function restoreDay(
         dayEndSnoozedUntil: Math.max(0, toNumber(state.dayEndSnoozedUntil, 0)),
         dayAnchorAt: Math.max(0, toNumber(state.dayAnchorAt, 0)),
         absence: {
-            idleSeconds: storedAbsenceSeconds(state, gap),
-            away: state.absenceAway === true || gap >= ABSENCE_STRETCH_SECONDS,
+            idleSeconds: storedAbsenceSeconds(state, gap, away),
+            away: state.absenceAway === true || away >= ABSENCE_STRETCH_SECONDS,
         },
         reset: null,
     };

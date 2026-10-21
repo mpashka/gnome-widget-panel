@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import {formatDuration} from '../extension/duration.js';
 import {
     ABSENCE_BURST_SECONDS,
+    ACTIVE_IDLE_THRESHOLD_SECONDS,
+    COVERED_BY_LONGER_BREAK_FRACTION,
     DAY_END_WRAP_UP_SECONDS,
     DEFAULT_DAY_END_MINUTES,
     DEFAULT_PAUSE_MINUTES,
@@ -880,7 +882,8 @@ test('the absence count survives a rebuild in the night', () => {
     assert.equal(s.absence.idleSeconds, 4 * 3600);
     const stored = JSON.parse(JSON.stringify(serializeState(s, {bootId: 'boot-a', now: 1000})));
     const context = {bootId: 'boot-a', now: 1010, dailyIdleResetSeconds: NINE_HOURS};
-    assert.deepEqual(restoreDay(stored, context).absence, {idleSeconds: 4 * 3600, away: true});
+    // The ten seconds since the save are more of the same stretch.
+    assert.deepEqual(restoreDay(stored, context).absence, {idleSeconds: 4 * 3600 + 10, away: true});
     // A gap long enough to be a stretch adds on, and may complete the absence.
     const later = {...context, now: 1000 + 3600};
     assert.equal(restoreDay(stored, later).absence.idleSeconds, 5 * 3600);
@@ -929,4 +932,116 @@ test('a widget made mid-stretch counts the stretch from there on', () => {
     const fresh = createState(3 * 3600);
     const next = run(fresh, 1, {idleSeconds: 3 * 3600 + 1, dailyIdleResetSeconds: NINE_HOURS});
     assert.equal(next.absence.idleSeconds, 1);
+});
+
+
+// --- Round 2: being away resets a timer, however the absence is seen ---------
+
+const USER_TIMERS = normalizeTimers([
+    {name: 'micro', workMinutes: 10, breakSeconds: 30},
+    {name: 'rest', workMinutes: 50, breakSeconds: 480},
+]);
+
+test('locked minutes into an absence: the idle before the lock counts too', () => {
+    // Rest one minute short of due; away 5 min, then the screen locks (the
+    // panel is destroyed and saves), unlocked 6 min later: 11 min away.
+    let s = createState();
+    s.elapsed = {micro: 300, rest: 50 * 60 - 60, daily: 3000};
+    for (let i = ACTIVE_IDLE_THRESHOLD_SECONDS; i <= 300; i++)
+        s = run(s, 1, {idleSeconds: i}, USER_TIMERS);
+    assert.equal(s.elapsed.rest, 50 * 60 - 60, 'five minutes is not yet the 8-minute break');
+    const stored = serializeState(s, {bootId: 'boot-a', now: 1000});
+    const restored = restoreElapsed(stored, USER_TIMERS, {
+        bootId: 'boot-a', now: 1000 + 360, dailyIdleResetSeconds: NINE_HOURS,
+    });
+    assert.equal(restored.rest, 0, 'eleven minutes away took the rest break');
+    assert.equal(restored.micro, 0);
+    assert.equal(restored.daily, 3000);
+});
+
+test('a short lock still keeps the counters', () => {
+    const s = createState();
+    s.elapsed = {micro: 300, rest: 1200, daily: 3000};
+    const stored = serializeState(s, {bootId: 'boot-a', now: 1000});
+    const restored = restoreElapsed(stored, USER_TIMERS, {
+        bootId: 'boot-a', now: 1020, dailyIdleResetSeconds: NINE_HOURS,
+    });
+    assert.deepEqual(restored, {micro: 300, rest: 1200, daily: 3000});
+});
+
+test('a suspend longer than a break takes it', () => {
+    const s = createState();
+    s.elapsed = {micro: 300, rest: 1200, daily: 3000};
+    const resumed = run(s, 1, {idleSeconds: 0, sleptSeconds: 600}, USER_TIMERS);
+    assert.equal(resumed.elapsed.rest, 0);
+    assert.equal(resumed.elapsed.micro, 0);
+    // Idle before the suspend adds to the time asleep.
+    let before = createState();
+    before.elapsed = {micro: 300, rest: 1200, daily: 3000};
+    for (let i = 1; i <= 200; i++)
+        before = run(before, 1, {idleSeconds: i}, USER_TIMERS);
+    const later = run(before, 1, {idleSeconds: 0, sleptSeconds: 300}, USER_TIMERS);
+    assert.equal(later.elapsed.rest, 0, '200 s idle + 300 s asleep is a rest break');
+    const short = run(createState(), 1, {idleSeconds: 0, sleptSeconds: 60}, USER_TIMERS);
+    assert.equal(short.elapsed.micro, 0, 'a minute asleep is a micro break');
+});
+
+test('a micro break due with the rest break 5 min off is settled silently', () => {
+    const s = createState();
+    s.elapsed = {micro: 600, rest: 50 * 60 - 300, daily: 3000};
+    const next = run(s, 1, {}, USER_TIMERS);
+    assert.equal(next.reminder, null);
+    assert.equal(next.elapsed.micro, 0, 'reset as if taken');
+    assert.equal(COVERED_BY_LONGER_BREAK_FRACTION, 2 / 3);
+});
+
+test('a micro break due with the rest break 8 min off is offered', () => {
+    const s = createState();
+    s.elapsed = {micro: 600, rest: 50 * 60 - 480, daily: 3000};
+    const next = run(s, 1, {}, USER_TIMERS);
+    assert.equal(next.reminder?.timer, 'micro');
+});
+
+test('the rest break settles the micro break when taken', () => {
+    const s = createState();
+    s.elapsed = {micro: 400, rest: 50 * 60, daily: 3000};
+    const armed = run(s, 1, {}, USER_TIMERS);
+    assert.equal(armed.reminder?.timer, 'rest');
+    let s2 = armed;
+    while (s2.reminder?.timer === 'rest')
+        s2 = run(s2, 1, {}, USER_TIMERS);
+    assert.equal(s2.elapsed.rest, 0);
+    assert.equal(s2.elapsed.micro, 0, 'the micro timer starts over with it');
+});
+
+test('past the daily limit, micro and rest breaks are still offered', () => {
+    const timers = normalizeTimers([
+        {name: 'micro', workMinutes: 10, breakSeconds: 30},
+        {name: 'rest', workMinutes: 50, breakSeconds: 480},
+        {name: 'daily', breakSeconds: 3600},
+    ]);
+    const s = createState();
+    s.elapsed = {micro: 600, rest: 600, daily: 10 * 3600};
+    s.quietUntil = {daily: 99 * 3600};
+    assert.equal(run(s, 1, {}, timers).reminder?.timer, 'micro');
+    const rest = createState();
+    rest.elapsed = {micro: 0, rest: 50 * 60, daily: 10 * 3600};
+    rest.quietUntil = {daily: 99 * 3600};
+    assert.equal(run(rest, 1, {}, timers).reminder?.timer, 'rest');
+});
+
+test('a rest break postponed again and again does not silence the micro breaks', () => {
+    let s = createState();
+    s.elapsed = {micro: 0, rest: 50 * 60, daily: 3000};
+    let microOffers = 0;
+    for (let t = 0; t < 40 * 60; t++) {
+        s = run(s, 1, {}, USER_TIMERS);
+        if (s.reminder?.timer === 'rest')
+            s = postponeReminder(s, USER_TIMERS);
+        else if (s.reminder?.timer === 'micro') {
+            microOffers++;
+            s = skipReminder(s, USER_TIMERS);
+        }
+    }
+    assert.ok(microOffers >= 3, `micro offered ${microOffers} times in 40 min`);
 });
