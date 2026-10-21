@@ -22,7 +22,7 @@ The widget is split so that the rules can be tested without a Shell:
 - **`breakTimerState.ts` — gi-free rules.** Timer normalization, the
   activity/idle bookkeeping, the reminder state machine and the
   serialise/restore decisions. Pure functions over a plain state object
-  (`{elapsed, reminder, quietUntil}`); `advance()` returns the next state and
+  (`{elapsed, reminder, quietUntil, …, absence}`); `advance()` returns the next state and
   never mutates its argument. Covered by
   [`../../../tests/breakTimerState.test.mjs`](../../../tests/breakTimerState.test.mjs).
 - **`breakTimerGraph.ts` — the Shell-facing widget.** Idle polling, the
@@ -59,8 +59,59 @@ is alive and feeds `advance()`:
   also well past the micro timer's 30 s, so it resets both. A break served in
   full on the break screen resets the same set.
 - **Daily reset:** the daily counter has no idle break. It resets when the boot
-  id changes (the machine was switched on again) or after a continuous idle of
-  `dailyResetHours` (default 6 h).
+  id changes (the machine was switched on again), after a long absence of
+  `dailyResetHours` (default 6 h), or from the menu's *Start a new day*
+  (`startNewDay()`). The graph writes one journal line per actual reset with
+  its reason (`break-timer: a new working day — …`). The reason comes from the
+  rules: every transition sets `state.dayReset` (`absence`, `manual`, or
+  `break` when a daily `breakSeconds` is configured), only when a day had
+  begun; the boot reset comes from `restoreDay().reset`.
+
+### The long absence across sporadic input (gwp-344)
+
+A machine left on overnight sees a key or the mouse now and then, and each
+touch zeroes Mutter's idle time; a rule that wanted one continuous idle of
+`dailyResetHours` never fired, and the counter stayed red for days.
+`trackAbsence()` (in `advance()`) keeps `state.absence`
+(`{idleSeconds, lastIdleSeconds, burstSeconds, burstStartedAt, away,
+heldSeconds}`) instead:
+
+- an idle stretch of at least `ABSENCE_STRETCH_SECONDS` (20 min) counts in
+  full — on its first tick the whole reading, afterwards what it grew by since
+  the last tick (`lastIdleSeconds`). Shorter idle never counts: twenty minutes
+  is well above the 5-minute burst cap, so a day with a key pressed every
+  5–20 minutes (a training video) is not an absence;
+- a suspend counts the same way: the graph passes the wall-clock gap since the
+  previous tick as `input.sleptSeconds`; an idle reading that also grew through
+  the suspend is re-based (`lastIdleSeconds = idle`) so it is not counted twice;
+- after a stretch ends, `burstSeconds` counts the ticks while the idle reading
+  is under 5 min; when it reaches 5 min the ticks of that gap come off again,
+  so a gap of 5–20 min neither counts towards the absence nor extends the burst
+  (two night touches eight minutes apart are two bursts). `burstSeconds −
+  idleSeconds` is then the burst's input span up to the latest input. Over `ABSENCE_BURST_SECONDS` (5 min) it is a return to work and
+  the count drops to 0; up to that, the next stretch adds on;
+- while `away` (a stretch counted, no return yet) the daily activity of a burst
+  is held in `heldSeconds` instead of `elapsed.daily`, and `dayStartedAt` is not
+  set: a stray touch at 23:30 must not make that the day's start, or the next
+  morning's deadline is yesterday's. A return releases the held seconds and
+  sets `dayStartedAt` to `burstStartedAt`; a short burst's held seconds are
+  dropped by the next stretch;
+- when the count reaches `dailyIdleResetSeconds` the daily timer resets and the
+  count goes back to 0, so the reset fires once rather than on every tick of
+  the rest of the night (which would also eat the first minutes of the morning).
+
+The absence count and `away` are stored with the day fields
+(`absenceIdleSeconds`, `absenceAway`) and restored by `restoreDay()` under the
+same rule, with the gap since the save added when it is itself a stretch (and a
+stored count that the gap completes ends the day, `reset: 'absence'`); so a
+rebuild in the night does not start the count over. The graph also makes its
+state with the current idle reading (`createState(idleSeconds)` seeds
+`absence.lastIdleSeconds`), so a stretch already running when it is rebuilt is
+counted from there on, not again from its start.
+
+The graph's `_localDay()` caches the local-date numbers (`_dayEndOn()`,
+`_calendar()`) per date, so the once-a-second tick builds `GLib.DateTime`
+objects only when the date changes.
 
 ### The daily limit's second threshold: the end of the working day
 
@@ -78,11 +129,32 @@ as `input.dayEndAt` (0 = switched off), so `breakTimerState.ts` only does
 arithmetic and the unit tests need no clock. The deadline is anchored to the day
 the work **began** on (`state.dayStartedAt`, the first activity after the daily
 counter last reset), not to today: past midnight the deadline that matters is
-still the one of the day one sat down on, by then already behind.
+still the one of the day one sat down on, by then already behind. The graph
+asks `dayAnchor()` for that day, which puts an explicit `state.dayAnchorAt`
+first. A new day started after today's deadline — by `startNewDay()` or by the
+long-absence reset — sets it to tomorrow's local noon (`nextDayAnchor()`, from
+`input.todayDayEndAt` and `input.tomorrowAt`, which the graph's `_calendar()`
+computes with `GLib.DateTime`, so it is the next date whatever the day end and
+DST), and tonight's window does not come straight back. Before the deadline it
+is 0; every daily reset rewrites it, and it is persisted and restored with the
+rest of the day (`restoreDay()`). A `day-end` reminder on screen is dropped by
+`advance()` as soon as `isDayOver()` no longer holds (a new day, the limit
+switched off or moved later).
 
 `isDayOver()` makes the daily timer due even with hours left on its counter, and
 the reminder carries `reason: 'day-end'` so its message says "The working day is
 over — stop for today" rather than claiming a limit was reached.
+
+**Past the deadline the window is the only daily reminder.** `isOffered()`
+answers for the daily timer with `isDayEndDue()` alone once `isDayOver()` holds:
+no `limit` message while the window is up, postponed or waiting for a free
+screen, and its return after a postponement follows `dayEndSnoozedUntil` (wall
+clock), not `quietUntil` (activity seconds). `advance()` also drops a `limit`
+message that is still up when the deadline passes. Before gwp-344 the two
+triggers competed: with the counter past its limit, postponing the window let
+the next tick raise the 30-second limit message, which inherited the window's
+split button (below), and its expiry set `quietUntil` an hour of *activity*
+ahead — so the window did not come back when its postponement ended.
 `dayEndFraction()` fills the bar from `dayStartedAt` to the deadline; before the
 first activity of the day there is nothing to measure from, so it stays empty.
 
@@ -106,7 +178,10 @@ follows hangs off that:
   hourly `quietUntil` does not apply while the window is only waiting for a free
   screen: it was never shown, so there is nothing to be quiet about.
 - **The UI half** (`breakTimerReminder.ts`) marks the showing
-  `_messagePersistent`, which changes two things: `_canYield()` returns false —
+  `_messagePersistent`, which is part of the action-row cache key
+  (`_syncMessageActions()`, cleared on hide) — a `limit` message and the window
+  are both `daily:due`, and a key without the kind kept the split button on the
+  wrong one. The flag changes two more things: `_canYield()` returns false —
   the window **never steps aside** — and `_syncMessageDetails()` renders the
   day's numbers, which the graph works out in `_dayEndDetails()`. Its answer is
   on it from the first moment, by the ordinary `due`-stage rule.
@@ -158,8 +233,9 @@ whose numbers nobody is watching during a meeting. `pausedFrom` is stored beside
 field simply draws a full bar.
 
 The right-click `PopupMenu` on the graph (`_openMenu`, rebuilt on every open)
-carries Postpone/Skip for the current reminder and the pause durations
-(`PAUSE_CHOICES`) or Resume. While silent the bars are drawn at
+carries Postpone/Skip for the current reminder, the pause durations
+(`pauseMinutes`) or Resume, and — always, last, below a separator — *Start a
+new day* (`_startNewDay()` → `startNewDay()`). While silent the bars are drawn at
 `SILENT_BAR_ALPHA` and the tooltip gains a status line.
 
 ### Stages
@@ -230,7 +306,8 @@ focus that pushModal saved.
 
 ## Persistence
 
-`breakTimerStore.ts` writes `{schema, bootId, savedAt, elapsed}` to
+`breakTimerStore.ts` writes `{schema, bootId, savedAt, elapsed, dayStartedAt,
+dayEndSnoozedUntil, dayAnchorAt, absenceIdleSeconds, absenceAway}` to
 `$XDG_STATE_HOME/gnome-widget-panel/break-timer.json` every 30 s and on
 `destroy()` (fire-and-forget — `destroy()` cannot await), all through async Gio.
 `restoreElapsed()` decides what survives: the daily counter only within the same
@@ -238,6 +315,21 @@ boot and a gap shorter than `dailyResetHours`, micro/rest only when the gap is
 shorter than their own break (a longer gap *is* a break). The boot id comes from
 `/proc/sys/kernel/random/boot_id`; if it cannot be read, a value that matches
 nothing is used, so the daily counter starts over.
+
+`restoreDay()` brings back `dayStartedAt`, `dayEndSnoozedUntil` and
+`dayAnchorAt` under the
+daily counter's rule — so a plugin rebuild (any `widgets` key write) neither
+re-raises an answered end-of-day window nor forgets the evening — and reports
+why a stored day that had begun was dropped (`reset: 'boot' | 'absence'`). The
+A day that `restoreDay()` finds ended gets its anchor by the same
+`nextDayAnchor()` rule as a reset seen by the tick (the graph passes its
+`_calendar()` in the restore context): the panel is rebuilt on every unlock, so
+a locked night is restored, not ticked — unlocked after today's day end, the new
+day is tomorrow's.
+
+The day and absence fields were added without a schema bump: a file without
+them loads them as 0, and an older build ignores them. The restored day start wins over one the
+first ticks may already have set, being earlier.
 
 ## Rendering
 
@@ -281,8 +373,9 @@ The widget reads per-widget `options` from the `widgets` GSettings key:
     5 min, skip allowed, `#3dc752` / overdue `#f03333`.
   - `daily`: enabled, 480 min (8 h) work, `breakSeconds: 0` (no idle-based
     reset), `notify`, no postpone/skip, `#ffb82e` / overdue `#f03333`.
-- `dailyResetHours` — hours of continuous idle that end the working day
-  (default 6, 0 disables the rule; a reboot always ends it).
+- `dailyResetHours` — hours away from the keyboard that end the working day,
+  counted across bursts of input up to 5 min (default 6, 0 disables the rule; a
+  reboot always ends it).
 - `dayEndEnabled` / `dayEndMinutes` — the daily limit's second threshold: stop
   working at a time of day, as minutes since local midnight. Default **off**,
   21:30 (`DEFAULT_DAY_END_MINUTES`). See "The daily limit's second threshold"
@@ -336,8 +429,9 @@ has more room), or above/below when horizontal.
 
 - `index.ts` — plugin entrypoint; passes widget `options` to the graph.
 - `breakTimerState.ts` — gi-free rules: normalization (timers and the message
-  anchor), `advance()`, `isSilent()`, pause/resume, postpone/skip,
-  serialise/restore.
+  anchor), `advance()` with the long-absence count, `isSilent()`,
+  pause/resume, postpone/skip, `startNewDay()`, serialise/restore
+  (`restoreElapsed()`, `restoreDay()`).
 - `breakTimerGraph.ts` — `St.DrawingArea`: idle polling, the inhibitor poll,
   suppression checks, the right-click menu, persistence cadence, Cairo drawing
   and the hover tooltip.

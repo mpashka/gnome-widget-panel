@@ -129,9 +129,12 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   local golden comparisons).
 - `t-24-day-end-window.sh` — the end-of-day window (#45): the clock raises it,
   it does not expire the way a break message does, it takes neither focus nor
-  input, its first showing carries no buttons until it has stepped aside, only a
-  chosen time puts it away, and a screen that is not the user's own holds it back
-  without counting as an answer.
+  input, it carries its answer from the first showing and never steps aside,
+  only a chosen time puts it away, and a screen that is not the user's own holds
+  it back without counting as an answer. With the daily counter past its limit
+  too (gwp-344), answering the window raises no "limit reached" message, a limit
+  message never inherits the window's split button, and the menu's *Start a new
+  day* zeroes today.
 - `t-25-version-status.sh` — the developer version-status widget: it locates the
   build stamp beside the extension (the `import.meta.url` path unit tests cannot
   reach), reports the running build, raises the relogin warning when a *newer*

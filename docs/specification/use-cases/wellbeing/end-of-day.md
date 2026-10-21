@@ -41,8 +41,12 @@ interaction here you cannot skip.
   length of your own with `±`, or a time to work until. It moves **tonight
   only** — your usual end of day is unchanged, and the menu's last item is where
   you change that on purpose.
-- **It is covering something.** Drag it, or let it step aside: it moves out of
-  the pointer's way, and unlike the break warning it may do so again later.
+- **It is covering something.** Drag it, or answer it. It does not step aside
+  from the pointer — a question that stands until it is answered must not run
+  from the answer.
+- **I answered it and a second message appeared.** It does not any more: once
+  the hour has come, the window is the only thing the daily limit says, and
+  while it is put off nothing else takes its place.
 - **I am presenting / recording / on a call.** It stays away entirely, and
   arrives when that is over — a window you cannot close must not appear on a
   shared screen.
@@ -53,10 +57,17 @@ interaction here you cannot skip.
   day's work spread over a longer, more irregular stretch.
 - **When does it start again?** Switching the computer on always starts a new
   day, and so does a long absence — **end the day after** hours away from the
-  keyboard, 6 h by default, 0 to disable. Nothing else resets it: not a micro
-  break, not a rest break, not dismissing the message, not restarting GNOME
-  Shell. The reasoning, and the parts still under review, are in
-  [`../../break-timer.md`](../../break-timer.md).
+  keyboard, 6 h by default, 0 to disable. Nothing else resets it by itself:
+  not a micro break, not a rest break, not dismissing the message, not
+  restarting GNOME Shell. The reasoning is in
+  [`../../break-timer.md`](../../break-timer.md#resetting-the-daily-counter).
+- **I leave the machine on overnight and the bar is still red in the
+  morning.** Brief touches in the night — a cat, a bumped desk, a glance at the
+  clock — no longer restart the absence: bursts of input up to 5 minutes long
+  are ignored and the time away on either side adds up, so the morning starts a
+  new day by itself. If it still has not (you worked late into the night, say),
+  **right-click the widget → *Start a new day***: **two clicks**, no question
+  asked, today's counter and tonight's window start over.
 - **Work that runs past midnight.** Still the same working day — the counter has
   no wall-clock boundary, because a counter that emptied at 00:00 would excuse
   exactly the session that most needs the warning.
@@ -66,5 +77,7 @@ interaction here you cannot skip.
 ## Result
 
 A bar you can read at a glance and a message when the day is up. The counter is
-[persisted](../steps.md#r2) along with the boot it belongs to, so a shell
-restart or a crash does not hand you a fresh working day.
+[persisted](../steps.md#r2) along with the boot it belongs to — with when the
+day started and how long tonight's window was put off — so a shell restart, a
+crash or a change of settings neither hands you a fresh working day nor brings
+back a window you already answered.

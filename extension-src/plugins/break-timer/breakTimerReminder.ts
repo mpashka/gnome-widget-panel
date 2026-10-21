@@ -313,12 +313,18 @@ export class BreakReminderUi {
     }
 
 
+    // The key carries which kind of message this is, not only its timer and
+    // stage: the daily limit's "limit reached" and its end-of-day window are
+    // both `daily:due`, and a key without the difference let the one inherit
+    // the other's buttons — a split button that postponed a window no longer
+    // on screen.
     _syncMessageActions() {
         if (!this._messageTimer)
             return;
+        const kind = this._messagePersistent ? 'day-end' : 'transient';
         this._fillActions(
             this._messageActions,
-            `message:${this._messageTimer.name}:${this._messageStage}:` +
+            `message:${this._messageTimer.name}:${this._messageStage}:${kind}:` +
                 `${this._messageOffersActions()}`,
             this._messageTimer,
             this._messageOffersActions()
@@ -450,6 +456,8 @@ export class BreakReminderUi {
         if (!this._message || !this._messageVisible)
             return;
         this._messageVisible = false;
+        // The next showing builds its own buttons, whatever it turns out to be.
+        this._actionsKey = '';
         this._message.remove_all_transitions();
         this._message.ease({
             opacity: 0,
@@ -538,6 +546,7 @@ export class BreakReminderUi {
         if (!this._screen || !this._screenVisible)
             return;
         this._screenVisible = false;
+        this._actionsKey = '';
         this._releaseGrab();
         this._screen.remove_all_transitions();
         this._screen.ease({
@@ -589,8 +598,9 @@ export class BreakReminderUi {
 
     // --- Shared -------------------------------------------------------------
 
-    // Rebuild the Postpone/Skip row only when the timer, the stage or whether
-    // actions are offered at all changes (all of it carried by `key`), so a
+    // Rebuild the Postpone/Skip row only when the timer, the stage, the kind of
+    // message or whether actions are offered at all changes (all of it carried
+    // by `key`, cleared when the message or the screen goes away), so a
     // once-a-second text update never rebuilds actors under the pointer.
     _fillActions(container, key, timer, offered = true) {
         if (this._actionsKey === key)

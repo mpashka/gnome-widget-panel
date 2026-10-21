@@ -6,12 +6,14 @@ import assert from 'node:assert/strict';
 
 import {formatDuration} from '../extension/duration.js';
 import {
+    ABSENCE_BURST_SECONDS,
     DAY_END_WRAP_UP_SECONDS,
     DEFAULT_DAY_END_MINUTES,
     DEFAULT_PAUSE_MINUTES,
     DUE_MESSAGE_SECONDS,
     advance,
     createState,
+    dayAnchor,
     dayEndFraction,
     dayEndRemainingSeconds,
     isDayEndSnoozed,
@@ -27,10 +29,12 @@ import {
     overtimeSeconds,
     postponeDayEnd,
     postponeReminder,
+    restoreDay,
     restoreElapsed,
     resumeReminders,
     serializeState,
     skipReminder,
+    startNewDay,
 } from '../extension/plugins/break-timer/breakTimerState.js';
 
 const TIMERS = normalizeTimers(undefined);
@@ -511,4 +515,418 @@ test('overtime is what the window has to argue with', () => {
     const over = {...inside, elapsed: {...inside.elapsed, daily: limitSeconds(DAILY) + 2700}};
     assert.equal(overtimeSeconds(over, TIMERS), 2700);
     assert.equal(formatDuration(overtimeSeconds(over, TIMERS)), '45:00');
+});
+
+
+
+// --- The evening: one window, and only one -----------------------------------
+
+// The daily counter already past its limit when the clock ends the day — the
+// combination the evening bug (gwp-344) needed and no test had.
+function overLimitAtDayEnd() {
+    const state = createState();
+    state.elapsed = {micro: 0, rest: 0, daily: limitSeconds(DAILY) + 600};
+    state.dayStartedAt = 100;
+    return run(state, 1, {now: 2000, dayEndAt: 2000});
+}
+
+test('B1: past the limit, the day-end window wins and postponing it raises nothing else', () => {
+    const over = overLimitAtDayEnd();
+    assert.equal(over.reminder?.reason, 'day-end');
+    const postponed = postponeDayEnd(over, 2000 + 3600);
+    assert.equal(postponed.reminder, null);
+    // Still at the keyboard, the counter still past its limit: neither the
+    // window nor the plain "limit reached" message comes while it is put off.
+    const next = run(postponed, 1, {now: 2001, dayEndAt: 2000});
+    assert.equal(next.reminder, null);
+    const later = runClock(postponed, 120, 2001, {dayEndAt: 2000});
+    assert.equal(later.reminder, null);
+});
+
+test('B2: the window returns by the wall clock, even after an hour mostly away', () => {
+    const postponed = postponeDayEnd(overLimitAtDayEnd(), 2000 + 3600);
+    // A minute of work, then the rest of the hour away from the keyboard: the
+    // activity seconds hardly move, the clock does.
+    const worked = runClock(postponed, 60, 2001, {dayEndAt: 2000});
+    const away = run(worked, 1, {now: 2000 + 3599, idleSeconds: 3500, dayEndAt: 2000});
+    assert.equal(away.reminder, null);
+    const back = run(away, 1, {now: 2000 + 3600, idleSeconds: 3501, dayEndAt: 2000});
+    assert.equal(back.reminder?.reason, 'day-end');
+});
+
+test('a "limit reached" message still up when the day ends gives way to the window', () => {
+    const state = createState();
+    state.elapsed = {micro: 0, rest: 0, daily: limitSeconds(DAILY)};
+    const limit = run(state, 1, {now: 1000, dayEndAt: 2000});
+    assert.equal(limit.reminder?.timer, 'daily');
+    assert.equal(limit.reminder?.reason, undefined);
+    const evening = run(limit, 1, {now: 2000, dayEndAt: 2000});
+    assert.equal(evening.reminder?.reason, 'day-end');
+});
+
+test('before the day ends, the limit message keeps its hourly quiet period', () => {
+    const state = createState();
+    state.elapsed = {micro: 0, rest: 0, daily: limitSeconds(DAILY)};
+    const shown = run(state, 1, {now: 1000, dayEndAt: 99999});
+    assert.equal(shown.reminder?.stage, 'due');
+    const quiet = run(shown, DUE_MESSAGE_SECONDS + 5, {now: 1000, dayEndAt: 99999});
+    assert.equal(quiet.reminder, null);
+});
+
+
+// --- The long absence across sporadic night input ---------------------------
+
+const NINE_HOURS = 9 * 3600;
+
+// Away for `seconds`: Mutter's idle reading grows by one every tick.
+function idleFor(state, seconds, reset = NINE_HOURS) {
+    let next = state;
+    for (let i = 1; i <= seconds; i++)
+        next = run(next, 1, {idleSeconds: i, dailyIdleResetSeconds: reset});
+    return next;
+}
+
+// At the keyboard for `seconds`.
+function workFor(state, seconds, reset = NINE_HOURS) {
+    return run(state, seconds, {idleSeconds: 0, dailyIdleResetSeconds: reset});
+}
+
+test('A1: a night of idle stretches broken by brief touches ends the day by morning', () => {
+    let night = workFor(createState(), 600);
+    assert.equal(night.elapsed.daily, 600);
+    // 2.5 h, a 30 s touch, 3 h, a 1 s bump, 2 h, a minute, 2 h: 9.5 h away,
+    // never more than 3 h at a stretch.
+    for (const [idle, touch] of [[9000, 30], [10800, 1], [7200, 60]]) {
+        night = idleFor(night, idle);
+        assert.ok(night.elapsed.daily > 0, 'not yet');
+        night = workFor(night, touch);
+    }
+    night = idleFor(night, 7200);
+    assert.equal(night.elapsed.daily, 0);
+    assert.equal(night.dayStartedAt, 0);
+});
+
+test('the reset fires once: the first minutes of the morning are counted', () => {
+    let night = workFor(createState(), 600);
+    night = idleFor(night, NINE_HOURS + 600);
+    assert.equal(night.elapsed.daily, 0);
+    // Held until the burst proves a return (over ABSENCE_BURST_SECONDS), then
+    // released: none of the morning is lost.
+    const morning = workFor(night, ABSENCE_BURST_SECONDS + 100);
+    assert.equal(morning.elapsed.daily, ABSENCE_BURST_SECONDS + 100);
+});
+
+test('a burst of input longer than the limit restarts the absence count', () => {
+    let day = workFor(createState(), 600);
+    day = idleFor(day, 5 * 3600);
+    day = workFor(day, ABSENCE_BURST_SECONDS + 60);
+    day = idleFor(day, 5 * 3600);
+    assert.ok(day.elapsed.daily > 0, 'ten hours away, but split by real work');
+
+    let night = workFor(createState(), 600);
+    night = idleFor(night, 5 * 3600);
+    night = workFor(night, ABSENCE_BURST_SECONDS - 60);
+    night = idleFor(night, 5 * 3600);
+    assert.equal(night.elapsed.daily, 0, 'a shorter burst does not');
+});
+
+test('lunch-length idle between work never adds up to a new day', () => {
+    let day = workFor(createState(), 600);
+    for (let i = 0; i < 8; i++) {
+        day = idleFor(day, 3600);
+        day = workFor(day, 1800);
+    }
+    assert.ok(day.elapsed.daily > 0);
+});
+
+test('Start a new day zeroes the counter, the day start and tonight\'s answer', () => {
+    const over = overLimitAtDayEnd();
+    const postponed = postponeDayEnd(over, 99999);
+    const fresh = startNewDay(postponed, {now: 2100, todayDayEndAt: 0, tomorrowAt: 0});
+    assert.equal(fresh.elapsed.daily, 0);
+    assert.equal(fresh.dayStartedAt, 0);
+    assert.equal(fresh.dayEndSnoozedUntil, 0);
+    assert.equal(fresh.quietUntil.daily, undefined);
+    assert.equal(fresh.absence.idleSeconds, 0);
+    // Only the day: the break timers are not touched.
+    const worked = run(createState(), 50);
+    assert.equal(startNewDay(worked, {now: 0, todayDayEndAt: 0, tomorrowAt: 0}).elapsed.micro, 50);
+    // A daily reminder on screen goes with it.
+    const limit = createState();
+    limit.elapsed = {micro: 0, rest: 0, daily: limitSeconds(DAILY)};
+    assert.equal(startNewDay(run(limit, 1), {now: 0, todayDayEndAt: 0, tomorrowAt: 0}).reminder, null);
+});
+
+
+// --- The working day survives a rebuild of the widget ------------------------
+
+test('the day start and tonight\'s postponement round-trip through the store', () => {
+    const state = createState();
+    state.elapsed = {micro: 0, rest: 0, daily: 5000};
+    state.dayStartedAt = 900;
+    state.dayEndSnoozedUntil = 5000;
+    const stored = JSON.parse(JSON.stringify(
+        serializeState(state, {bootId: 'boot-a', now: 1000})
+    ));
+    const context = {bootId: 'boot-a', now: 1010, dailyIdleResetSeconds: 6 * 3600};
+    assert.deepEqual(restoreDay(stored, context), {
+        dayStartedAt: 900, dayEndSnoozedUntil: 5000, dayAnchorAt: 0, absence: {idleSeconds: 0, away: false}, reset: null,
+    });
+});
+
+test('the stored day follows the daily counter: a reboot or a long gap drops it', () => {
+    const state = createState();
+    state.elapsed = {micro: 0, rest: 0, daily: 5000};
+    state.dayStartedAt = 900;
+    state.dayEndSnoozedUntil = 5000;
+    const stored = serializeState(state, {bootId: 'boot-a', now: 1000});
+    assert.deepEqual(
+        restoreDay(stored, {bootId: 'boot-b', now: 1010, dailyIdleResetSeconds: 6 * 3600}),
+        {dayStartedAt: 0, dayEndSnoozedUntil: 0, dayAnchorAt: 0, absence: {idleSeconds: 0, away: false}, reset: 'boot'}
+    );
+    assert.deepEqual(
+        restoreDay(stored, {bootId: 'boot-a', now: 1000 + 7 * 3600, dailyIdleResetSeconds: 6 * 3600}),
+        {dayStartedAt: 0, dayEndSnoozedUntil: 0, dayAnchorAt: 0, absence: {idleSeconds: 0, away: false}, reset: 'absence'}
+    );
+    // Nothing had begun: nothing to report.
+    const empty = serializeState(createState(), {bootId: 'boot-a', now: 1000});
+    assert.equal(
+        restoreDay(empty, {bootId: 'boot-b', now: 1010, dailyIdleResetSeconds: 0}).reset,
+        null
+    );
+});
+
+test('a store written before the day fields existed still loads', () => {
+    const old = {schema: 1, bootId: 'boot-a', savedAt: 1000, elapsed: {micro: 0, rest: 0, daily: 4000}};
+    const context = {bootId: 'boot-a', now: 1010, dailyIdleResetSeconds: 6 * 3600};
+    assert.equal(restoreElapsed(old, TIMERS, context).daily, 4000);
+    assert.deepEqual(restoreDay(old, context), {
+        dayStartedAt: 0, dayEndSnoozedUntil: 0, dayAnchorAt: 0, absence: {idleSeconds: 0, away: false}, reset: null,
+    });
+    assert.deepEqual(restoreDay(null, context), {
+        dayStartedAt: 0, dayEndSnoozedUntil: 0, dayAnchorAt: 0, absence: {idleSeconds: 0, away: false}, reset: null,
+    });
+});
+
+
+
+// --- "Start a new day" late in the evening belongs to tomorrow --------------
+
+// A UTC calendar standing in for the widget's local one: the "stop working"
+// time is 21:30 on the date of the anchor, as _dayEndAt() computes it, and
+// tomorrow is named by its noon, as _calendar() does.
+const DAY = 86400;
+const DAY_END = 21 * 3600 + 1800;
+function dayEndOn(anchor, end = DAY_END) {
+    return Math.floor(anchor / DAY) * DAY + end;
+}
+function calendar(now, end = DAY_END) {
+    return {todayDayEndAt: dayEndOn(now, end), tomorrowAt: (Math.floor(now / DAY) + 1) * DAY + 12 * 3600};
+}
+const DAILY_ONLY = normalizeTimers([
+    {name: 'micro', enabled: false},
+    {name: 'rest', enabled: false},
+]);
+// One tick the way the widget runs it: the deadline follows the state's anchor.
+function tickAt(state, now, extra = {}) {
+    return run(state, 1, {
+        now,
+        dayEndAt: dayEndOn(dayAnchor(state, now)),
+        ...calendar(now),
+        ...extra,
+    }, DAILY_ONLY);
+}
+
+test('a new day started at 23:00 keeps tonight quiet and ends tomorrow evening', () => {
+    const today = 10 * DAY;
+    const pressAt = today + 23 * 3600;
+    const evening = tickAt(overLimitAtDayEnd(), pressAt);
+    assert.equal(evening.reminder?.reason, 'day-end');
+    const fresh = startNewDay(evening, {now: pressAt, ...calendar(pressAt)});
+    assert.equal(fresh.dayReset, 'manual');
+    let night = fresh;
+    for (let now = pressAt + 1; now <= pressAt + 600; now++)
+        night = tickAt(night, now);
+    assert.equal(night.reminder, null, 'still at the keyboard, no window that night');
+    assert.equal(night.dayStartedAt, pressAt + 1);
+    const tomorrowEnd = today + DAY + DAY_END;
+    assert.equal(tickAt(night, tomorrowEnd - 1).reminder, null);
+    assert.equal(tickAt(night, tomorrowEnd).reminder?.reason, 'day-end');
+});
+
+test('a new day started before today\'s end keeps today', () => {
+    for (const pressAt of [10 * DAY + 8 * 3600, 10 * DAY + 1800]) {
+        const fresh = startNewDay(createState(), {now: pressAt, ...calendar(pressAt)});
+        assert.equal(fresh.dayAnchorAt, 0);
+        assert.equal(dayEndOn(dayAnchor(fresh, pressAt)), 10 * DAY + DAY_END);
+    }
+});
+
+test('a day end before noon still moves a late new day to the next date', () => {
+    const end = 9 * 3600;
+    const pressAt = 10 * DAY + 10 * 3600;
+    const fresh = startNewDay(createState(), {now: pressAt, ...calendar(pressAt, end)});
+    assert.equal(dayEndOn(dayAnchor(fresh, pressAt), end), 11 * DAY + end);
+});
+
+test('an automatic reset before today\'s end anchors to the first activity', () => {
+    const chosen = startNewDay(createState(), {now: 10 * DAY + 23 * 3600, ...calendar(10 * DAY + 23 * 3600)});
+    assert.ok(chosen.dayAnchorAt > 0);
+    const at = 11 * DAY + 3600;
+    const away = run(chosen, 1, {now: at, idleSeconds: 7 * 3600, dailyIdleResetSeconds: 6 * 3600, ...calendar(at)});
+    assert.equal(away.dayAnchorAt, 0);
+    assert.equal(dayAnchor(away, at), at);
+});
+
+
+// --- Review findings (gwp-344) -----------------------------------------------
+
+test('reset at 23:00 and a stray touch at 23:30 still leave a normal morning', () => {
+    const today = 10 * DAY;
+    let s = createState();
+    for (let now = today + 14 * 3600 - 60; now < today + 14 * 3600; now++)
+        s = tickAt(s, now, {dailyIdleResetSeconds: NINE_HOURS});
+    let idle = 0;
+    let resetSeen = null;
+    for (let now = today + 14 * 3600; now < today + 31.5 * 3600; now++) {
+        idle = now === today + 23.5 * 3600 ? 0 : idle + 1;
+        s = tickAt(s, now, {idleSeconds: idle, dailyIdleResetSeconds: NINE_HOURS, canInterrupt: false});
+        resetSeen ??= s.dayReset;
+    }
+    assert.equal(resetSeen, 'absence');
+    assert.equal(s.dayStartedAt, 0, 'the touch did not start a day');
+    assert.equal(s.elapsed.daily, 0, 'nor count towards one');
+    const morning = today + 31.5 * 3600;
+    for (let now = morning; now < morning + 3600; now++)
+        s = tickAt(s, now, {dailyIdleResetSeconds: NINE_HOURS});
+    const at = morning + 3600;
+    assert.equal(s.reminder, null);
+    assert.equal(s.dayStartedAt, morning);
+    assert.equal(s.elapsed.daily, 3600);
+    assert.ok(dayEndFraction(s, {dayEndAt: dayEndOn(dayAnchor(s, at)), now: at}) < 0.2);
+});
+
+test('a day-end window is withdrawn once the day is no longer over', () => {
+    const over = run(createState(), 1, {now: 2000, dayEndAt: 2000});
+    assert.equal(over.reminder?.reason, 'day-end');
+    assert.equal(run(over, 1, {now: 2001, dayEndAt: 0}).reminder, null, 'switched off');
+    assert.equal(run(over, 1, {now: 2001, dayEndAt: 5000}).reminder, null, 'moved later');
+});
+
+test('a day of input every 5 min 1 s (a training video) never ends the day', () => {
+    let day = workFor(createState(), 600);
+    for (let elapsed = 0; elapsed < 10 * 3600; elapsed += 302) {
+        day = idleFor(day, 301);
+        day = workFor(day, 1);
+    }
+    assert.ok(day.elapsed.daily > 600);
+    assert.equal(day.dayReset, null);
+});
+
+test('a suspend as long as a night ends the day', () => {
+    const worked = workFor(createState(), 600);
+    const resumed = run(worked, 1, {idleSeconds: 0, dailyIdleResetSeconds: NINE_HOURS, sleptSeconds: 10 * 3600});
+    assert.equal(resumed.elapsed.daily, 0);
+    assert.equal(resumed.dayReset, 'absence');
+    // An idle reading that kept growing through the suspend is not counted twice.
+    const both = run(idleFor(worked, 3600), 1, {
+        idleSeconds: 3600 + 4 * 3600, dailyIdleResetSeconds: NINE_HOURS, sleptSeconds: 4 * 3600,
+    });
+    assert.ok(both.elapsed.daily > 0);
+});
+
+test('only an actual reset is reported, with its own reason', () => {
+    const worked = workFor(createState(), 600);
+    assert.equal(idleFor(worked, NINE_HOURS - 1).dayReset, null, 'the tick before');
+    const reset = run(idleFor(worked, NINE_HOURS - 1), 1, {idleSeconds: NINE_HOURS, dailyIdleResetSeconds: NINE_HOURS});
+    assert.equal(reset.dayReset, 'absence');
+    assert.equal(run(reset, 1, {idleSeconds: NINE_HOURS + 1, dailyIdleResetSeconds: NINE_HOURS}).dayReset, null,
+        'nothing left to reset');
+    const ownBreak = normalizeTimers([{name: 'daily', breakSeconds: 3600}]);
+    const broke = run(run(createState(), 10, {}, ownBreak), 1, {idleSeconds: 3600}, ownBreak);
+    assert.equal(broke.dayReset, 'break');
+});
+
+
+test('two night touches eight minutes apart are two bursts, not a return', () => {
+    // Left at 18:00; touches at 01:00 and 01:08; 9 h of absence ends the day
+    // a little after 03:00 (7 h before the touches, 2 h after).
+    let s = workFor(createState(), 600);
+    let idle = 0;
+    let resetAt = null;
+    for (let t = 0; t < 10 * 3600; t++) {
+        const clock = 18 * 3600 + t;
+        idle = clock === 25 * 3600 || clock === 25 * 3600 + 480 ? 0 : idle + 1;
+        s = run(s, 1, {idleSeconds: idle, dailyIdleResetSeconds: NINE_HOURS});
+        if (s.dayReset && resetAt === null)
+            resetAt = clock;
+    }
+    assert.ok(resetAt !== null, 'the day ended by morning');
+    assert.ok(resetAt > 27 * 3600 && resetAt < 27.5 * 3600, `reset near 03:00, got ${resetAt / 3600} h`);
+});
+
+test('six minutes of continuous work after an absence is a return', () => {
+    let s = workFor(createState(), 600);
+    s = idleFor(s, 3 * 3600);
+    s = workFor(s, 6 * 60);
+    assert.equal(s.absence.away, false);
+    assert.equal(s.absence.idleSeconds, 0);
+    assert.equal(s.elapsed.daily, 600 + 6 * 60);
+});
+
+test('the absence count survives a rebuild in the night', () => {
+    let s = workFor(createState(), 600);
+    s = idleFor(s, 4 * 3600);
+    assert.equal(s.absence.idleSeconds, 4 * 3600);
+    const stored = JSON.parse(JSON.stringify(serializeState(s, {bootId: 'boot-a', now: 1000})));
+    const context = {bootId: 'boot-a', now: 1010, dailyIdleResetSeconds: NINE_HOURS};
+    assert.deepEqual(restoreDay(stored, context).absence, {idleSeconds: 4 * 3600, away: true});
+    // A gap long enough to be a stretch adds on, and may complete the absence.
+    const later = {...context, now: 1000 + 3600};
+    assert.equal(restoreDay(stored, later).absence.idleSeconds, 5 * 3600);
+    const morning = {...context, now: 1000 + 5 * 3600};
+    assert.equal(restoreDay(stored, morning).reset, 'absence');
+    assert.equal(restoreElapsed(stored, TIMERS, morning).daily, 0);
+});
+
+
+test('a day that ended while locked starts on tomorrow when restored after the day end', () => {
+    // Locked 13:00, unlocked 22:30 (9.5 h, past the 9 h threshold): the panel
+    // is rebuilt and the restore sees the reset.
+    const today = 10 * DAY;
+    const worked = createState();
+    worked.elapsed = {micro: 0, rest: 0, daily: 4 * 3600};
+    worked.dayStartedAt = today + 9 * 3600;
+    const atLock = serializeState(worked, {bootId: 'boot-a', now: today + 13 * 3600});
+    const unlock = today + 22.5 * 3600;
+    const day = restoreDay(atLock, {
+        bootId: 'boot-a', now: unlock, dailyIdleResetSeconds: NINE_HOURS, ...calendar(unlock),
+    });
+    assert.equal(day.reset, 'absence');
+    let s = {...createState(), ...day, absence: {...createState().absence, ...day.absence}};
+    assert.equal(dayEndOn(dayAnchor(s, unlock)), today + DAY + DAY_END, 'the new day is tomorrow');
+    for (let now = unlock; now < unlock + 900; now++)
+        s = tickAt(s, now, {dailyIdleResetSeconds: NINE_HOURS});
+    assert.equal(s.reminder, null, 'no window at 22:30');
+
+    // Locked again 22:45, unlocked 07:00 (8.25 h, under the threshold): the day
+    // goes on, still tomorrow's — no window all morning.
+    const relock = unlock + 900;
+    const stored = serializeState(s, {bootId: 'boot-a', now: relock});
+    const morning = today + DAY + 7 * 3600;
+    const kept = restoreDay(stored, {
+        bootId: 'boot-a', now: morning, dailyIdleResetSeconds: NINE_HOURS, ...calendar(morning),
+    });
+    assert.equal(kept.reset, null);
+    let m = {...createState(), ...kept, absence: {...createState().absence, ...kept.absence}};
+    m.elapsed = restoreElapsed(stored, DAILY_ONLY, {bootId: 'boot-a', now: morning, dailyIdleResetSeconds: NINE_HOURS});
+    m = tickAt(m, morning, {dailyIdleResetSeconds: NINE_HOURS});
+    assert.equal(m.reminder, null);
+    assert.equal(isDayOver({dayEndAt: dayEndOn(dayAnchor(m, morning)), now: morning}), false);
+});
+
+test('a widget made mid-stretch counts the stretch from there on', () => {
+    const fresh = createState(3 * 3600);
+    const next = run(fresh, 1, {idleSeconds: 3 * 3600 + 1, dailyIdleResetSeconds: NINE_HOURS});
+    assert.equal(next.absence.idleSeconds, 1);
 });

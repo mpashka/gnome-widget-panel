@@ -12,9 +12,7 @@ This page is the user-facing contract for that behaviour: the three timers, when
 each one resets, and the two-stage reminder (a passive warning first, a dimmed
 break screen second).
 
-Everything on this page is implemented. The daily counter's day boundary is the
-part still under review — see [Resetting the daily
-counter](#resetting-the-daily-counter).
+Everything on this page is implemented.
 
 ## The three timers
 
@@ -79,7 +77,7 @@ The daily limit needs its own rules, because the idle rule above is wrong for
 it. Its "break" is the end of the working day, and a lunch break is *part of* a
 working day — a counter that a one-hour lunch zeroes does not measure a day.
 
-The daily counter resets when **either** of these happens:
+The daily counter resets when **any** of these happens:
 
 1. **The computer is switched on.** The working day starts at boot: the counter
    is tied to the current boot, so a reboot begins a new day and a GNOME Shell
@@ -87,20 +85,53 @@ The daily counter resets when **either** of these happens:
    work that runs past midnight is the same working day, and a counter that
    emptied at 00:00 would excuse exactly the session that most needs the
    warning.
-2. **A long absence ends.** A continuous idle period of at least *end the day
-   after*, default **6 hours** (0 disables this rule). This covers a night's
-   sleep on a machine that is never switched off, and it is long enough that no
-   meal, meeting or errand can trigger it.
+2. **A long absence.** At least *end the day after* away from the keyboard,
+   default **6 hours** (0 disables this rule). This covers a night's sleep on a
+   machine that is never switched off. Because time away adds up across brief
+   touches, it is not one unbroken stretch: an afternoon of long meetings and
+   errands — stretches of 20 minutes or more each, with no more than a few
+   minutes at the keyboard between them — can add up to it too. That is the
+   trade-off for a night the widget recognises; set *end the day after* above
+   the longest such day you expect.
+
+   The absence does not have to be one unbroken stretch. A machine left on
+   overnight sees a key or the mouse touched now and then — a cat, a bumped
+   desk, a glance at the clock — and each touch used to start the count again,
+   so the counter stayed red for days. Now:
+
+   - a **burst of input of up to 5 minutes** does not interrupt the absence:
+     the time away on either side of it adds up. A burst is the time you are
+     actually at the keyboard: two touches eight minutes apart are two bursts,
+     not an eight-minute one;
+   - a **longer burst** is a return to work, and the count starts over;
+   - only stretches of at least **20 minutes** away count towards it. Shorter
+     pauses are part of working: a day of watching a training video or
+     reading, with a key pressed every 5–20 minutes, never adds up to an
+     absence;
+   - a **suspended** machine is away for as long as it slept;
+   - a touch in the middle of an absence is not work: it neither starts the
+     new day nor adds to it. The day starts when a burst longer than 5 minutes
+     shows you are back — at that burst's first second, and its minutes count.
+
+   So 2½ h away, a 30-second touch, 3 h, a bump, 2 h, a minute, 2 h ends the
+   day by morning; a lunch hour between two stretches of work never does. When
+   the reset comes after today's end of the working day (you left at 14:00, the
+   day ends at 23:00), the new day is tomorrow's, exactly as with *Start a new
+   day* below — also when the reset is noticed only as the screen is
+   unlocked.
+3. **You say so.** *Start a new day* in the widget's right-click menu — for a
+   morning the widget could not recognise by itself, or simply a fresh start.
+   It asks nothing and happens at once: today's counter, the day's start and
+   tonight's postponement of the end-of-day window all start over. The break
+   timers are not touched. Pressed **after** today's end of the working day
+   (say at 23:00), the new day is tomorrow's: tonight's window does not come
+   back, and the next one comes at tomorrow's end of day. Pressed before it —
+   in the morning, or at 00:30 after a late night — the day is today's.
 
 Nothing else resets it: not a micro break, not a rest break, not dismissing a
-reminder, and not restarting GNOME Shell.
-
-> **Provisional.** Tying the day to the boot is the simple reading of "the day
-> starts when I switch the computer on", and it is deliberately the first
-> version: a machine left on overnight leans entirely on rule 2, and a machine
-> rebooted at lunchtime forgets the morning. Expect this rule to change once
-> there is real experience with it; the two rules above are the part of this
-> page most likely to move.
+reminder, and not restarting GNOME Shell. A machine rebooted at lunchtime still
+forgets the morning — the boot is the simple reading of "the day starts when I
+switch the computer on".
 
 **The counters are persisted** to
 `$XDG_STATE_HOME/gnome-widget-panel/break-timer.json` (usually
@@ -112,6 +143,10 @@ were last updated, and restored on start:
 - The daily counter is restored when the store belongs to the current boot and
   the gap since the save is shorter than the long-absence rule; otherwise it
   starts at zero.
+- With it go **when the working day started** and **how long tonight's
+  end-of-day window was put off**, under the same rule: changing a setting
+  (which rebuilds the widget) neither brings back a window you have answered
+  nor forgets the evening.
 - The micro and rest counters are restored only when the gap between the stored
   timestamp and now is shorter than the timer's break length — a longer gap is
   itself a break, so those timers start at zero.
@@ -199,7 +234,8 @@ The daily limit gets stage 1 only: reaching it shows the message
 (`Daily limit reached — call it a day`) and the bar turns red, and that is all.
 There is no dimmed screen and no countdown, because there is no break length to
 count down and no useful way to enforce the end of a working day. While the
-limit stands the message returns at most once an hour of work.
+limit stands the message returns at most once an hour of work — until the end
+of the working day, below, if that is switched on.
 
 ### The end of the working day
 
@@ -251,9 +287,20 @@ Two consequences worth stating:
   by itself the moment the screen is yours again. A window that cannot be closed
   must not be able to appear on a shared one.
 
+**A window whose day is no longer over is taken down** — a new day began, the
+limit was switched off, or its time was moved later.
+
+**Once the hour has come, the window is the daily limit's only voice.** The
+two thresholds do not take turns: from the end of the working day on, the
+"limit reached" message is not shown at all — not while the window is up, not
+while it is put off, not while it waits for a free screen. A limit message that
+happens to be up at that moment gives way to the window.
+
 The postponement is wall-clock, not activity: ten minutes away from the keyboard
-still ends in ten minutes, and the window is waiting when you sit back down. A
-new working day (a reboot, or the long absence rule) forgets it.
+still ends in ten minutes, and the window is waiting when you sit back down —
+however little you typed meanwhile. It survives a rebuild of the widget (see
+the persistence above). A new working day (a reboot, the long absence rule, or
+*Start a new day*) forgets it.
 
 ## Pausing the timers
 
@@ -278,6 +325,8 @@ anyway.
   alone covers a call — pause the timers here, or switch Caffeine on there.
 - **Resume**, which also shows how much of the pause is left. Resuming hands the
   screen back at the same moment.
+- **Start a new day**, always last, below a separator — see [Resetting the
+  daily counter](#resetting-the-daily-counter).
 
 **Anything keeping the session awake** silences the timers for as long as it
 lasts — a screen-share inhibitor, a media player, and in particular the panel's
@@ -324,8 +373,8 @@ Widget-wide, next to the unchanged graph width, tooltip on/off and tooltip
 template (`{micro}`, `{rest}`, `{daily}`):
 
 - **End the day after** — hours away from the keyboard that reset the daily
-  counter, default 6 h, 0 to disable. Switching the computer on always starts a
-  new day.
+  counter, default 6 h, 0 to disable; brief touches in between do not break
+  it. Switching the computer on always starts a new day.
 - **Warning position** — which of the six anchors the advance warning starts on,
   default **top right**. It still steps aside once per showing and can still be
   dragged.

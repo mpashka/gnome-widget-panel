@@ -34,6 +34,7 @@ import {
     DEFAULT_DAILY_IDLE_RESET_HOURS,
     advance,
     createState,
+    dayAnchor,
     dayEndFraction,
     dayEndRemainingSeconds,
     isDayOver,
@@ -49,10 +50,12 @@ import {
     overtimeSeconds,
     postponeDayEnd,
     postponeReminder,
+    restoreDay,
     restoreElapsed,
     resumeReminders,
     serializeState,
     skipReminder,
+    startNewDay,
 } from './breakTimerState.js';
 import {loadStoredState, readBootId, saveStoredState} from './breakTimerStore.js';
 
@@ -82,6 +85,15 @@ const INHIBIT_REFRESH_SECONDS = 10;
 // gesture, from the other end (see ../../sessionInhibitor.ts).
 const PAUSE_APP_ID = 'gnome-widget-panel';
 const PAUSE_REASON = 'Break timer paused: keep the screen awake meanwhile';
+
+// Why a working day started over, as the journal line says it. One line a day
+// at most, and the only trace of a reset that happened while nobody watched.
+const DAY_RESET_LOG = {
+    absence: 'idle accumulated past "end the day after"',
+    boot: 'the computer was switched on',
+    manual: '"Start a new day" from the menu',
+    break: 'idle for the daily timer\'s own break length',
+};
 
 // Bar opacity while the reminders are silent (paused or something keeps the
 // session awake): the counters still run, so the bars stay — dimmed.
@@ -123,7 +135,6 @@ export const BreakTimerGraph = GObject.registerClass(
                 ? options.template
                 : DEFAULT_TOOLTIP_TEMPLATE;
 
-            this._state = createState();
             this._reminderUi = null;
             this._menu = null;
             this._destroyed = false;
@@ -144,6 +155,10 @@ export const BreakTimerGraph = GObject.registerClass(
                 onChanged: () => this.queue_repaint(),
             });
             this._persistedAt = nowSeconds();
+            // Wall-clock second of the last tick, to see a suspend in between.
+            this._tickedAt = 0;
+            // The last local dates _localDay() worked out.
+            this._localDays = [];
             this._bootId = null;
 
             // Capability check: Meta.IdleMonitor may be unavailable in some Shell
@@ -163,6 +178,7 @@ export const BreakTimerGraph = GObject.registerClass(
                 this._idleMonitor = null;
                 this._idleCapable = false;
             }
+            this._state = createState(this._readIdleMs() / 1000);
 
             this._tooltip = new St.Label({
                 style_class: 'dash-label',
@@ -187,29 +203,60 @@ export const BreakTimerGraph = GObject.registerClass(
         }
 
         // The epoch second of the "stop working" time for the working day that
-        // is currently running. Anchored to the day work BEGAN on, not to today:
-        // past midnight the deadline that matters is still the one of the day
-        // one sat down on, which is by then in the past — as it should be.
+        // is currently running — see dayAnchor() for which day that is.
         _dayEndAt() {
+            return this._dayEndOn(dayAnchor(this._state, nowSeconds()));
+        }
+
+        // The "stop working" time on the local date of `anchor`; 0 when off.
+        _dayEndOn(anchor) {
+            return this._localDay(anchor)?.dayEndAt ?? 0;
+        }
+
+        // What the rules need of the local calendar to put a new day on
+        // tomorrow: today's "stop working" time and a second (noon) on
+        // tomorrow's date. Both 0 while the limit is off.
+        _calendar(now) {
+            const day = this._localDay(now);
+            return {
+                todayDayEndAt: day?.dayEndAt ?? 0,
+                tomorrowAt: day?.tomorrowAt ?? 0,
+            };
+        }
+
+        // The local date containing `seconds`, as the epoch seconds the rules
+        // need. The tick asks every second; GLib.DateTime is built only when
+        // the date changes (the running day's and today's are kept), so an
+        // idle desktop pays nothing for it (gwp-231). Null while the limit is
+        // off or the date cannot be worked out.
+        _localDay(seconds) {
             if (!this._dayEnd.enabled)
-                return 0;
-            const anchor = this._state.dayStartedAt > 0
-                ? this._state.dayStartedAt
-                : nowSeconds();
+                return null;
+            const cached = this._localDays.find(day => seconds >= day.start && seconds < day.end);
+            if (cached)
+                return cached;
             try {
-                const base = GLib.DateTime.new_from_unix_local(anchor);
-                const target = GLib.DateTime.new_local(
-                    base.get_year(),
-                    base.get_month(),
-                    base.get_day_of_month(),
-                    Math.floor(this._dayEnd.minutes / 60),
-                    this._dayEnd.minutes % 60,
-                    0
-                );
-                return target ? target.to_unix() : 0;
+                const date = GLib.DateTime.new_from_unix_local(seconds);
+                const next = date.add_days(1);
+                const at = (base, hour, minute) => GLib.DateTime.new_local(
+                    base.get_year(), base.get_month(), base.get_day_of_month(),
+                    hour, minute, 0
+                ).to_unix();
+                const day = {
+                    start: at(date, 0, 0),
+                    end: at(next, 0, 0),
+                    dayEndAt: at(
+                        date,
+                        Math.floor(this._dayEnd.minutes / 60),
+                        this._dayEnd.minutes % 60
+                    ),
+                    tomorrowAt: at(next, 12, 0),
+                };
+                this._localDays = [day, ...this._localDays].slice(0, 2);
+                return day;
             } catch (error) {
                 logError(error, 'break-timer: could not work out the end of the day');
-                return 0;
+                return null;
             }
         }
 
@@ -231,16 +278,27 @@ export const BreakTimerGraph = GObject.registerClass(
         _tick() {
             const idleSeconds = this._readIdleMs() / 1000;
             this._refreshInhibited();
+            const now = nowSeconds();
+            // No tick runs while the machine is suspended; the wall-clock gap
+            // is time away all the same.
+            const sleptSeconds = this._tickedAt > 0
+                ? Math.max(0, now - this._tickedAt - TICK_INTERVAL_SECONDS)
+                : 0;
+            this._tickedAt = now;
             const input = {
                 idleSeconds,
                 tickSeconds: TICK_INTERVAL_SECONDS,
                 canInterrupt: this._canInterrupt(),
                 inhibited: this._inhibited,
-                now: nowSeconds(),
+                now,
                 dailyIdleResetSeconds: this._dailyIdleResetSeconds,
                 dayEndAt: this._dayEndAt(),
+                sleptSeconds,
+                ...this._calendar(now),
             };
             this._state = advance(this._state, this._timers, input);
+            if (this._state.dayReset)
+                this._logDayReset(this._state.dayReset);
             // The pause ran out inside advance(): hand the screen back with it,
             // or the keep-awake would outlive the pause that asked for it.
             if (this._pauseInhibitor.held &&
@@ -288,6 +346,21 @@ export const BreakTimerGraph = GObject.registerClass(
         _postponeDayEnd(seconds) {
             this._state = postponeDayEnd(this._state, nowSeconds() + seconds);
             this._syncReminder();
+        }
+
+        // The morning the widget could not recognise by itself — a machine left
+        // on overnight and touched too often — or simply a fresh start. Harmless
+        // and immediate: it asks nothing and only zeroes today's counter.
+        _startNewDay() {
+            const now = nowSeconds();
+            this._state = startNewDay(this._state, {now, ...this._calendar(now)});
+            this._logDayReset('manual');
+            this._syncReminder();
+            this.queue_repaint();
+        }
+
+        _logDayReset(reason) {
+            console.log(`break-timer: a new working day — ${DAY_RESET_LOG[reason] ?? reason}`);
         }
 
         _openPreferences() {
@@ -399,8 +472,16 @@ export const BreakTimerGraph = GObject.registerClass(
         }
 
         // Rebuilt on every open: what it offers depends on the reminder that is
-        // up and on whether the timers are paused.
+        // up and on whether the timers are paused. "Start a new day" is always
+        // the last row, set apart by a separator: it is about the day, not
+        // about the break or the pause above it.
         _fillMenu(menu) {
+            this._fillReminderItems(menu);
+            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this._addMenuItem(menu, 'Start a new day', () => this._startNewDay());
+        }
+
+        _fillReminderItems(menu) {
             menu.removeAll();
             const reminder = this._state.reminder;
             const timer = reminder
@@ -492,11 +573,35 @@ export const BreakTimerGraph = GObject.registerClass(
                 if (this._destroyed)
                     return;
                 this._bootId = bootId;
-                this._state.elapsed = restoreElapsed(stored, this._timers, {
+                const now = nowSeconds();
+                const context = {
                     bootId,
-                    now: nowSeconds(),
+                    now,
                     dailyIdleResetSeconds: this._dailyIdleResetSeconds,
-                });
+                    ...this._calendar(now),
+                };
+                const day = restoreDay(stored, context);
+                // The ticks before this answer arrived may have started a
+                // day of their own; the stored one, when it goes on, began
+                // earlier and wins.
+                this._state = {
+                    ...this._state,
+                    elapsed: restoreElapsed(stored, this._timers, context),
+                    dayStartedAt: day.dayStartedAt || this._state.dayStartedAt,
+                    dayAnchorAt: day.dayAnchorAt || this._state.dayAnchorAt,
+                    absence: {
+                        ...this._state.absence,
+                        idleSeconds: this._state.absence.idleSeconds + day.absence.idleSeconds,
+                        away: this._state.absence.away || day.absence.away,
+                    },
+                    dayEndSnoozedUntil: Math.max(
+                        day.dayEndSnoozedUntil,
+                        this._state.dayEndSnoozedUntil
+                    ),
+                };
+                if (day.reset)
+                    this._logDayReset(day.reset);
+                this._syncReminder();
                 this.queue_repaint();
             } catch (error) {
                 logError(error, 'break-timer: could not restore the counters');

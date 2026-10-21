@@ -76,7 +76,16 @@ Tests import the compiled output from `../extension/` (a build artifact), so the
 - `breakTimerState.test.mjs` — the gi-free break-timer rules from
   [`../extension-src/plugins/break-timer/breakTimerState.ts`](../extension-src/plugins/break-timer/breakTimerState.ts):
   defaults and normalization, activity accumulation, idle-based resets (a longer
-  break resets the shorter timers), the daily counter's boot/long-absence rules,
+  break resets the shorter timers), the daily counter's boot/long-absence rules
+  (including a night of idle stretches broken by brief touches, and a burst of
+  real work that restarts the count, a day of input every 5 min that never
+  resets, a suspend, a stray touch after a 23:00 reset that must not start the
+  day, two night touches eight minutes apart, the absence count
+  across a rebuild, the next-date anchor of a late new day, the reported reset reason),
+  *Start a new day*, the withdrawn window once the day is no longer over, the evening's single
+  window (past the limit, postponing it raises no limit message and it returns
+  by the wall clock), the stored day start and postponement (round-trip and an
+  old store file),
   the reminder state machine (warning → break screen → reset, suppressed →
   message + retry), postpone/skip, the silence rules (a manual pause or a
   session inhibitor stops the reminders while the counters keep running, and the

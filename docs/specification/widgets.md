@@ -278,10 +278,16 @@ quiet hour shows.
   up — 10 min*, or a longer one from the chevron menu). It never dims the
   screen, because closing your work needs one, and it stays away from a shared
   or fullscreen screen.
-  The counters survive a shell restart.
+  Once that hour has come, the window is all the daily limit says — no second
+  "limit reached" message beside it or after answering it. The daily counter
+  starts over on a new boot or a long absence, which brief touches in the night
+  (bursts under 5 minutes) no longer interrupt. The counters, the day's start
+  and tonight's answer survive a shell restart.
 - **Interactions:** hover shows each timer as `name: elapsed/limit`; overdue
   timers say `— break!`. **Right-click** postpones or skips the reminder that is
-  up and pauses the timers for 30 min, 1 h or 1:30 (or resumes them). **A pause
+  up, pauses the timers for 30 min, 1 h or 1:30 (or resumes them), and
+  **starts a new day** — zeroes today's counter when the morning did not do it
+  by itself. **A pause
   also keeps the screen awake** — the meeting a pause covers is exactly when a
   lock screen is unwelcome — and while it lasts the widget shows a **coffee cup
   and one bar** counting the pause down instead of the three timer bars. The

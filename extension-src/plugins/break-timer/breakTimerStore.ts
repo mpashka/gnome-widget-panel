@@ -5,7 +5,7 @@
 // wipes measures nothing, so the counters are written to
 // $XDG_STATE_HOME/gnome-widget-panel/break-timer.json together with the boot id
 // and the moment of the save; breakTimerState.ts decides what survives (see
-// restoreElapsed). All I/O is async — EGO forbids blocking the Shell loop.
+// restoreElapsed, restoreDay). All I/O is async — EGO forbids blocking the Shell loop.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';

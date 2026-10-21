@@ -91,7 +91,60 @@ export interface BreakTimerState {
      * back down, and activity seconds would not have moved.
      */
     dayEndSnoozedUntil: number;
+    /**
+     * Wall-clock second whose local date names the working day, when the user
+     * was not the first activity: a new day started after tonight's end of day
+     * — by the menu or by the long absence — puts it on tomorrow
+     * (`nextDayAnchor`). 0 = none, and the day is named by `dayStartedAt` (see
+     * `dayAnchor`).
+     */
+    dayAnchorAt: number;
+    /**
+     * The long-absence count that ends the working day — see `trackAbsence`.
+     * Its count and `away` are stored with the day (`restoreDay`).
+     */
+    absence: AbsenceTracker;
+    /**
+     * Why the working day started over in the transition that produced this
+     * state, or null — what the widget writes to the journal. Cleared by every
+     * transition, never stored.
+     */
+    dayReset: DayResetReason | null;
 }
+
+/**
+ * Bookkeeping of the long absence that ends the working day. A machine left on
+ * overnight sees a key or the mouse touched now and then — a cat, a bumped
+ * desk, a glance at the clock — and a rule that wanted one unbroken idle period
+ * never fired on it. So the absence is counted across short bursts of input.
+ */
+export interface AbsenceTracker {
+    /** Idle seconds counted towards the current absence. */
+    idleSeconds: number;
+    /** The idle reading of the previous tick, to see how much a stretch grew. */
+    lastIdleSeconds: number;
+    /**
+     * Seconds since the last counted idle stretch ended — the burst of input
+     * that interrupted the absence, plus the short idle inside and after it.
+     */
+    burstSeconds: number;
+    /** Wall-clock second the current burst began at. */
+    burstStartedAt: number;
+    /**
+     * An absence is under way: a stretch counted and no burst has yet proved a
+     * return to work. Daily activity is held meanwhile, so a touch in the night
+     * neither starts the day nor adds to it.
+     */
+    away: boolean;
+    /** Daily activity of the current burst, held while `away`. */
+    heldSeconds: number;
+}
+
+/**
+ * Why the working day started over; the widget writes it to the journal.
+ * `break` is the daily timer's own break length, when one is configured.
+ */
+export type DayResetReason = 'absence' | 'boot' | 'manual' | 'break';
 
 export interface TickInput {
     idleSeconds: number;
@@ -106,7 +159,10 @@ export interface TickInput {
     inhibited: boolean;
     /** Wall-clock epoch seconds; only the manual pause deadline reads it. */
     now: number;
-    /** Idle that ends the working day and resets the daily counter; 0 = off. */
+    /**
+     * Absence that ends the working day and resets the daily counter, counted
+     * across short bursts of input (`trackAbsence`); 0 = off.
+     */
     dailyIdleResetSeconds: number;
     /**
      * Wall-clock epoch second of today's "stop working" time, or 0 when that
@@ -115,6 +171,19 @@ export interface TickInput {
      * tests stay timezone-free.
      */
     dayEndAt: number;
+    /**
+     * The "stop working" time on today's local date (not the running day's),
+     * and a second on tomorrow's local date: the calendar a new day started
+     * after the day end needs to belong to tomorrow (`nextDayAnchor`). 0 when
+     * the limit is off or the caller does not say.
+     */
+    todayDayEndAt?: number;
+    tomorrowAt?: number;
+    /**
+     * Wall-clock seconds that passed without a tick beyond `tickSeconds` — a
+     * suspended machine. Counted as time away (`trackAbsence`); 0 normally.
+     */
+    sleptSeconds?: number;
 }
 
 export interface StoredState {
@@ -122,6 +191,18 @@ export interface StoredState {
     bootId: string;
     savedAt: number;
     elapsed: Record<string, number>;
+    /**
+     * The working day's anchor and tonight's postponement, so that rebuilding
+     * the widget neither re-raises the evening window nor forgets it. Added
+     * without a schema bump: a file without them loads as "not recorded" (0),
+     * and an older build simply ignores them.
+     */
+    dayStartedAt?: number;
+    dayEndSnoozedUntil?: number;
+    dayAnchorAt?: number;
+    /** `absence.idleSeconds` and `absence.away`, so a rebuild keeps the night. */
+    absenceIdleSeconds?: number;
+    absenceAway?: boolean;
 }
 
 export const STORE_SCHEMA = 1;
@@ -155,6 +236,23 @@ export const DAY_END_WRAP_UP_SECONDS = 10 * 60;
 export const DAY_END_POSTPONE_MINUTES = [20, 30, 60];
 
 export const DEFAULT_DAILY_IDLE_RESET_HOURS = 6;
+
+/**
+ * The longest burst of input that does not interrupt a long absence, and the
+ * shortest idle stretch that counts towards one. A night of a cat on the desk
+ * or a glance at a notification stays one absence; five minutes of real work
+ * is a return, and the count starts over.
+ */
+export const ABSENCE_BURST_SECONDS = 5 * 60;
+
+/**
+ * The shortest idle stretch that counts towards a long absence. Deliberately
+ * well above the burst cap: a working day spent watching a training video or
+ * reading, with a key pressed every 5–20 minutes, is not an absence, while the
+ * stretches of a night are hours long. Twenty minutes keeps that day intact
+ * and costs a night at most a few short stretches.
+ */
+export const ABSENCE_STRETCH_SECONDS = 20 * 60;
 
 /**
  * The pause lengths the context menu offers, in minutes. Three of them: a menu
@@ -352,7 +450,15 @@ export function leadSeconds(timer: TimerConfig): number {
 }
 
 
-export function createState(): BreakTimerState {
+/**
+ * A fresh state. `idleSeconds` is the idle reading at the moment it is made:
+ * an idle stretch already running then is counted from there on, not again
+ * from its start — the part before was counted (and stored) by the widget
+ * that came before this one.
+ */
+export function createState(idleSeconds = 0): BreakTimerState {
+    const absence = createAbsence();
+    absence.lastIdleSeconds = Math.max(0, idleSeconds);
     return {
         elapsed: {micro: 0, rest: 0, daily: 0},
         reminder: null,
@@ -361,6 +467,21 @@ export function createState(): BreakTimerState {
         pausedFrom: 0,
         dayStartedAt: 0,
         dayEndSnoozedUntil: 0,
+        dayAnchorAt: 0,
+        absence,
+        dayReset: null,
+    };
+}
+
+
+function createAbsence(): AbsenceTracker {
+    return {
+        idleSeconds: 0,
+        lastIdleSeconds: 0,
+        burstSeconds: 0,
+        burstStartedAt: 0,
+        away: false,
+        heldSeconds: 0,
     };
 }
 
@@ -374,6 +495,9 @@ function cloneState(state: BreakTimerState): BreakTimerState {
         pausedFrom: state.pausedFrom ?? 0,
         dayStartedAt: state.dayStartedAt ?? 0,
         dayEndSnoozedUntil: state.dayEndSnoozedUntil ?? 0,
+        dayAnchorAt: state.dayAnchorAt ?? 0,
+        absence: {...createAbsence(), ...state.absence},
+        dayReset: null,
     };
 }
 
@@ -394,6 +518,7 @@ function resetTimer(state: BreakTimerState, name: TimerName): void {
         state.dayStartedAt = 0;
         // Yesterday's "ten more minutes" has nothing to say about today.
         state.dayEndSnoozedUntil = 0;
+        state.dayAnchorAt = 0;
     }
     if (state.reminder && state.reminder.timer === name)
         state.reminder = null;
@@ -416,6 +541,21 @@ function repeatSeconds(timer: TimerConfig, canInterrupt: boolean): number {
  */
 export function isDayOver(input: {dayEndAt: number; now: number}): boolean {
     return input.dayEndAt > 0 && input.now >= input.dayEndAt;
+}
+
+
+/**
+ * The wall-clock second whose local date the working day belongs to — what the
+ * widget computes the "stop working" time from. An explicitly chosen day first,
+ * then the day work began on, then today. Past midnight the deadline that
+ * matters is still the one of the day one sat down on, by then behind.
+ */
+export function dayAnchor(state: BreakTimerState, now: number): number {
+    if ((state.dayAnchorAt ?? 0) > 0)
+        return state.dayAnchorAt;
+    if ((state.dayStartedAt ?? 0) > 0)
+        return state.dayStartedAt;
+    return now;
 }
 
 
@@ -500,19 +640,25 @@ function isOffered(
 ): boolean {
     if (!timer.enabled || timer.reminder === 'off')
         return false;
+    // The daily limit has a second way of coming due: the clock. Once the day
+    // is over by the clock, the end-of-day window is the daily timer's only
+    // voice — whether it is up, postponed or waiting for a free screen — so the
+    // counter's own "limit reached" message never appears beside it. Its
+    // return after a postponement is a time of day (`dayEndSnoozedUntil`), not
+    // the activity seconds `quietUntil` counts: a user away for the ten minutes
+    // they asked for must find it waiting.
+    if (isDailyEvening(timer, input))
+        return isDayEndDue(state, timer, input);
     const elapsed = state.elapsed[timer.name] ?? 0;
-    // The daily limit has a second way of coming due: the clock. Whichever
-    // arrives first raises the same reminder, on the same timer, so nothing is
-    // said twice.
-    const worked = elapsed >= limitSeconds(timer) - leadSeconds(timer);
-    if (!worked && !isDayEndDue(state, timer, input))
+    if (elapsed < limitSeconds(timer) - leadSeconds(timer))
         return false;
-    // A day-end window that is only waiting for the screen to be free is not
-    // subject to the hourly quiet period the counter's own message uses: it was
-    // never shown, so there is nothing to be quiet about.
-    if (!worked)
-        return true;
     return elapsed >= (state.quietUntil[timer.name] ?? 0);
+}
+
+
+// The daily timer past the end of the working day, by the clock.
+function isDailyEvening(timer: TimerConfig, input: {dayEndAt: number; now: number}): boolean {
+    return timer.name === 'daily' && isDayOver(input);
 }
 
 
@@ -668,29 +814,53 @@ export function advance(
     const silent = isSilent(next, input);
     if (silent)
         next.reminder = null;
+    // The day is no longer over — a new one began, the limit was switched off
+    // or moved later: a window asking to stop has nothing left to ask.
+    if (next.reminder?.reason === 'day-end' && !isDayOver(input))
+        next.reminder = null;
     // A window that cannot be closed must not be able to sit on a shared
     // screen, a fullscreen presentation or the lock screen. It is only hidden,
     // never answered: `dayEndSnoozedUntil` is untouched, so it comes back by
     // itself as soon as the screen is the user's own again.
     if (next.reminder?.reason === 'day-end' && !input.canInterrupt)
         next.reminder = null;
+    // A "limit reached" message still up when the clock ends the day gives way
+    // to the end-of-day window (see `isOffered`).
+    if (next.reminder?.timer === 'daily' && next.reminder.reason !== 'day-end'
+        && isDayOver(input))
+        next.reminder = null;
     const inBreak = !silent && state.reminder?.stage === 'break';
     const working = input.idleSeconds < ACTIVE_IDLE_THRESHOLD_SECONDS;
+
+    trackAbsence(next, input);
+    if (input.dailyIdleResetSeconds > 0
+        && next.absence.idleSeconds >= input.dailyIdleResetSeconds) {
+        resetDay(next, 'absence', input);
+        // The absence has done its work; whatever follows is counted afresh, so
+        // the reset fires once and not on every tick of the rest of the night.
+        next.absence.idleSeconds = 0;
+    }
 
     for (const timer of timers) {
         if (!timer.enabled)
             continue;
-        if (timer.breakSeconds > 0 && input.idleSeconds >= timer.breakSeconds)
-            resetTimer(next, timer.name);
-        else if (working && !inBreak) {
+        if (timer.breakSeconds > 0 && input.idleSeconds >= timer.breakSeconds) {
+            if (timer.name === 'daily')
+                resetDay(next, 'break', input);
+            else
+                resetTimer(next, timer.name);
+        } else if (working && !inBreak) {
+            // A touch inside an absence is not work yet (see `trackAbsence`).
+            if (timer.name === 'daily' && next.absence.away) {
+                next.absence.heldSeconds += input.tickSeconds;
+                continue;
+            }
             next.elapsed[timer.name] = (next.elapsed[timer.name] ?? 0) + input.tickSeconds;
             // The first activity after a reset is when today's work began.
             if (timer.name === 'daily' && next.dayStartedAt <= 0)
                 next.dayStartedAt = input.now;
         }
     }
-    if (input.dailyIdleResetSeconds > 0 && input.idleSeconds >= input.dailyIdleResetSeconds)
-        resetTimer(next, 'daily');
     if (silent)
         return next;
 
@@ -700,6 +870,119 @@ export function advance(
         if (due.length > 0)
             next.reminder = startedReminder(next, due[0], input.canInterrupt, input);
     }
+    return next;
+}
+
+
+/**
+ * Count one tick of the long absence that ends the working day. Idle stretches
+ * of at least `ABSENCE_STRETCH_SECONDS` count in full, and so does a suspend
+ * that long (`sleptSeconds`); bursts of input between them do not break the
+ * count as long as the input itself spans no more than `ABSENCE_BURST_SECONDS`;
+ * a longer burst is a return to work, and the count starts over. While away,
+ * the daily activity of a burst is held: a short burst is dropped with the
+ * next stretch, a return releases it into the daily counter and the day starts
+ * where that burst began. Mutates `state` — the clone inside `advance`.
+ */
+function trackAbsence(state: BreakTimerState, input: TickInput): void {
+    const absence = state.absence;
+    const idle = Math.max(0, input.idleSeconds);
+    const last = absence.lastIdleSeconds;
+    absence.lastIdleSeconds = idle;
+    const slept = Math.max(0, input.sleptSeconds ?? 0);
+    if (slept >= ABSENCE_STRETCH_SECONDS) {
+        // The suspend is the stretch. An idle reading that also kept growing
+        // through it must not count the same time twice, hence `last = idle`.
+        countStretch(absence, slept);
+        if (idle >= ABSENCE_STRETCH_SECONDS)
+            return;
+    } else if (idle >= ABSENCE_STRETCH_SECONDS) {
+        // On its first tick all of the stretch counts, afterwards what it grew
+        // by. A reading below the last one means input came and went within one
+        // tick — a new stretch, counted from its start.
+        const continuing = last >= ABSENCE_STRETCH_SECONDS && idle >= last;
+        countStretch(absence, continuing ? idle - last : idle);
+        return;
+    }
+    if (idle >= ABSENCE_BURST_SECONDS) {
+        // A gap of 5–20 minutes neither counts towards the absence nor belongs
+        // to the burst: two touches eight minutes apart at night are two short
+        // bursts, not an eight-minute return to work. The ticks counted while
+        // this gap was still short come off again.
+        if (last < ABSENCE_BURST_SECONDS)
+            absence.burstSeconds = Math.max(0, absence.burstSeconds - last);
+        return;
+    }
+    if (absence.burstSeconds === 0)
+        absence.burstStartedAt = input.now;
+    absence.burstSeconds += input.tickSeconds;
+    // The burst's input span — its short gaps included, the trailing idle
+    // since the latest input not yet.
+    if (absence.burstSeconds - idle <= ABSENCE_BURST_SECONDS)
+        return;
+    absence.idleSeconds = 0;
+    if (!absence.away)
+        return;
+    absence.away = false;
+    if (absence.heldSeconds > 0) {
+        state.elapsed.daily = (state.elapsed.daily ?? 0) + absence.heldSeconds;
+        if (state.dayStartedAt <= 0)
+            state.dayStartedAt = absence.burstStartedAt || input.now;
+        absence.heldSeconds = 0;
+    }
+}
+
+
+function countStretch(absence: AbsenceTracker, seconds: number): void {
+    absence.idleSeconds += seconds;
+    absence.away = true;
+    absence.burstSeconds = 0;
+    absence.heldSeconds = 0;
+}
+
+
+/**
+ * The anchor a new working day starting now gets: a second on tomorrow's date
+ * once today's "stop working" time has passed — the evening is over, and the
+ * day that starts now is tomorrow's — and none (0) before it.
+ */
+function nextDayAnchor(input: {now: number; todayDayEndAt?: number; tomorrowAt?: number}): number {
+    const todayEnd = input.todayDayEndAt ?? 0;
+    return todayEnd > 0 && input.now >= todayEnd ? (input.tomorrowAt ?? 0) : 0;
+}
+
+
+// A new working day, for `reason`. Reported only when a day had begun — the
+// rule that fires again over an already-empty day has nothing to say.
+function resetDay(
+    state: BreakTimerState,
+    reason: DayResetReason,
+    input: {now: number; todayDayEndAt?: number; tomorrowAt?: number}
+): void {
+    const begun = (state.elapsed.daily ?? 0) > 0 || (state.dayStartedAt ?? 0) > 0;
+    resetTimer(state, 'daily');
+    state.dayAnchorAt = nextDayAnchor(input);
+    if (begun)
+        state.dayReset = reason;
+}
+
+
+/**
+ * "Start a new day" from the menu: the daily counter, the day's start, tonight's
+ * postponement and any daily reminder all start over, and so does the absence
+ * count. The deliberate twin of the automatic reset, for a morning the widget
+ * could not recognise by itself. Pressed after today's "stop working" time,
+ * the new day belongs to tomorrow's date (`nextDayAnchor`), so tonight's window
+ * does not come straight back; pressed before it, today stays the day.
+ */
+export function startNewDay(
+    state: BreakTimerState,
+    input: {now: number; todayDayEndAt: number; tomorrowAt: number}
+): BreakTimerState {
+    const next = cloneState(state);
+    resetDay(next, 'manual', input);
+    next.dayReset = 'manual';
+    next.absence = createAbsence();
     return next;
 }
 
@@ -831,7 +1114,60 @@ export function serializeState(
         bootId: context.bootId,
         savedAt: Math.round(context.now),
         elapsed: {...state.elapsed},
+        dayStartedAt: state.dayStartedAt ?? 0,
+        dayEndSnoozedUntil: state.dayEndSnoozedUntil ?? 0,
+        dayAnchorAt: state.dayAnchorAt ?? 0,
+        absenceIdleSeconds: state.absence?.idleSeconds ?? 0,
+        absenceAway: state.absence?.away === true,
     };
+}
+
+
+interface RestoreContext {
+    bootId: string;
+    now: number;
+    dailyIdleResetSeconds: number;
+    /** The calendar `nextDayAnchor` reads, as in `TickInput`. */
+    todayDayEndAt?: number;
+    tomorrowAt?: number;
+}
+
+
+// A stored state this version can read, and the seconds since it was saved;
+// null for a foreign or damaged store.
+function readStored(stored: unknown, now: number): {state: StoredState; gap: number} | null {
+    const state = stored as StoredState | null;
+    if (!state || typeof state !== 'object' || state.schema !== STORE_SCHEMA)
+        return null;
+    const savedAt = toNumber(state.savedAt, NaN);
+    if (!Number.isFinite(savedAt))
+        return null;
+    return {state, gap: Math.max(0, now - savedAt)};
+}
+
+
+// The stored absence count with the gap since the save added — the gap is
+// time away, and counts like any idle stretch once it is long enough.
+function storedAbsenceSeconds(state: StoredState, gap: number): number {
+    const stored = Math.max(0, toNumber(state.absenceIdleSeconds, 0));
+    return stored + (gap >= ABSENCE_STRETCH_SECONDS ? gap : 0);
+}
+
+
+// Does the stored working day go on? Not after a reboot, and not after a gap
+// that is itself — or completes — a long absence. `null` when it does,
+// otherwise why not.
+function storedDayEnded(
+    state: StoredState,
+    gap: number,
+    context: RestoreContext
+): DayResetReason | null {
+    if (state.bootId !== context.bootId)
+        return 'boot';
+    const reset = context.dailyIdleResetSeconds;
+    if (reset > 0 && (gap >= reset || storedAbsenceSeconds(state, gap) >= reset))
+        return 'absence';
+    return null;
 }
 
 
@@ -844,16 +1180,13 @@ export function serializeState(
 export function restoreElapsed(
     stored: unknown,
     timers: TimerConfig[],
-    context: {bootId: string; now: number; dailyIdleResetSeconds: number}
+    context: RestoreContext
 ): Record<TimerName, number> {
     const fresh: Record<TimerName, number> = {micro: 0, rest: 0, daily: 0};
-    const state = stored as StoredState | null;
-    if (!state || typeof state !== 'object' || state.schema !== STORE_SCHEMA)
+    const read = readStored(stored, context.now);
+    if (!read)
         return fresh;
-    const savedAt = toNumber(state.savedAt, NaN);
-    if (!Number.isFinite(savedAt))
-        return fresh;
-    const gap = Math.max(0, context.now - savedAt);
+    const {state, gap} = read;
     const elapsed = (state.elapsed ?? {}) as Record<string, unknown>;
 
     for (const timer of timers) {
@@ -861,10 +1194,7 @@ export function restoreElapsed(
         if (!Number.isFinite(value) || value < 0)
             continue;
         if (timer.name === 'daily') {
-            const rebooted = state.bootId !== context.bootId;
-            const away = context.dailyIdleResetSeconds > 0
-                && gap >= context.dailyIdleResetSeconds;
-            if (!rebooted && !away)
+            if (!storedDayEnded(state, gap, context))
                 fresh.daily = value;
             continue;
         }
@@ -872,4 +1202,60 @@ export function restoreElapsed(
             fresh[timer.name] = value;
     }
     return fresh;
+}
+
+
+/**
+ * The working day's anchor to start from after a restart: when it began, the
+ * day chosen by "Start a new day", how long tonight's end-of-day window was put
+ * off, and the long-absence count so far (the gap since the save added). They live and die with the
+ * daily counter (`restoreElapsed`) — a reboot or a long gap drops them. `reset`
+ * says why a stored day that had begun was dropped, for the journal; null when
+ * it goes on or there was nothing to drop.
+ */
+export function restoreDay(
+    stored: unknown,
+    context: RestoreContext
+): {
+    dayStartedAt: number;
+    dayEndSnoozedUntil: number;
+    dayAnchorAt: number;
+    absence: {idleSeconds: number; away: boolean};
+    reset: DayResetReason | null;
+} {
+    const none = {
+        dayStartedAt: 0,
+        dayEndSnoozedUntil: 0,
+        dayAnchorAt: 0,
+        absence: {idleSeconds: 0, away: false},
+        reset: null,
+    };
+    const read = readStored(stored, context.now);
+    if (!read)
+        return none;
+    const {state, gap} = read;
+    const dayStartedAt = Math.max(0, toNumber(state.dayStartedAt, 0));
+    const daily = Math.max(0, toNumber(state.elapsed?.daily, 0));
+    const ended = storedDayEnded(state, gap, context);
+    // A day that ended while the widget was away starts now, and after
+    // today's "stop working" time it is tomorrow's — exactly as a reset seen
+    // by the tick would make it. The panel is rebuilt on every unlock, so a
+    // locked night comes through here.
+    if (ended) {
+        return {
+            ...none,
+            dayAnchorAt: nextDayAnchor(context),
+            reset: dayStartedAt > 0 || daily > 0 ? ended : null,
+        };
+    }
+    return {
+        dayStartedAt,
+        dayEndSnoozedUntil: Math.max(0, toNumber(state.dayEndSnoozedUntil, 0)),
+        dayAnchorAt: Math.max(0, toNumber(state.dayAnchorAt, 0)),
+        absence: {
+            idleSeconds: storedAbsenceSeconds(state, gap),
+            away: state.absenceAway === true || gap >= ABSENCE_STRETCH_SECONDS,
+        },
+        reset: null,
+    };
 }

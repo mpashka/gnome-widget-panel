@@ -102,6 +102,40 @@ assert_true "$UI._postponeMenu.numMenuItems >= 6" 'it offers the fixed lengths, 
 ui_eval "$UI._postponeMenu.close(); 'closed'" >/dev/null
 assert_eq "$(ui_eval "$STATE.reminder.reason")" '"day-end"' 'closing the menu answers nothing'
 
+# --- past the daily limit too: answering the window raises nothing else ----
+# gwp-344: with the counter past its limit, the next tick after "postpone"
+# raised the plain "limit reached" message, which kept the window's split
+# button (the action-row cache ignored which kind of message it was).
+ui_eval "$STATE.elapsed.daily = 480 * 60 + 600; $STATE.dayEndSnoozedUntil = 0; 'over the limit'" >/dev/null
+ui_eval "$TICK(1)" >/dev/null
+assert_eq "$(ui_eval "$STATE.reminder.reason")" '"day-end"' 'past the limit and the hour, the window is what comes'
+ui_eval "$UI._actions.onDayEndPostpone(3600)" >/dev/null
+ui_eval "$TICK(3)" >/dev/null
+assert_true "$STATE.reminder === null" 'no limit message once the window is answered'
+assert_true "!$UI._messageVisible" 'and nothing on screen'
+
+# The action row follows the kind of message, not only its timer and stage.
+ui_eval "$STATE.dayEndSnoozedUntil = 0; 'due again'" >/dev/null
+ui_eval "$TICK(1)" >/dev/null
+assert_eq "$(ui_eval "$UI._messageActions.get_children().filter(c => c.has_style_class_name?.('break-timer-split')).length")" '1' \
+    'the window carries its split button'
+ui_eval "$UI.sync({timer: 'daily', stage: 'due', remaining: 30, total: 30},
+    plugin('break-timer')._timers[2]); 'limit message'" >/dev/null
+assert_eq "$(ui_eval "$UI._messageActions.get_children().filter(c => c.has_style_class_name?.('break-timer-split')).length")" '0' \
+    'a limit message never inherits it'
+ui_eval "$TICK(1)" >/dev/null
+
+# --- "Start a new day" is always in the menu, and starts one --------------
+ui_eval "plugin('break-timer')._openMenu()" >/dev/null
+MENU_LABELS="$(ui_eval "plugin('break-timer')._menu.box.get_children()
+    .map(i => i.label && i.label.text).filter(t => t)")"
+assert_contains "$MENU_LABELS" 'Start a new day' 'the menu offers to start a new day'
+ui_eval "plugin('break-timer')._menu._getMenuItems()
+    .find(i => i.label?.text === 'Start a new day').emit('activate', null); true" >/dev/null
+assert_true "$STATE.elapsed.daily === 0 && $STATE.dayStartedAt === 0" 'it zeroes today'
+assert_true "$STATE.dayEndSnoozedUntil === 0" 'and forgets tonight'
+ui_eval "plugin('break-timer')._menu.close()" >/dev/null
+
 if grep -q "JS ERROR.*gnome-widget-panel" "$GWP_UI_TMP/shell.log"; then
     fail "extension logged a JS ERROR (see shell.log)"
 fi
