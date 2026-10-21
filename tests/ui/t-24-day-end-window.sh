@@ -119,9 +119,11 @@ ui_eval "$STATE.dayEndSnoozedUntil = 0; 'due again'" >/dev/null
 ui_eval "$TICK(1)" >/dev/null
 assert_eq "$(ui_eval "$UI._messageActions.get_children().filter(c => c.has_style_class_name?.('break-timer-split')).length")" '1' \
     'the window carries its split button'
-ui_eval "$UI.sync({timer: 'daily', stage: 'due', remaining: 30, total: 30},
-    plugin('break-timer')._timers[2]); 'limit message'" >/dev/null
-assert_eq "$(ui_eval "$UI._messageActions.get_children().filter(c => c.has_style_class_name?.('break-timer-split')).length")" '0' \
+# Synced and counted in one evaluation: the widget's own one-second tick would
+# otherwise re-sync the day-end window in between and rebuild its button.
+assert_eq "$(ui_eval "$UI.sync({timer: 'daily', stage: 'due', remaining: 30, total: 30},
+    plugin('break-timer')._timers[2]);
+    $UI._messageActions.get_children().filter(c => c.has_style_class_name?.('break-timer-split')).length")" '0' \
     'a limit message never inherits it'
 ui_eval "$TICK(1)" >/dev/null
 

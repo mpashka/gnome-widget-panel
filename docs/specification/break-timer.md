@@ -63,6 +63,19 @@ Three consequences worth stating explicitly:
 - **A partial break resets nothing.** Twenty seconds away from a 30-second micro
   break leaves the counter frozen where it was, not reduced. Breaks do not
   accumulate from fragments.
+- **A brief touch does not end a break in progress.** Nudging the mouse or
+  pressing a key in passing — up to **3 seconds** of input — with at least
+  **two minutes** away on **both** sides of it does not start the break over:
+  the time away counts through it, and the touch is not counted as work. Until
+  the two minutes after it have passed, the touch is only *pending*: input
+  again before then means you are back after all — the break ends where the
+  touch was, and the work since is counted in full. So reading, scrolling or
+  clicking every few seconds or minutes never turns into a break, and nothing
+  of it is lost. Longer input is a return, as before; breaks shorter than two
+  minutes — the 30-second micro break — get no allowance at all. Each away
+  stretch of two minutes or more leaves one line in the system journal (its
+  length, the touches tolerated, the input that ended it), so the 3 seconds can
+  be tuned from real use.
 - **An overdue timer follows the same rule.** A red bar does not clear itself
   because time passed or because you dismissed a reminder; it clears when you
   actually stay away for the break length.

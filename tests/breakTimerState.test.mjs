@@ -8,6 +8,8 @@ import {formatDuration} from '../extension/duration.js';
 import {
     ABSENCE_BURST_SECONDS,
     ACTIVE_IDLE_THRESHOLD_SECONDS,
+    AWAY_TOLERANCE_MIN_SECONDS,
+    AWAY_TOUCH_SECONDS,
     COVERED_BY_LONGER_BREAK_FRACTION,
     DAY_END_WRAP_UP_SECONDS,
     DEFAULT_DAY_END_MINUTES,
@@ -821,7 +823,8 @@ test('a day of input every 5 min 1 s (a training video) never ends the day', () 
         day = idleFor(day, 301);
         day = workFor(day, 1);
     }
-    assert.ok(day.elapsed.daily > 600);
+    // The 1-s inputs are tolerated touches (round 3): no work, and no reset.
+    assert.ok(day.elapsed.daily >= 600);
     assert.equal(day.dayReset, null);
 });
 
@@ -1044,4 +1047,94 @@ test('a rest break postponed again and again does not silence the micro breaks',
         }
     }
     assert.ok(microOffers >= 3, `micro offered ${microOffers} times in 40 min`);
+});
+
+
+// --- Round 3: a brief touch does not end an away stretch ---------------------
+
+// Feed idle readings tick by tick: `away(n)` is n seconds idle (the reading
+// grows from 1), `touch(n)` n seconds of input (reading 0).
+const away = n => Array.from({length: n}, (_, i) => i + 1);
+const touch = n => Array(n).fill(0);
+function feed(state, readings, timers = USER_TIMERS) {
+    let next = state;
+    const reports = [];
+    for (const idleSeconds of readings) {
+        next = run(next, 1, {idleSeconds}, timers);
+        if (next.awayReport)
+            reports.push(next.awayReport);
+    }
+    return {state: next, reports};
+}
+function owed() {
+    const s = createState();
+    s.elapsed = {micro: 300, rest: 2400, daily: 3000};
+    return s;
+}
+
+const timesFor = (seconds, every, input) => {
+    const readings = [];
+    while (readings.length < seconds)
+        readings.push(...touch(input), ...away(every - input));
+    return readings.slice(0, seconds);
+};
+
+test('away 10 min with a 2-second touch at minute four: the rest break is taken', () => {
+    const {state, reports} = feed(owed(), [...away(240), ...touch(2), ...away(358)]);
+    assert.equal(state.elapsed.rest, 0);
+    assert.equal(state.elapsed.daily, 3004, 'the touch was not work');
+    assert.deepEqual(reports, []);
+    const back = feed(state, touch(10)).reports;
+    assert.equal(back.length, 1);
+    assert.equal(back[0].touches, 1);
+    assert.equal(back[0].touchSeconds, 2);
+    assert.ok(back[0].awaySeconds >= 600);
+});
+
+test('two touches three minutes apart in a 12-minute absence are both tolerated', () => {
+    const {state, reports} = feed(owed(), [
+        ...away(240), ...touch(1), ...away(179), ...touch(2), ...away(298), ...touch(8),
+    ]);
+    assert.equal(state.elapsed.rest > 0 && state.elapsed.rest < 20, true, 'taken, then counting again');
+    assert.equal(reports.length, 1, 'one line for the whole stretch');
+    assert.deepEqual({touches: reports[0].touches, touchSeconds: reports[0].touchSeconds},
+        {touches: 2, touchSeconds: 3});
+    assert.ok(reports[0].inputSeconds > AWAY_TOUCH_SECONDS);
+});
+
+test('reading after a pause is not away: a scroll every 20 s', () => {
+    for (const pause of [70, 130]) {
+        const plain = feed(owed(), timesFor(20 * 60, 20, 1));
+        const {state, reports} = feed(owed(), [...away(pause), ...timesFor(20 * 60, 20, 1)]);
+        assert.ok(state.elapsed.rest > 2400, `${pause} s pause: rest not taken`);
+        assert.ok(state.elapsed.daily >= plain.state.elapsed.daily - 10,
+            `${pause} s pause: the reading still counts as work`);
+        assert.ok(reports.length <= 1, `${pause} s pause: ${reports.length} log lines`);
+    }
+});
+
+test('browsing with a 2-second click every 8 s or a scroll every 61 s is not away', () => {
+    const clicks = feed(owed(), [...away(150), ...timesFor(20 * 60, 8, 2)]);
+    assert.ok(clicks.state.elapsed.rest > 2400);
+    assert.ok(clicks.reports.length <= 1);
+    const scrolls = feed(owed(), timesFor(20 * 60, 61, 1));
+    assert.ok(scrolls.state.elapsed.rest > 2400, 'never away');
+    assert.equal(scrolls.reports.length, 0, 'and nothing to report');
+});
+
+test('ten seconds of input at minute three ends the stretch', () => {
+    const {state, reports} = feed(owed(), [...away(180), ...touch(10), ...away(300)]);
+    assert.ok(state.elapsed.rest > 2400, 'the rest break starts over after the input');
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].touches, 0);
+    assert.equal(reports[0].awaySeconds, 180);
+    assert.ok(state.elapsed.daily >= 3010, 'and the input counted as work');
+});
+
+test('a touch before two minutes away ends the stretch as before', () => {
+    const {state, reports} = feed(owed(), [...away(20), ...touch(2), ...away(20)]);
+    assert.ok(state.elapsed.micro > 0, '20 + 20 s is not a 30-second micro break');
+    assert.deepEqual(reports, [], 'and nothing to report under two minutes');
+    assert.equal(feed(state, away(30)).state.elapsed.micro, 0);
+    assert.equal(AWAY_TOLERANCE_MIN_SECONDS, 120);
 });

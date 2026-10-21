@@ -54,8 +54,45 @@ is alive and feeds `advance()`:
   `breakSeconds` is 0) compares the *time away* against its own
   `breakSeconds`: the current continuous idle reading, or across a suspend
   (`input.sleptSeconds`, no tick ran) the idle before it plus the time asleep,
-  whichever is longer (`awaySeconds()`). Time behind the lock screen is
-  credited on restore (below), since the panel does not exist while locked. Once continuous idle reaches that length, the timer's
+  whichever is longer (`awaySeconds()`) — or the tolerant away stretch below,
+  if longer. Time behind the lock screen is credited on restore (below), since
+  the panel does not exist while locked.
+- **Touches while away (round 3):** `trackAwayStretch()` keeps
+  `state.awayStretch` (`{seconds, baseSeconds, touchTicks, touchInputSeconds,
+  touchEnded, heldSeconds, touches, touchSeconds}`). While idle (reading ≥ 5 s)
+  `seconds = baseSeconds + idle`. Input after at least
+  `AWAY_TOLERANCE_MIN_SECONDS` (120 s) of idle starts a **pending** touch:
+  `seconds` freezes and every work tick from then on is held. The touch is
+  **confirmed** when its input span (`touchTicks − idle`) stayed within
+  `AWAY_TOUCH_SECONDS` (3 s) and idle after it reached 120 s again: `seconds`
+  resumes with the touch's time included, the held work is dropped (as the
+  daily counter drops a burst inside an absence). Longer input, or new input
+  before the 120 s after it, **rewinds**: `endAwayStretch()` ends the stretch
+  at the touch's start and credits the held work to every enabled timer
+  (`creditWork`, which routes daily through the absence hold) — reading and
+  browsing lose nothing. Input after less than 120 s idle ends the stretch at
+  once, so a reader who scrolls every minute is never away, and the 30 s micro
+  break is judged exactly as before.
+
+  The first version (tolerance after 60 s, idle needed only before the touch)
+  turned reading with a scroll every 20 s, after one pause, into an endless
+  tolerated stretch: the rest break reset while reading and the work vanished.
+  Idle on both sides, and the pending/rewind step, are what prevent that.
+- **Measuring it:** each stretch of 120 s or more that ends sets
+  `state.awayReport` `{awaySeconds, touches, touchSeconds, inputSeconds}`; the
+  graph logs it (`_logAway`), the same "state reports, graph logs" pattern as
+  `dayReset`. One line per stretch, none per touch, nothing for shorter idle —
+  browsing writes nothing:
+
+  ```
+  break-timer: away 612 s, 2 touches (3 s) tolerated, ended by 7 s of input
+  break-timer: away 140 s, ended by 4 s of input
+  ```
+
+  Read them with `journalctl --user -b _COMM=gnome-shell | grep 'break-timer: away'`
+  (the shell logs to the user journal). They exist to tune
+  `AWAY_TOUCH_SECONDS`: if real returns often end on 4–6 s of input, or
+  tolerated touches cluster just under 3 s, move the constant.
   elapsed counter resets to 0 — i.e. taking the break resets it. Because idle
   time is a single shared clock, a long enough idle period resets every timer
   whose `breakSeconds` it has reached; a rest-length idle (8 min by default) is

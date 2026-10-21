@@ -110,6 +110,51 @@ export interface BreakTimerState {
      * transition, never stored.
      */
     dayReset: DayResetReason | null;
+    /** The away stretch the break timers see — see `trackAwayStretch`. */
+    awayStretch: AwayStretch;
+    /**
+     * How an away stretch of at least `AWAY_TOLERANCE_MIN_SECONDS` ended, in
+     * the transition that produced this state; null otherwise. The widget
+     * writes it to the journal, to tune `AWAY_TOUCH_SECONDS` from real data.
+     * Never stored.
+     */
+    awayReport: AwayReport | null;
+}
+
+/**
+ * Time away from the keyboard as the micro and rest timers judge it: like the
+ * idle reading, but a brief touch — the mouse nudged in passing — with at least
+ * `AWAY_TOLERANCE_MIN_SECONDS` of idle on both sides does not start it over.
+ */
+export interface AwayStretch {
+    /**
+     * Seconds away so far, confirmed touches included. Frozen at the start of
+     * a pending touch: what follows it counts only once the touch is confirmed.
+     */
+    seconds: number;
+    /** `seconds` when the current idle run began (the idle reading adds on). */
+    baseSeconds: number;
+    /** Ticks since the pending touch began; 0 when there is none. */
+    touchTicks: number;
+    /** Its input span, fixed once idle resumed after it. */
+    touchInputSeconds: number;
+    /** Idle has resumed after the pending touch: new input now rewinds it. */
+    touchEnded: boolean;
+    /** Work seconds since the pending touch began, held until it is settled. */
+    heldSeconds: number;
+    /** Touches confirmed in this stretch, and their input seconds. */
+    touches: number;
+    touchSeconds: number;
+}
+
+export interface AwayReport {
+    /** Seconds away, up to the input that ended it. */
+    awaySeconds: number;
+    /** Touches tolerated on the way, and their input seconds in total. */
+    touches: number;
+    touchSeconds: number;
+    /** Seconds of the input that ended it. */
+    inputSeconds: number;
 }
 
 /**
@@ -268,6 +313,25 @@ export const ABSENCE_STRETCH_SECONDS = 20 * 60;
  * purpose teach the user to wave both away.
  */
 export const COVERED_BY_LONGER_BREAK_FRACTION = 2 / 3;
+
+/**
+ * The idle a touch needs on **both** sides to be tolerated, and the shortest
+ * away stretch reported to the journal. Two minutes: someone reading scrolls
+ * far more often than that, so reading never turns into an away stretch,
+ * while someone away touches the machine rarely. Breaks shorter than this —
+ * the 30-second micro break — get no tolerance at all and work as they always
+ * did.
+ */
+export const AWAY_TOLERANCE_MIN_SECONDS = 120;
+
+/**
+ * The longest input that counts as a touch rather than a return, in seconds of
+ * input. Three seconds covers a nudged mouse or a key pressed to wake the
+ * screen; reading a notification and answering it does not fit. A starting
+ * value: the journal line `break-timer: away …` reports the touches of every
+ * stretch, so it can be tuned from what really happens.
+ */
+export const AWAY_TOUCH_SECONDS = 3;
 
 /**
  * The pause lengths the context menu offers, in minutes. Three of them: a menu
@@ -485,6 +549,22 @@ export function createState(idleSeconds = 0): BreakTimerState {
         dayAnchorAt: 0,
         absence,
         dayReset: null,
+        awayStretch: createAwayStretch(),
+        awayReport: null,
+    };
+}
+
+
+function createAwayStretch(): AwayStretch {
+    return {
+        seconds: 0,
+        baseSeconds: 0,
+        touchTicks: 0,
+        touchInputSeconds: 0,
+        touchEnded: false,
+        heldSeconds: 0,
+        touches: 0,
+        touchSeconds: 0,
     };
 }
 
@@ -513,6 +593,8 @@ function cloneState(state: BreakTimerState): BreakTimerState {
         dayAnchorAt: state.dayAnchorAt ?? 0,
         absence: {...createAbsence(), ...state.absence},
         dayReset: null,
+        awayStretch: {...createAwayStretch(), ...state.awayStretch},
+        awayReport: null,
     };
 }
 
@@ -846,7 +928,10 @@ export function advance(
         next.reminder = null;
     const inBreak = !silent && state.reminder?.stage === 'break';
     const working = input.idleSeconds < ACTIVE_IDLE_THRESHOLD_SECONDS;
-    const away = awaySeconds(next, input);
+    const slept = awaySeconds(next, input);
+    trackAwayStretch(next, timers, input);
+    const away = Math.max(slept, next.awayStretch.seconds);
+    const touching = next.awayStretch.touchTicks > 0;
 
     trackAbsence(next, input);
     if (input.dailyIdleResetSeconds > 0
@@ -865,18 +950,12 @@ export function advance(
                 resetDay(next, 'break', input);
             else
                 resetTimer(next, timer.name);
-        } else if (working && !inBreak) {
-            // A touch inside an absence is not work yet (see `trackAbsence`).
-            if (timer.name === 'daily' && next.absence.away) {
-                next.absence.heldSeconds += input.tickSeconds;
-                continue;
-            }
-            next.elapsed[timer.name] = (next.elapsed[timer.name] ?? 0) + input.tickSeconds;
-            // The first activity after a reset is when today's work began.
-            if (timer.name === 'daily' && next.dayStartedAt <= 0)
-                next.dayStartedAt = input.now;
+        } else if (working && !inBreak && !touching) {
+            creditWork(next, timer, input.tickSeconds, input.now);
         }
     }
+    if (touching && working && !inBreak)
+        next.awayStretch.heldSeconds += input.tickSeconds;
     if (silent)
         return next;
 
@@ -935,6 +1014,112 @@ function isCoveredByLongerBreak(
         const deferred = elapsed < (state.quietUntil[longer.name] ?? 0);
         return !deferred && limitSeconds(longer) - elapsed < window;
     });
+}
+
+
+// Work seconds onto one timer. A touch inside an absence is not work yet for
+// the daily counter (see `trackAbsence`).
+function creditWork(state: BreakTimerState, timer: TimerConfig, seconds: number, now: number): void {
+    if (timer.name === 'daily' && state.absence.away) {
+        state.absence.heldSeconds += seconds;
+        return;
+    }
+    state.elapsed[timer.name] = (state.elapsed[timer.name] ?? 0) + seconds;
+    // The first activity after a reset is when today's work began.
+    if (timer.name === 'daily' && state.dayStartedAt <= 0)
+        state.dayStartedAt = now;
+}
+
+
+/**
+ * Follow the away stretch the break timers judge by. While idle, it is the
+ * idle reading on top of what came before the current idle run. Input after
+ * at least `AWAY_TOLERANCE_MIN_SECONDS` of idle starts a pending touch: the
+ * stretch stops growing and all work from then on is held. The touch is
+ * confirmed — the stretch resumes, its time included, and the held work is
+ * dropped as the daily counter drops a burst inside an absence — once it
+ * stayed within `AWAY_TOUCH_SECONDS` of input and was followed by another
+ * `AWAY_TOLERANCE_MIN_SECONDS` of idle. Anything else first — longer input, or
+ * new input before that idle — rewinds: the stretch ends where the touch
+ * began, and the held work is counted after all, so reading or browsing loses
+ * nothing. Input after less idle ends the stretch at once.
+ * Mutates `state` — the clone inside `advance`.
+ */
+function trackAwayStretch(state: BreakTimerState, timers: TimerConfig[], input: TickInput): void {
+    const stretch = state.awayStretch;
+    const idle = Math.max(0, input.idleSeconds);
+    const slept = Math.max(0, input.sleptSeconds ?? 0);
+    if (slept > 0) {
+        stretch.baseSeconds += slept;
+        stretch.seconds += slept;
+    }
+    const idleNow = idle >= ACTIVE_IDLE_THRESHOLD_SECONDS;
+    if (stretch.touchTicks === 0) {
+        if (idleNow) {
+            stretch.seconds = stretch.baseSeconds + idle;
+            return;
+        }
+        if (stretch.seconds < AWAY_TOLERANCE_MIN_SECONDS) {
+            endAwayStretch(state, timers, input, 0);
+            return;
+        }
+        stretch.touchTicks = input.tickSeconds;
+        return;
+    }
+    stretch.touchTicks += input.tickSeconds;
+    if (!stretch.touchEnded) {
+        // The input span of the touch: its ticks without the idle since its
+        // last input.
+        stretch.touchInputSeconds = Math.max(0, stretch.touchTicks - idle);
+        if (stretch.touchInputSeconds > AWAY_TOUCH_SECONDS)
+            endAwayStretch(state, timers, input, stretch.touchInputSeconds);
+        else if (idleNow)
+            stretch.touchEnded = true;
+        return;
+    }
+    if (!idleNow) {
+        endAwayStretch(state, timers, input, stretch.touchInputSeconds);
+        return;
+    }
+    if (idle < AWAY_TOLERANCE_MIN_SECONDS)
+        return;
+    stretch.seconds += stretch.touchTicks;
+    stretch.baseSeconds = stretch.seconds - idle;
+    stretch.touches += 1;
+    stretch.touchSeconds += stretch.touchInputSeconds;
+    stretch.touchTicks = 0;
+    stretch.touchInputSeconds = 0;
+    stretch.touchEnded = false;
+    stretch.heldSeconds = 0;
+}
+
+
+// The stretch is over: report it when it was long enough to matter, count the
+// held work after all, and start afresh. `inputSeconds` is the input that
+// ended it, as far as it is known.
+function endAwayStretch(
+    state: BreakTimerState,
+    timers: TimerConfig[],
+    input: TickInput,
+    inputSeconds: number
+): void {
+    const stretch = state.awayStretch;
+    if (stretch.seconds >= AWAY_TOLERANCE_MIN_SECONDS) {
+        state.awayReport = {
+            awaySeconds: Math.round(stretch.seconds),
+            touches: stretch.touches,
+            touchSeconds: Math.round(stretch.touchSeconds),
+            inputSeconds: Math.round(inputSeconds),
+        };
+    }
+    const held = stretch.heldSeconds;
+    state.awayStretch = createAwayStretch();
+    if (held <= 0)
+        return;
+    for (const timer of timers) {
+        if (timer.enabled)
+            creditWork(state, timer, held, input.now);
+    }
 }
 
 

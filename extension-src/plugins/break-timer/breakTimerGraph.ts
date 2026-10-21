@@ -299,6 +299,8 @@ export const BreakTimerGraph = GObject.registerClass(
             this._state = advance(this._state, this._timers, input);
             if (this._state.dayReset)
                 this._logDayReset(this._state.dayReset);
+            if (this._state.awayReport)
+                this._logAway(this._state.awayReport);
             // The pause ran out inside advance(): hand the screen back with it,
             // or the keep-awake would outlive the pause that asked for it.
             if (this._pauseInhibitor.held &&
@@ -357,6 +359,16 @@ export const BreakTimerGraph = GObject.registerClass(
             this._logDayReset('manual');
             this._syncReminder();
             this.queue_repaint();
+        }
+
+        // One line per away stretch of two minutes or more that ended, with
+        // the touches tolerated on the way: the data AWAY_TOUCH_SECONDS is
+        // tuned by.
+        _logAway({awaySeconds, touches, touchSeconds, inputSeconds}) {
+            const tolerated = touches > 0
+                ? `, ${touches} touch${touches === 1 ? '' : 'es'} (${touchSeconds} s) tolerated`
+                : '';
+            console.log(`break-timer: away ${awaySeconds} s${tolerated}, ended by ${inputSeconds} s of input`);
         }
 
         _logDayReset(reason) {
