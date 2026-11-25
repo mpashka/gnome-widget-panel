@@ -168,6 +168,9 @@ Back to [tests](../index.md). Concept, options analysis and how-to:
   rather than easing it, an unchanged state keeps its dot actor, and the
   break-timer tick has nothing to repaint right after a paint (gwp-231,
   [CPU cost](../../docs/testing/cpu-cost.md)).
+- `t-32-top-bar-monitors-changed.sh` — with `main-panel = hide` the GNOME top
+  bar stays hidden across a monitor change, a taller bar (another scale) and a
+  stray visibility update; a visible bar keeps its place (`@tag:main-panel`).
 - [`driver/`](driver/gwp-test-driver@gwp.test/extension.js) — test-only GNOME
   Shell extension exporting `org.gwp.TestDriver.Eval` on the test session bus
   (replaces the removed `org.gnome.Shell.Eval`). Never enable it in a real

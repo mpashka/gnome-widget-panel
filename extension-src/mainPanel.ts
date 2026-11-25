@@ -66,6 +66,12 @@ export class MainPanelController {
         this._mode = MainPanelMode.VISIBLE;
         // Whether we currently own/hide the top bar (mode !== visible).
         this._active = false;
+        // Whether the bar is meant to be on screen (shown or sliding in). The
+        // Shell resets `panelBox` behind our back (see _connectSignals), and
+        // this is what we restore it to.
+        this._shown = true;
+        // Bar height the hidden position was computed for.
+        this._hiddenHeight = 0;
         this._animating = false;
         this._chromeAdjusted = false;
 
@@ -166,11 +172,13 @@ export class MainPanelController {
     // ---- show / hide ---------------------------------------------------
 
     hide(animMs, _trigger) {
+        this._shown = false;
         this._clearHideTimeout();
         if (this._animating) {
             PANELBOX.remove_all_transitions();
             this._animating = false;
         }
+        this._hiddenHeight = PANELBOX.height;
         const targetY = this._baseY - PANELBOX.height;
         if (animMs <= 0) {
             PANELBOX.y = targetY;
@@ -190,6 +198,7 @@ export class MainPanelController {
     }
 
     show(animMs, _trigger) {
+        this._shown = true;
         this._clearHideTimeout();
         if (this._animating) {
             PANELBOX.remove_all_transitions();
@@ -370,16 +379,38 @@ export class MainPanelController {
                 this._handleMenus();
         });
         // Track geometry changes so the barrier/hover box follow the monitor.
+        // A height change (another monitor scale) also moves the hidden bar's
+        // target, or its lower part would peek out under the screen edge.
+        // Clutter emits notify::height on a mere position change of the hidden
+        // bar too; re-hiding then would undo LayoutManager._updateBoxes before
+        // monitors-changed reads the new top.
         this._connect(PANELBOX, 'notify::height', () => {
             this._updateStaticBox();
             if (this._mode === MainPanelMode.AUTOHIDE)
                 this._updateSearchEntryPadding(true);
+            if (!this._shown && PANELBOX.height !== this._hiddenHeight)
+                this.hide(0, 'height-changed');
         });
+        // A monitor change (docking, undocking, waking up on another set of
+        // screens) runs LayoutManager._monitorsChanged first: `_updateBoxes`
+        // puts `panelBox` back at the monitor top and `_updateVisibility`
+        // makes it visible. Take the new top as the shown position and hide
+        // the bar again, or it stays on screen until the next relogin.
         this._connect(Main.layoutManager, 'monitors-changed', () => {
             this._baseY = PANELBOX.y;
             this._updateStaticBox();
             if (this._mode === MainPanelMode.AUTOHIDE)
                 this._enablePressureBarrier();
+            if (!this._shown)
+                this.hide(0, 'monitors-changed');
+        });
+        // LayoutManager._updateVisibility (overview, session mode, fullscreen,
+        // restacking) shows every chrome actor that tracks fullscreen, ours
+        // included. Off-screen that is harmless, but with a monitor above the
+        // primary one the hidden bar would sit on that monitor's bottom edge.
+        this._connect(PANELBOX, 'notify::visible', () => {
+            if (!this._shown && !this._animating && PANELBOX.visible)
+                PANELBOX.hide();
         });
     }
 

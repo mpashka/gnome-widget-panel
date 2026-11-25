@@ -115,6 +115,15 @@ Permanent mode and this controller fight over the same actor. Every barrier,
 pointer watch, signal and timer is released in `destroy()`, which restores the
 bar and its strut reservation.
 
+GNOME Shell resets the bar behind the controller's back, so a hidden bar is
+re-hidden on three signals: `monitors-changed` (`LayoutManager._monitorsChanged`
+moves `panelBox` back to the monitor top and shows it — docking or undocking
+the laptop used to bring the top bar back until relogin), a real
+`panelBox` height change (another monitor scale; Clutter also emits
+`notify::height` on a bare position change, which must not count), and
+`notify::visible` (`LayoutManager._updateVisibility` shows chrome that tracks
+fullscreen). Pinned by `tests/ui/t-32-top-bar-monitors-changed.sh`.
+
 ### `PluginManager`
 
 Reads the `widgets` GSettings key via `configStore.ts`'s `loadWidgetConfig`,
